@@ -1,0 +1,472 @@
+// Copyright 2017 Guanhao Yin <sopium@mysterious.site>
+
+// This file is part of TiTun.
+
+// TiTun is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// TiTun is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
+
+use blake2_rfc::blake2s::Blake2s;
+use crypto::noise_rust_sodium::{ChaCha20Poly1305, X25519};
+use noise_protocol::patterns::noise_ik_psk2;
+use noise_protocol::*;
+use sodiumoxide::utils::memcmp;
+use tai64::TAI64N;
+use wireguard::*;
+
+const PROLOGUE: &[u8] = b"WireGuard v1 zx2c4 Jason@zx2c4.com";
+const LABEL_MAC1: &[u8] = b"mac1----";
+
+pub const HANDSHAKE_INIT_LEN: usize = 148;
+pub const HANDSHAKE_RESP_LEN: usize = 92;
+
+pub type HS = HandshakeState<X25519, ChaCha20Poly1305, NoiseBlake2s>;
+
+#[derive(Clone)]
+pub struct NoiseBlake2s(Blake2s);
+
+impl Default for NoiseBlake2s {
+    fn default() -> Self {
+        NoiseBlake2s(Blake2s::new(32))
+    }
+}
+
+impl Hash for NoiseBlake2s {
+    type Output = [u8; 32];
+    type Block = [u8; 64];
+
+    fn name() -> &'static str {
+        "BLAKE2s"
+    }
+
+    fn input(&mut self, data: &[u8]) {
+        self.0.update(data);
+    }
+
+    fn result(&mut self) -> Self::Output {
+        Self::Output::from_slice(self.0.clone().finalize().as_bytes())
+    }
+}
+
+/// WireGuard `MAC` function, aka. keyed blake2s with 16-byte output.
+fn mac(key: &[u8], data: &[&[u8]]) -> [u8; 16] {
+    let mut mac = [0u8; 16];
+    let mut blake2s = Blake2s::with_key(16, key);
+    for d in data {
+        blake2s.update(d);
+    }
+    mac.copy_from_slice(blake2s.finalize().as_bytes());
+    mac
+}
+
+// WireGuard `HASH` function, aka. blake2s with 32-byte output.
+fn hash(data: &[&[u8]]) -> [u8; 32] {
+    let mut output = [0u8; 32];
+    let mut blake2s = Blake2s::new(32);
+    for d in data {
+        blake2s.update(d);
+    }
+    output.copy_from_slice(blake2s.finalize().as_bytes());
+    output
+}
+
+/// Generate handshake initiation message.
+///
+/// Will generate a new ephemeral key and use current timestamp.
+///
+/// Returns: Message, noise handshake state.
+pub fn initiate(
+    wg: &WgInfo,
+    peer: &PeerInfo,
+    self_index: Id,
+) -> Result<([u8; HANDSHAKE_INIT_LEN], HS), ()> {
+    let mut msg = [0u8; HANDSHAKE_INIT_LEN];
+
+    let mut hs = {
+        let mut hsbuilder = HandshakeStateBuilder::<X25519>::new();
+        hsbuilder.set_pattern(noise_ik_psk2());
+        hsbuilder.set_is_initiator(true);
+        hsbuilder.set_prologue(PROLOGUE);
+        hsbuilder.set_s(wg.key.clone());
+        hsbuilder.set_rs(peer.peer_pubkey);
+        hsbuilder.build_handshake_state()
+    };
+    hs.push_psk(&peer.psk.unwrap_or([0u8; 32]));
+
+    // Type and reserved zeros.
+    msg[0..4].copy_from_slice(&[1, 0, 0, 0]);
+    // Self index.
+    msg[4..8].copy_from_slice(self_index.as_slice());
+
+    // Noise part: e, s, timestamp.
+    let timestamp = TAI64N::now();
+    hs.write_message(&timestamp.to_external(), &mut msg[8..116])
+        .map_err(|_| ())?;
+
+    // Mac1.
+    let mac1_key = hash(&[LABEL_MAC1, &peer.peer_pubkey]);
+    let mac1 = mac(&mac1_key, &[&msg[..116]]);
+    msg[116..132].copy_from_slice(&mac1);
+
+    Ok((msg, hs))
+}
+
+pub struct InitProcessResult {
+    pub peer_id: Id,
+    pub timestamp: TAI64N,
+    pub handshake_state: HS,
+}
+
+/// Process a handshake initiation message.
+///
+/// Will generate a new ephemeral key.
+///
+/// # Panics
+///
+/// If the message length is not `HANDSHAKE_INIT_LEN`.
+pub fn process_initiation(wg: &WgInfo, msg: &[u8]) -> Result<InitProcessResult, ()> {
+    assert_eq!(msg.len(), HANDSHAKE_INIT_LEN);
+
+    // Check type and zeros.
+    if msg[0..4] != [1, 0, 0, 0] {
+        return Err(());
+    }
+
+    // Peer index.
+    let peer_index = Id::from_slice(&msg[4..8]);
+
+    let mut hs: HS = {
+        let mut hsbuilder = HandshakeStateBuilder::<X25519>::new();
+        hsbuilder.set_is_initiator(false);
+        hsbuilder.set_prologue(PROLOGUE);
+        hsbuilder.set_pattern(noise_ik_psk2());
+        hsbuilder.set_s(wg.key.clone());
+        hsbuilder.build_handshake_state()
+    };
+
+    // Noise message, contains encrypted timestamp.
+    let mut timestamp = [0u8; 12];
+    hs.read_message(&msg[8..116], &mut timestamp)
+        .map_err(|_| ())?;
+    let timestamp = TAI64N::from_external(&timestamp).ok_or(())?;
+
+    Ok(InitProcessResult {
+        peer_id: peer_index,
+        timestamp,
+        handshake_state: hs,
+    })
+}
+
+/// Generate handshake response message.
+/// PSK should be set on the handshake state inside process result according to peer static key.
+pub fn responde(
+    _wg: &WgInfo,
+    result: &mut InitProcessResult,
+    self_id: Id,
+) -> Result<[u8; HANDSHAKE_RESP_LEN], ()> {
+    let mut response = [0u8; HANDSHAKE_RESP_LEN];
+
+    // Type and zeros.
+    response[0..4].copy_from_slice(&[2, 0, 0, 0]);
+    response[4..8].copy_from_slice(self_id.as_slice());
+    response[8..12].copy_from_slice(result.peer_id.as_slice());
+
+    let hs = &mut result.handshake_state;
+
+    hs.write_message(&[], &mut response[12..60])
+        .map_err(|_| ())?;
+
+    let key = hash(&[LABEL_MAC1, hs.get_rs().as_ref().unwrap()]);
+    let mac1 = mac(&key, &[&response[..60]]);
+    response[60..76].copy_from_slice(&mac1);
+
+    Ok(response)
+}
+
+/// Process handshake response message.
+///
+/// Returns peer index.
+///
+/// # Panics
+///
+/// If the message length is not `HANDSHAKE_RESP_LEN`.
+pub fn process_response(hs: &mut HS, msg: &[u8]) -> Result<Id, ()> {
+    assert_eq!(msg.len(), HANDSHAKE_RESP_LEN);
+
+    // Check type and zeros.
+    if msg[0..4] != [2, 0, 0, 0] {
+        return Err(());
+    }
+
+    // Peer index.
+    let peer_index = Id::from_slice(&msg[4..8]);
+
+    // msg[8..12] is self index, skip.
+
+    let mut out = [];
+
+    hs.read_message(&msg[12..60], &mut out).map_err(|_| ())?;
+
+    Ok(peer_index)
+}
+
+/// Verify `mac1` of a message.
+///
+/// # Panics
+///
+/// If the message is not at least 32-byte long.
+pub fn verify_mac1(wg: &WgInfo, msg: &[u8]) -> bool {
+    let mac1_pos = msg.len() - 32;
+    let (m, macs) = msg.split_at(mac1_pos);
+    let mac1 = &macs[..16];
+
+    let key = hash(&[LABEL_MAC1, wg.pubkey()]);
+    let expected_mac1 = mac(&key, &[m]);
+    memcmp(&expected_mac1, mac1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sodiumoxide::randombytes::randombytes_into;
+    #[cfg(feature = "bench")]
+    use wireguard::re_exports::sodium_init;
+
+    #[test]
+    fn wg_handshake_init_responde() {
+        let k = X25519::genkey();
+        let init = WgInfo {
+            key: k,
+            fwmark: 0,
+            port: 0,
+        };
+
+        let k = X25519::genkey();
+        let resp = WgInfo {
+            key: k,
+            fwmark: 0,
+            port: 0,
+        };
+
+        let init_peer = PeerInfo {
+            peer_pubkey: Clone::clone(resp.pubkey()),
+            psk: None,
+            endpoint: None,
+            allowed_ips: vec![],
+            keep_alive_interval: None,
+        };
+
+        let si = Id::gen();
+        let (m0, mut ihs) = initiate(&init, &init_peer, si).unwrap();
+        assert!(verify_mac1(&resp, &m0));
+        let mut result0 = process_initiation(&resp, &m0).unwrap();
+        assert_eq!(result0.handshake_state.get_rs(), Some(*init.pubkey()));
+        result0.handshake_state.push_psk(&[0u8; 32]);
+        let ri = Id::gen();
+        let m1 = responde(&resp, &mut result0, ri).unwrap();
+        assert!(verify_mac1(&init, &m1));
+        let ri1 = process_response(&mut ihs, &m1).unwrap();
+
+        assert_eq!(result0.peer_id, si);
+        assert_eq!(ri1, ri);
+
+        assert_eq!(ihs.get_hash(), result0.handshake_state.get_hash());
+    }
+
+    #[test]
+    fn wg_handshake_init_responde_with_psk() {
+        let mut psk = [0u8; 32];
+        randombytes_into(&mut psk);
+
+        let k = X25519::genkey();
+        let init = WgInfo {
+            key: k,
+            fwmark: 0,
+            port: 0,
+        };
+
+        let k = X25519::genkey();
+        let resp = WgInfo {
+            key: k,
+            fwmark: 0,
+            port: 0,
+        };
+
+        let init_peer = PeerInfo {
+            peer_pubkey: *resp.pubkey(),
+            psk: Some(psk),
+            endpoint: None,
+            allowed_ips: vec![],
+            keep_alive_interval: None,
+        };
+
+        let si = Id::gen();
+        let (m0, mut ihs) = initiate(&init, &init_peer, si).unwrap();
+        assert!(verify_mac1(&resp, &m0));
+        let mut result0 = process_initiation(&resp, &m0).unwrap();
+        result0.handshake_state.push_psk(&psk);
+        let ri = Id::gen();
+        let m1 = responde(&resp, &mut result0, ri).unwrap();
+        assert!(verify_mac1(&init, &m1));
+        let ri1 = process_response(&mut ihs, &m1).unwrap();
+
+        assert_eq!(result0.peer_id, si);
+        assert_eq!(ri1, ri);
+
+        assert_eq!(ihs.get_hash(), result0.handshake_state.get_hash());
+    }
+
+    #[cfg(feature = "bench")]
+    #[bench]
+    fn bench_handshake_init(b: &mut ::test::Bencher) {
+        sodium_init().unwrap();
+
+        let k = X25519::genkey();
+        let init = WgInfo {
+            key: k,
+            fwmark: 0,
+            port: 0,
+        };
+
+        let k = X25519::genkey();
+        let resp = WgInfo {
+            key: k,
+            fwmark: 0,
+            port: 0,
+        };
+
+        let init_peer = PeerInfo {
+            peer_pubkey: *resp.pubkey(),
+            psk: None,
+            endpoint: None,
+            allowed_ips: vec![],
+            keep_alive_interval: None,
+        };
+
+        b.iter(|| {
+            let si = Id::gen();
+            initiate(&init, &init_peer, si)
+        });
+    }
+
+    #[cfg(feature = "bench")]
+    #[bench]
+    fn bench_handshake_resp(b: &mut ::test::Bencher) {
+        sodium_init().unwrap();
+
+        let k = X25519::genkey();
+        let init = WgInfo {
+            key: k,
+            fwmark: 0,
+            port: 0,
+        };
+
+        let k = X25519::genkey();
+        let resp = WgInfo {
+            key: k,
+            fwmark: 0,
+            port: 0,
+        };
+
+        let init_peer = PeerInfo {
+            peer_pubkey: *resp.pubkey(),
+            psk: None,
+            endpoint: None,
+            allowed_ips: vec![],
+            keep_alive_interval: None,
+        };
+
+        let si = Id::gen();
+        let (m0, _) = initiate(&init, &init_peer, si).unwrap();
+
+        b.iter(|| {
+            let mut result0 = process_initiation(&resp, &m0).unwrap();
+            result0.handshake_state.push_psk(&[0u8; 32]);
+            let ri = Id::gen();
+            responde(&resp, &mut result0, ri)
+        });
+    }
+
+    #[cfg(feature = "bench")]
+    #[bench]
+    fn bench_handshake_process_resp(b: &mut ::test::Bencher) {
+        sodium_init().unwrap();
+
+        let k = X25519::genkey();
+        let init = WgInfo {
+            key: k,
+            fwmark: 0,
+            port: 0,
+        };
+
+        let k = X25519::genkey();
+        let resp = WgInfo {
+            key: k,
+            fwmark: 0,
+            port: 0,
+        };
+
+        let init_peer = PeerInfo {
+            peer_pubkey: *resp.pubkey(),
+            psk: None,
+            endpoint: None,
+            allowed_ips: vec![],
+            keep_alive_interval: None,
+        };
+
+        let si = Id::gen();
+        let (m0, ihs) = initiate(&init, &init_peer, si).unwrap();
+        assert!(verify_mac1(&resp, &m0));
+        let mut result0 = process_initiation(&resp, &m0).unwrap();
+        result0.handshake_state.push_psk(&[0u8; 32]);
+        let ri = Id::gen();
+        let m1 = responde(&resp, &mut result0, ri).unwrap();
+        assert!(verify_mac1(&init, &m1));
+
+        b.iter(|| {
+            let mut hs = ihs.clone();
+            process_response(&mut hs, &m1).unwrap();
+        });
+    }
+
+    #[cfg(feature = "bench")]
+    #[bench]
+    fn bench_verify_mac1(b: &mut ::test::Bencher) {
+        sodium_init().unwrap();
+
+        let k = X25519::genkey();
+        let init = WgInfo {
+            key: k,
+            fwmark: 0,
+            port: 0,
+        };
+
+        let k = X25519::genkey();
+        let resp = WgInfo {
+            key: k,
+            fwmark: 0,
+            port: 0,
+        };
+
+        let init_peer = PeerInfo {
+            peer_pubkey: *resp.pubkey(),
+            psk: None,
+            endpoint: None,
+            allowed_ips: vec![],
+            keep_alive_interval: None,
+        };
+
+        let si = Id::gen();
+        let (m0, _) = initiate(&init, &init_peer, si).unwrap();
+        b.iter(|| verify_mac1(&resp, &m0));
+    }
+}

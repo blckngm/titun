@@ -1,0 +1,19 @@
+[Unit]
+Description=TiTun instance %I
+
+[Service]
+Type=notify
+Environment=RUST_LOG=warn
+Environment=RUST_BACKTRACE=1
+
+ExecStart=/usr/bin/titun tun --dev %I
+
+ExecStartPost=/usr/bin/wg setconf %I /etc/titun/%I.conf
+ExecStartPost=/bin/sh -c "if [ -x /etc/titun/%I.up.sh ]; then /etc/titun/%I.up.sh; fi"
+
+ExecStopPost=/bin/sh -c "if [ -x /etc/titun/%I.down.sh ]; then /etc/titun/%I.down.sh; fi"
+
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

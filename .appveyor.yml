@@ -1,0 +1,125 @@
+version: '{build}.{branch}'
+
+clone_folder: c:\titun
+clone_depth: 1
+
+environment:
+  matrix:
+    - RUST_HOST: x86_64-pc-windows-msvc
+    - RUST_HOST: i686-pc-windows-msvc
+
+  APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
+  CARGO_HOME: $(USERPROFILE)\.cargo
+  RUSTUP_HOME: $(USERPROFILE)\.rustup
+
+  # Appveyor uses 7zip to pack cache directories. We use these options:
+  #   -t7z  : Use '7z' format. The default is 'zip' which can't store symlinks.
+  #   -snl  : Store symlinks.
+  #   -mtc  : Use UTC timestamps. This is required for incremental builds.
+  #   -mx=1 : Fast compression.
+  APPVEYOR_CACHE_ENTRY_ZIP_ARGS: -t7z -snl -mtc -mx=1
+
+  # Define some PowerShell helper functions which are used in the scripts below.
+  # They're defined in an environment variable to reduce noise in the build log.
+  PS_UTILS: |-
+      # `Exec` runs a regular executable. It looks at the process' exit code,
+      # rather than its stderr output, to tell if a command has failed.
+      function Exec([ScriptBlock] $Command, [switch] $NoNewLines) {
+        "$Command".TrimStart(" &") | Write-Host              # Echo command.
+        & $Command 2>&1 | Write-Host -NoNewLine:$NoNewLines  # Execute command.
+        if ($NoNewLines) { Write-Host }                      # Write newline.
+        if ($LastExitCode -ne 0) { throw "Failure. Exit code: $LastExitCode" }
+      }
+
+      # `Delete-Tree` is a simple wrapper around Remove-Item. It doesn't set
+      # an error status if one of the paths to be deleted doesn't exist.
+      function Delete-Tree([string[]] $Path) {
+        $Path | Foreach-Object {
+          "Deleting '$_'" | Write-Host -NoNewLine
+          if (Test-Path -Path $_) {
+            Remove-Item -Path $_ -Recurse -Force -ErrorAction Ignore
+            $(if ($?) { " - ok" } else { " - failed" }) | Write-Host
+          } else {
+            " - not found" | Write-Host
+          }
+        }
+      }
+
+cache:
+  # Rust stuff.
+  - $(CARGO_HOME) -> .appveyor.yml
+  - $(RUSTUP_HOME) -> .appveyor.yml
+  - target
+
+init:
+  # Load utility functions
+  - ps: Invoke-Expression $env:PS_UTILS
+
+install:
+  # Add Rust/Cargo to PATH.
+  - ps: $env:PATH += ";$env:CARGO_HOME\bin"
+
+  # Look for Rust updates.
+  # * If there are no updates, rustup will exit cleanly.
+  # * If there are updates, rustup will attempt to install them, and then blow
+  #   up because we removed the 'rust-docs' component.
+  # * The actual update is done by removing and reinstalling with rustup-init.
+  - ps: |-
+      if (Test-Path -Path $env:CARGO_HOME) {
+        try {
+          Exec -NoNewLines { & rustup update }
+        } catch {
+          Delete-Tree -Path $env:CARGO_HOME, $env:RUSTUP_HOME
+        }
+      }
+
+  # Install or reinstall Rust via rustup-init.
+  # * After install/update, the rustup directory is very big, with many files,
+  #   slowing down cache save/restore a lot, so we remove unnecessary stuff.
+  # * TODO: Use `rustup component remove docs` instead, when this issue
+  #   is resolved: https://github.com/rust-lang-nursery/rustup.rs/issues/998.
+  # * TODO: Ship Rust in the third_party repo. See issue #386.
+  - ps: |-
+      if (-not (Test-Path -Path $env:CARGO_HOME)) {
+        Invoke-WebRequest -Uri "https://win.rustup.rs" `
+                          -OutFile "$env:TEMP\rustup-init.exe"
+        Exec -NoNewLines { & "$env:TEMP\rustup-init.exe" --default-toolchain stable --default-host $env:RUST_HOST -y }
+        Delete-Tree -Path @(
+          "$env:RUSTUP_HOME\downloads",
+          "$env:RUSTUP_HOME\tmp",
+          "$env:RUSTUP_HOME\toolchains\stable-x86_64-pc-windows-msvc\share\doc",
+          "$env:RUSTUP_HOME\toolchains\stable-i686-pc-windows-msvc\share\doc"
+        )
+      }
+
+  # Log some more versions.
+  - rustc --version
+  - cargo --version
+
+build_script:
+  - cargo build --locked --release
+  - nuget restore titun-windows-gui
+  - msbuild titun-windows-gui\titun-windows-gui.sln /p:Configuration=Release
+  - ps: |-
+      if ($env:RUST_HOST.StartsWith("i686")) {
+        Copy-Item target\release\titun.exe -Destination titun-windows-gui\titun-32.exe
+        Exec -NoNewLines { & 'C:\Program Files (x86)\Inno Setup 5\iscc.exe' titun-windows-gui\installer\titun-32.iss }
+      } else {
+        Copy-Item target\release\titun.exe -Destination titun-windows-gui\titun.exe
+        Exec -NoNewLines { & 'C:\Program Files (x86)\Inno Setup 5\iscc.exe' titun-windows-gui\installer\titun.iss }
+      }
+
+after_build:
+  # The build completed successfully; make sure the cache gets saved even if
+  # some tests fail.
+  - ps: $env:APPVEYOR_SAVE_CACHE_ON_ERROR = "true"
+
+test_script:
+  - cargo test --locked --release
+  - cargo test --locked --release --no-default-features
+
+artifacts:
+  - path: titun-windows-gui\installer\Output\titun-setup.exe
+    name: titun-setup.exe
+  - path: titun-windows-gui\installer\Output\titun-setup-32.exe
+    name: titun-setup-32.exe

@@ -1,0 +1,8 @@
+Package: titun
+Architecture: amd64
+Maintainer: Guanhao Yin <sopium@mysterious.site>
+Depends: libc6 (>= 2.23), wireguard-tools
+Priority: optional
+License: GPL-3
+Version: 0.0.5
+Description: A secure, fast and simple IP tunnel.

@@ -1,0 +1,36 @@
+image: "rust:latest"
+
+variables:
+  CARGO_HOME: $CI_PROJECT_DIR/cargo
+
+before_script:
+- apt-get update -yqq
+- apt-get install -yqq --no-install-recommends build-essential
+- rustc --version && cargo --version
+
+test:
+  cache:
+    paths:
+      - target/
+      - cargo/
+  script:
+  - cargo test --locked --all --verbose --jobs 1 -- --nocapture
+  - cargo test --locked --no-default-features --all --verbose --jobs 1 -- --nocapture
+
+fmt:
+  allow_failure: true
+  script:
+  - rustup component add rustfmt-preview
+  - cargo fmt -- --check
+
+# Ensure that benches compile.
+bench:
+  allow_failure: true
+  variables:
+    RUSTUP_TOOLCHAIN: nightly
+  cache:
+    paths:
+      - target/
+      - cargo/
+  script:
+    - cargo test --locked --all-features --all --verbose --jobs 1 -- --nocapture

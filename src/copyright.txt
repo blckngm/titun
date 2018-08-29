@@ -1,0 +1,5 @@
+A simple, WireGuard compatible IP tunnel.
+
+Copyright 2017, 2018 Guanhao Yin <sopium@mysterious.site>
+
+This program comes with ABSOLUTELY NO WARRANTY.
