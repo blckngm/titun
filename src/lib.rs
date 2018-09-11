@@ -16,6 +16,7 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 #![cfg_attr(feature = "bench", feature(test))]
+#![feature(async_await, await_macro, futures_api, pin)]
 
 #[cfg(feature = "bench")]
 extern crate test;
@@ -23,12 +24,14 @@ extern crate test;
 #[macro_use]
 extern crate failure;
 #[macro_use]
-extern crate lazy_static;
+extern crate futures_util;
 #[macro_use]
 extern crate log;
 #[cfg(not(windows))]
 #[macro_use]
 extern crate nix;
+#[macro_use]
+extern crate tokio;
 
 mod atomic;
 mod crypto;

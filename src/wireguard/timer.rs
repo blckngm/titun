@@ -19,34 +19,13 @@
 //!
 //! Use tokio-timer under the hood.
 
-use futures::future::{empty, Future};
 use futures::sync::oneshot::{channel, Receiver, Sender};
 use std::sync::atomic::{AtomicBool, Ordering::*};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::clock::now;
 use tokio::prelude::*;
-use tokio::runtime::current_thread::{Handle, Runtime};
 use tokio::timer::Delay;
-
-lazy_static! {
-    // Handle is not Sync. Each thread will make a own clone.
-    static ref RUNTIME_HANDLE_SEED: Mutex<Handle> = Mutex::new({
-        let (tx, rx) = ::std::sync::mpsc::channel();
-        ::std::thread::Builder::new().name("timer".to_string()).spawn(move || {
-            let mut rt = Runtime::new().unwrap();
-            tx.send(rt.handle()).unwrap();
-            drop(tx);
-            rt.spawn(empty());
-            rt.run().unwrap();
-        }).unwrap();
-        rx.recv().unwrap()
-    });
-}
-
-thread_local! {
-    static RUNTIME_HANDLE: Handle = RUNTIME_HANDLE_SEED.lock().unwrap().clone();
-}
 
 type Action = Box<Fn() + Send + Sync>;
 
@@ -119,7 +98,7 @@ impl TimerHandle {
             action,
             options: options.clone(),
         };
-        RUNTIME_HANDLE.with(|r| r.spawn(t)).unwrap();
+        tokio::spawn(t);
         TimerHandle { _tx: tx, options }
     }
 
@@ -149,67 +128,93 @@ impl TimerHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread::sleep;
+    macro_rules! sleep {
+        ($duration:expr) => {
+            await!(Delay::new(now() + $duration)).unwrap();
+        };
+    }
+
+    macro_rules! sleep_ms {
+        ($ms:expr) => {
+            sleep!(Duration::from_millis($ms));
+        };
+    }
 
     #[test]
     fn smoke() {
-        let run = Arc::new(AtomicBool::new(false));
-        let t = {
-            let run = run.clone();
-            TimerHandle::create(Box::new(move || {
-                run.store(true, SeqCst);
-            }))
-        };
+        tokio::run_async(
+            async {
+                let run = Arc::new(AtomicBool::new(false));
+                let t = {
+                    let run = run.clone();
+                    TimerHandle::create(Box::new(move || {
+                        run.store(true, SeqCst);
+                    }))
+                };
 
-        t.adjust_and_activate(Duration::from_millis(10));
-        sleep(Duration::from_millis(30));
-        assert!(run.load(SeqCst));
+                t.adjust_and_activate(Duration::from_millis(10));
+                sleep_ms!(30);
+                assert!(run.load(SeqCst));
+            },
+        );
     }
 
     #[test]
     fn adjust_activate_de_activate() {
-        let run = Arc::new(AtomicBool::new(false));
-        let t = {
-            let run = run.clone();
-            TimerHandle::create(Box::new(move || {
-                run.store(true, SeqCst);
-            }))
-        };
+        tokio::run_async(
+            async {
+                let run = Arc::new(AtomicBool::new(false));
+                let t = {
+                    let run = run.clone();
+                    TimerHandle::create(Box::new(move || {
+                        run.store(true, SeqCst);
+                    }))
+                };
 
-        t.adjust_and_activate(Duration::from_millis(10));
-        t.adjust_and_activate(Duration::from_millis(100));
-        sleep(Duration::from_millis(20));
-        assert!(!run.load(SeqCst));
-        sleep(Duration::from_millis(120));
-        assert!(run.load(SeqCst));
+                t.adjust_and_activate(Duration::from_millis(10));
+                t.adjust_and_activate(Duration::from_millis(100));
+                sleep_ms!(20);
+                assert!(!run.load(SeqCst));
+                sleep_ms!(120);
+                assert!(run.load(SeqCst));
 
-        run.store(false, SeqCst);
+                run.store(false, SeqCst);
 
-        t.adjust_and_activate(Duration::from_millis(10));
-        t.de_activate();
-        sleep(Duration::from_millis(20));
-        assert!(!run.load(SeqCst));
+                t.adjust_and_activate(Duration::from_millis(10));
+                t.de_activate();
+                sleep_ms!(20);
+                assert!(!run.load(SeqCst));
 
-        t.adjust_and_activate(Duration::from_millis(10));
-        t.de_activate();
-        t.adjust_and_activate(Duration::from_millis(15));
-        sleep(Duration::from_millis(30));
-        assert!(run.load(SeqCst));
+                t.adjust_and_activate(Duration::from_millis(10));
+                t.de_activate();
+                t.adjust_and_activate(Duration::from_millis(15));
+                sleep_ms!(30);
+                assert!(run.load(SeqCst));
+            },
+        );
     }
 
     #[cfg(feature = "bench")]
     #[bench]
-    fn bench_timer_adjust_and_activate(b: &mut ::test::Bencher) {
-        let run = Arc::new(AtomicBool::new(false));
-        let t = {
-            let run = run.clone();
-            TimerHandle::create(Box::new(move || {
-                run.store(true, SeqCst);
-            }))
-        };
+    fn bench_timer_adjust_and_activate(b0: &mut ::test::Bencher) {
+        // Workaround lifetime issues.
+        let b1 = Arc::new(Mutex::new(b0.clone()));
+        let b = b1.clone();
+        tokio::run_async(
+            async move {
+                let run = Arc::new(AtomicBool::new(false));
+                let t = {
+                    let run = run.clone();
+                    TimerHandle::create(Box::new(move || {
+                        run.store(true, SeqCst);
+                    }))
+                };
 
-        b.iter(|| {
-            t.adjust_and_activate(Duration::from_secs(10));
-        })
+                b.lock().unwrap().iter(|| {
+                    t.adjust_and_activate(Duration::from_secs(10));
+                });
+            },
+        );
+        *b0 = b1.lock().unwrap().clone();
     }
 }
