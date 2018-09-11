@@ -10,7 +10,6 @@ fn main() {
                 .chars()
                 .take(10)
                 .collect()
-        })
-        .unwrap_or("".to_string());
+        }).unwrap_or("".to_string());
     println!("cargo:rustc-env=GIT_HASH={}", git_hash);
 }

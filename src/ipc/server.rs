@@ -18,22 +18,22 @@
 // XXX: named pipe security???
 
 use combine::Parser;
+use crate::ipc::commands::*;
+use crate::ipc::parse::*;
+use crate::wireguard::re_exports::U8Array;
+use crate::wireguard::{wg_add_peer, SetPeerCommand, WgState, WgStateOut};
 use failure::{Error, ResultExt};
 use hex::encode;
-use ipc::commands::*;
-use ipc::parse::*;
 use std::fmt::Debug;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::Path;
 use std::sync::{Arc, Weak};
 use std::thread::Builder;
 use std::time::SystemTime;
-use wireguard::re_exports::U8Array;
-use wireguard::{wg_add_peer, SetPeerCommand, WgState, WgStateOut};
 
 #[cfg(windows)]
 pub fn start_ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> {
-    use ipc::windows_named_pipe::*;
+    use crate::ipc::windows_named_pipe::*;
 
     let mut path = Path::new(r#"\\.\pipe\wireguard"#).join(dev_name);
     path.set_extension("sock");

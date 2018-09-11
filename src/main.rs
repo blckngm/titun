@@ -15,10 +15,6 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-extern crate base64;
-extern crate clap;
-extern crate env_logger;
-extern crate titun;
 #[macro_use]
 extern crate failure;
 #[macro_use]
@@ -29,7 +25,7 @@ use clap::{App, AppSettings, Arg, SubCommand};
 use failure::{Error, ResultExt};
 use std::io::{stdin, Read};
 use titun::run::*;
-use titun::wireguard::re_exports::{U8Array, X25519, DH};
+use titun::wireguard::re_exports::{U8Array, DH, X25519};
 
 fn main() -> Result<(), Error> {
     let default_panic_hook = std::panic::take_hook();
@@ -48,8 +44,7 @@ fn main() -> Result<(), Error> {
                 .value_name("DEVICE_NAME")
                 .required(true)
                 .help("Device name"),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("exit-stdin-eof")
                 .long("exit-stdin-eof")
                 .help("Exit if stdin is closed"),

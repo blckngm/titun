@@ -15,8 +15,8 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
+use crate::wireguard::X25519Key;
 use std::net::{IpAddr, SocketAddr};
-use wireguard::X25519Key;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum WgIpcCommand {

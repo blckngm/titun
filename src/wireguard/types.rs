@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crypto::noise_rust_sodium::X25519;
+use crate::crypto::noise_rust_sodium::X25519;
 use noise_protocol::DH;
 use sodiumoxide::randombytes::randombytes_into;
 use std::net::{IpAddr, SocketAddr, SocketAddrV6};

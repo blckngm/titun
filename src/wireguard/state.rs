@@ -15,7 +15,9 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use atomic::{AtomicBool, Ordering};
+use crate::atomic::{AtomicBool, Ordering};
+use crate::wireguard::re_exports::sodium_init;
+use crate::wireguard::*;
 use failure::Error;
 use fnv::FnvHashMap;
 use noise_protocol::U8Array;
@@ -28,8 +30,6 @@ use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex, RwLock, Weak};
 use std::thread::{spawn, Builder, JoinHandle};
 use std::time::Instant;
-use wireguard::re_exports::sodium_init;
-use wireguard::*;
 
 // Some Constants.
 
@@ -702,8 +702,7 @@ impl WgState {
                         allowed_ips: peer.info.allowed_ips.clone(),
                     }
                     // Release peer.
-                })
-                .collect()
+                }).collect()
             // Release pubkey map.
         };
 

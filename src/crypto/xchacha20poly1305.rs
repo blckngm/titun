@@ -92,7 +92,7 @@ mod tests {
 #[cfg(all(feature = "bench", test))]
 mod benches {
     use super::*;
-    use wireguard::re_exports::sodium_init;
+    use crate::wireguard::re_exports::sodium_init;
 
     #[bench]
     fn bench_encrypt(b: &mut ::test::Bencher) {

@@ -1,4 +1,7 @@
+cargo-features = ["rename-dependency"]
+
 [package]
+edition = "2018"
 authors = ["sopium"]
 license = "GPL-3.0"
 name = "titun"
@@ -31,8 +34,8 @@ log = "0.4.3"
 nix = "0.11"
 noise-protocol = "0.0.5"
 rand = "0.5.4"
-rust_sodium = "0.9.0"
-rust_sodium-sys = "0.9.0"
+sodiumoxide = { package = "rust_sodium", version = "0.9.0" }
+libsodium_sys = { package = "rust_sodium-sys", version = "0.9.0" }
 socket2 = "0.3"
 tai64 = {version = "0.2", default-features = false}
 tokio = "0.1"

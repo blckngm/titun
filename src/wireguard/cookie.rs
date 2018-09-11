@@ -16,10 +16,10 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use blake2_rfc::blake2s::{blake2s, Blake2s};
-use crypto::xchacha20poly1305::{decrypt, encrypt};
+use crate::crypto::xchacha20poly1305::{decrypt, encrypt};
+use crate::wireguard::{Id, X25519Pubkey};
 use sodiumoxide::randombytes::randombytes_into;
 use sodiumoxide::utils::memcmp;
-use wireguard::{Id, X25519Pubkey};
 
 pub type Cookie = [u8; 16];
 
@@ -160,7 +160,7 @@ mod tests {
     #[cfg(feature = "bench")]
     #[bench]
     fn bench_cookie_reply(b: &mut ::test::Bencher) {
-        ::wireguard::re_exports::sodium_init().unwrap();
+        crate::wireguard::re_exports::sodium_init().unwrap();
 
         let mut pk = [0u8; 32];
         randombytes_into(&mut pk);

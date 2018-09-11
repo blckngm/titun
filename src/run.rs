@@ -15,15 +15,15 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
+use crate::ipc::start_ipc_server;
+use crate::systemd;
+use crate::wireguard::re_exports::{DH, X25519};
+use crate::wireguard::*;
 use ctrlc;
 use failure::{Error, ResultExt};
-use ipc::start_ipc_server;
 use std::io::{stdin, Read};
 use std::sync::mpsc::channel;
 use std::thread::Builder;
-use systemd;
-use wireguard::re_exports::{X25519, DH};
-use wireguard::*;
 
 pub struct Config {
     pub dev_name: String,
@@ -73,8 +73,7 @@ pub fn run(c: Config) -> Result<(), Error> {
                     }
                 }
                 exit_tx.send(()).unwrap();
-            })
-            .unwrap();
+            }).unwrap();
     }
 
     exit_rx.recv().unwrap();

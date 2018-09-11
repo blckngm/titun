@@ -15,13 +15,13 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use atomic::{AtomicBool, AtomicU64, Ordering};
 use byteorder::{ByteOrder, LittleEndian};
-use crypto::noise_rust_sodium::ChaCha20Poly1305;
+use crate::atomic::{AtomicBool, AtomicU64, Ordering};
+use crate::crypto::noise_rust_sodium::ChaCha20Poly1305;
+use crate::wireguard::*;
 use noise_protocol::Cipher;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use wireguard::*;
 
 // That is, 2 ^ 64 - 2 ^ 16 - 1;
 const REKEY_AFTER_MESSAGES: u64 = 0xffff_ffff_fffe_ffff;

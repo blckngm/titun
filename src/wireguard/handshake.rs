@@ -16,12 +16,12 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use blake2_rfc::blake2s::Blake2s;
-use crypto::noise_rust_sodium::{ChaCha20Poly1305, X25519};
+use crate::crypto::noise_rust_sodium::{ChaCha20Poly1305, X25519};
+use crate::wireguard::*;
 use noise_protocol::patterns::noise_ik_psk2;
 use noise_protocol::*;
 use sodiumoxide::utils::memcmp;
 use tai64::TAI64N;
-use wireguard::*;
 
 const PROLOGUE: &[u8] = b"WireGuard v1 zx2c4 Jason@zx2c4.com";
 const LABEL_MAC1: &[u8] = b"mac1----";
@@ -237,9 +237,9 @@ pub fn verify_mac1(wg: &WgInfo, msg: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sodiumoxide::randombytes::randombytes_into;
     #[cfg(feature = "bench")]
-    use wireguard::re_exports::sodium_init;
+    use crate::wireguard::re_exports::sodium_init;
+    use sodiumoxide::randombytes::randombytes_into;
 
     #[test]
     fn wg_handshake_init_responde() {

@@ -19,12 +19,12 @@ use combine::parser::byte::{byte, bytes, digit};
 use combine::parser::range::recognize;
 use combine::parser::repeat::skip_until;
 use combine::*;
+use crate::wireguard::re_exports::U8Array;
+use crate::wireguard::X25519Key;
 use failure::Error;
 use hex::decode;
 use std::net::IpAddr;
 use std::str::FromStr;
-use wireguard::re_exports::U8Array;
-use wireguard::X25519Key;
 
 use super::commands::*;
 
@@ -126,7 +126,7 @@ where
 
 macro_rules! kv {
     ($name:expr, $v:expr) => {
-        try(string(concat!($name, "="))).with($v).skip(newline())
+        r#try(string(concat!($name, "="))).with($v).skip(newline())
     };
 }
 
@@ -178,21 +178,22 @@ where
             replace_allowed_ips,
             allowed_ip
         )),
-    ).map(move |(pk, fs)| {
-        let mut result = WgSetPeerCommand {
-            public_key: pk,
-            remove: false,
-            preshared_key: None,
-            endpoint: None,
-            persistent_keepalive_interval: None,
-            replace_allowed_ips: false,
-            allowed_ips: vec![],
-        };
-        for f in fs {
-            (f)(&mut result);
-        }
-        result
-    })
+    )
+        .map(move |(pk, fs)| {
+            let mut result = WgSetPeerCommand {
+                public_key: pk,
+                remove: false,
+                preshared_key: None,
+                endpoint: None,
+                persistent_keepalive_interval: None,
+                replace_allowed_ips: false,
+                allowed_ips: vec![],
+            };
+            for f in fs {
+                (f)(&mut result);
+            }
+            result
+        })
 }
 
 fn set_command_parser<'a, I>() -> impl Parser<Input = I, Output = WgSetCommand>
@@ -231,22 +232,23 @@ where
         many::<Vec<_>, _>(choice!(private_key, fwmark, listen_port, replace_peers)),
         many(peer_command_parser()),
         newline(),
-    ).map(move |(_, ms, peers, _)| {
-        let mut result = WgSetCommand {
-            private_key: None,
-            listen_port: None,
-            fwmark: None,
-            replace_peers: false,
-            peers: vec![],
-        };
+    )
+        .map(move |(_, ms, peers, _)| {
+            let mut result = WgSetCommand {
+                private_key: None,
+                listen_port: None,
+                fwmark: None,
+                replace_peers: false,
+                peers: vec![],
+            };
 
-        for m in ms {
-            (m)(&mut result);
-        }
+            for m in ms {
+                (m)(&mut result);
+            }
 
-        result.peers = peers;
-        result
-    })
+            result.peers = peers;
+            result
+        })
 }
 
 pub fn command_parser<'a, I>() -> impl Parser<Input = I, Output = WgIpcCommand>
@@ -254,7 +256,7 @@ where
     I: RangeStream<Item = u8, Range = &'a [u8]>,
     I::Error: ParseError<u8, I::Range, I::Position>,
 {
-    let get_command = try(string("get=1"))
+    let get_command = r#try(string("get=1"))
         .skip(newline())
         .skip(newline())
         .map(|_| WgIpcCommand::Get);

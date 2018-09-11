@@ -9,6 +9,8 @@ before_script:
 - rustc --version && cargo --version
 
 test:
+  variables:
+    RUSTUP_TOOLCHAIN: nightly
   cache:
     paths:
       - target/
@@ -19,6 +21,8 @@ test:
 
 fmt:
   allow_failure: true
+  variables:
+    RUSTUP_TOOLCHAIN: nightly
   script:
   - rustup component add rustfmt-preview
   - cargo fmt -- --check

@@ -16,7 +16,8 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use arrayvec::ArrayVec;
-use atomic::{AtomicU64, Ordering};
+use crate::atomic::{AtomicU64, Ordering};
+use crate::wireguard::*;
 use failure::Error;
 use rand::{thread_rng, Rng};
 use std::collections::VecDeque;
@@ -25,7 +26,6 @@ use std::net::UdpSocket;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 use tai64::TAI64N;
-use wireguard::*;
 
 pub type SharedPeerState = Arc<RwLock<PeerState>>;
 

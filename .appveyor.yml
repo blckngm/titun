@@ -83,12 +83,12 @@ install:
       if (-not (Test-Path -Path $env:CARGO_HOME)) {
         Invoke-WebRequest -Uri "https://win.rustup.rs" `
                           -OutFile "$env:TEMP\rustup-init.exe"
-        Exec -NoNewLines { & "$env:TEMP\rustup-init.exe" --default-toolchain stable --default-host $env:RUST_HOST -y }
+        Exec -NoNewLines { & "$env:TEMP\rustup-init.exe" --default-toolchain nightly --default-host $env:RUST_HOST -y }
         Delete-Tree -Path @(
           "$env:RUSTUP_HOME\downloads",
           "$env:RUSTUP_HOME\tmp",
-          "$env:RUSTUP_HOME\toolchains\stable-x86_64-pc-windows-msvc\share\doc",
-          "$env:RUSTUP_HOME\toolchains\stable-i686-pc-windows-msvc\share\doc"
+          "$env:RUSTUP_HOME\toolchains\nightly-x86_64-pc-windows-msvc\share\doc",
+          "$env:RUSTUP_HOME\toolchains\nightly-i686-pc-windows-msvc\share\doc"
         )
       }
 

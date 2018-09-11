@@ -30,9 +30,6 @@
 // Got packet: 84 bytes
 // ...
 
-extern crate failure;
-extern crate titun;
-
 use failure::Error;
 
 fn main() -> Result<(), Error> {
