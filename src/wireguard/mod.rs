@@ -23,8 +23,6 @@ mod anti_replay;
 mod cookie;
 /// Handshake messages generation and parsing.
 mod handshake;
-/// Facility to interrupt threads.
-mod interrupt;
 /// IP packet parsing.
 mod ip;
 /// Determine load.

@@ -29,6 +29,10 @@
 // Got packet: 84 bytes
 // Got packet: 84 bytes
 // ...
+#![feature(async_await, await_macro, futures_api, pin)]
+
+#[macro_use]
+extern crate tokio;
 
 use failure::Error;
 
@@ -41,6 +45,7 @@ mod imp {
     use failure::Error;
     use std::process::{Child, Command};
     use titun::wireguard::Tun;
+    use tokio::prelude::*;
 
     fn up_and_ping(name: &str) -> Result<Child, Error> {
         Command::new("ip")
@@ -58,16 +63,22 @@ mod imp {
     }
 
     pub fn main() -> Result<(), Error> {
-        let t = Tun::create(Some("tun-test-0"))?;
+        let t = Tun::create_async(Some("tun-test-0"))?;
 
-        up_and_ping(t.get_name())?;
+        up_and_ping(t.get_ref().get_name())?;
 
         let mut buf = [0u8; 2048];
 
-        loop {
-            let l = t.read(&mut buf)?;
-            println!("Got packet: {} bytes", l);
-        }
+        tokio::run_async(
+            async move {
+                let mut t = &t;
+                loop {
+                    let l = await!(t.read_async(&mut buf)).unwrap();
+                    println!("Got packet: {} bytes", l);
+                }
+            },
+        );
+        Ok(())
     }
 }
 

@@ -22,10 +22,10 @@ use failure::Error;
 use rand::{thread_rng, Rng};
 use std::collections::VecDeque;
 use std::net::SocketAddrV6;
-use std::net::UdpSocket;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 use tai64::TAI64N;
+use tokio::net::UdpSocket;
 
 pub type SharedPeerState = Arc<RwLock<PeerState>>;
 
@@ -343,7 +343,7 @@ pub fn do_handshake(wg: &Arc<WgState>, peer0: &SharedPeerState) {
     let (mut i, hs) = initiate_result.unwrap();
     cookie_sign(&mut i, peer.get_cookie());
 
-    wg.socket.read().unwrap().send_to(&i, endpoint).unwrap();
+    let _ = wg.socket.read().unwrap().send_to(&i, endpoint);
     peer.count_send((&i).len());
 
     peer.last_mac1 = Some(get_mac1(&i));
@@ -404,7 +404,7 @@ pub fn do_keep_alive(peer: &PeerState, sock: &UdpSocket) -> bool {
         return should_handshake;
     }
 
-    sock.send_to(&out, e).unwrap();
+    let _ = sock.send_to(&out, e);
     peer.count_send(out.len());
 
     peer.on_send_keepalive();

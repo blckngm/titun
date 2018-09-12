@@ -15,7 +15,8 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::atomic::{AtomicBool, Ordering};
+use crate::atomic::Ordering;
+use crate::cancellation::CancellationTokenSource;
 use crate::wireguard::re_exports::sodium_init;
 use crate::wireguard::*;
 use failure::Error;
@@ -23,13 +24,17 @@ use fnv::FnvHashMap;
 use noise_protocol::U8Array;
 use sodiumoxide::randombytes::randombytes_into;
 use std::collections::HashMap;
-use std::io::ErrorKind;
 use std::mem::uninitialized;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6, UdpSocket};
-use std::ops::{Deref, DerefMut};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
+use std::ops::Deref;
 use std::sync::{Arc, Mutex, RwLock, Weak};
-use std::thread::{spawn, Builder, JoinHandle};
+use std::time::Duration;
 use std::time::Instant;
+use tokio::clock::now;
+use tokio::net::UdpSocket;
+use tokio::prelude::*;
+use tokio::timer::Delay;
+use tokio::sync::mpsc::*;
 
 // Some Constants.
 
@@ -66,16 +71,15 @@ pub struct WgState {
     pub(crate) load_monitor: Mutex<LoadMonitor>,
     // The secret used to calc cookie.
     pub(crate) cookie_secret: RwLock<[u8; 32]>,
-    pub(crate) cookie_reset_timer: Mutex<Option<TimerHandle>>,
-
-    pub(crate) exiting: AtomicBool,
 
     // RwLock<Arc<_>> is like a RCU structure, i.e., it can be updated while the
     // old value is still in use.
+    //
+    // The sending task awaits on `send_to_async`, other tasks just call sendto
+    // and ignore result.
     pub(crate) socket: RwLock<Arc<UdpSocket>>,
-    pub(crate) tun: Tun,
-
-    pub(crate) worker_threads: Mutex<Vec<JoinHandle<()>>>,
+    pub(crate) socket_sender: Mutex<Option<Sender<UdpSocket>>>,
+    pub(crate) tun: AsyncTun,
 }
 
 impl Drop for WgState {
@@ -98,9 +102,11 @@ impl Drop for IdMapGuard {
                 return;
             }
             let id = self.id;
-            spawn(move || {
-                wg.id_map.write().unwrap().remove(&id);
-            });
+            tokio::spawn_async(
+                async move {
+                    wg.id_map.write().unwrap().remove(&id);
+                },
+            );
         }
     }
 }
@@ -129,7 +135,7 @@ fn udp_process_handshake_init(wg: &Arc<WgState>, p: &[u8], addr: SocketAddrV6) {
             let peer_id = Id::from_slice(&p[4..8]);
             let mac1 = get_mac1(p);
             let reply = cookie_reply(info.pubkey(), &cookie, peer_id, &mac1);
-            wg.socket.read().unwrap().send_to(&reply, addr).unwrap();
+            let _ = wg.socket.read().unwrap().send_to(&reply, addr);
             return;
         } else {
             debug!("Mac2 verify OK.");
@@ -167,7 +173,7 @@ fn udp_process_handshake_init(wg: &Arc<WgState>, p: &[u8], addr: SocketAddrV6) {
 
             cookie_sign(&mut response, peer.get_cookie());
 
-            wg.socket.read().unwrap().send_to(&response, addr).unwrap();
+            let _ = wg.socket.read().unwrap().send_to(&response, addr);
             peer.count_send((&response).len());
 
             let t = Transport::new_from_hs(
@@ -210,7 +216,7 @@ fn udp_process_handshake_resp(wg: &WgState, p: &[u8], addr: SocketAddrV6) {
             let peer_id = Id::from_slice(&p[4..8]);
             let mac1 = get_mac1(p);
             let reply = cookie_reply(info.pubkey(), &cookie, peer_id, &mac1);
-            wg.socket.read().unwrap().send_to(&reply, addr).unwrap();
+            let _ = wg.socket.read().unwrap().send_to(&reply, addr);
             return;
         } else {
             debug!("Mac2 verify OK.");
@@ -265,7 +271,7 @@ fn udp_process_handshake_resp(wg: &WgState, p: &[u8], addr: SocketAddrV6) {
             for p in queued_packets {
                 let encrypted = &mut buf[..p.len() + 32];
                 t.encrypt(&p, encrypted).0.unwrap();
-                wg.socket.read().unwrap().send_to(encrypted, addr).unwrap();
+                let _ = wg.socket.read().unwrap().send_to(encrypted, addr);
                 peer.count_send(encrypted.len());
             }
             peer.on_send_transport();
@@ -295,7 +301,7 @@ fn udp_process_cookie_reply(wg: &WgState, p: &[u8]) {
     }
 }
 
-fn udp_process_transport(wg: &Arc<WgState>, p: &[u8], addr: SocketAddrV6) {
+async fn udp_process_transport<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: SocketAddrV6) {
     if p.len() < 32 {
         return;
     }
@@ -310,6 +316,12 @@ fn udp_process_transport(wg: &Arc<WgState>, p: &[u8], addr: SocketAddrV6) {
     }
 
     let peer0 = maybe_peer0.unwrap();
+
+    let mut buff: [u8; BUFSIZE] = unsafe { uninitialized() };
+    let decrypted = &mut buff[..p.len() - 32];
+    let mut should_write = false;
+    let mut packet_len = 0;
+
     let mut should_set_endpoint = false;
     let mut should_handshake = false;
     {
@@ -317,27 +329,26 @@ fn udp_process_transport(wg: &Arc<WgState>, p: &[u8], addr: SocketAddrV6) {
         let peer = peer0.read().unwrap();
         peer.count_recv(p.len());
         if let Some(t) = peer.find_transport_by_id(self_id) {
-            let mut buff: [u8; BUFSIZE] = unsafe { uninitialized() };
-            let decrypted = &mut buff[..p.len() - 32];
             let decrypt_result = t.decrypt(p, decrypted);
             if decrypt_result.1 {
                 should_handshake = peer.really_should_handshake();
             }
             if decrypt_result.0.is_ok() {
+                peer.on_recv(decrypted.is_empty());
+                if peer.info.endpoint != Some(addr) {
+                    should_set_endpoint = true;
+                }
                 if let Ok((len, src, _)) = parse_ip_packet(decrypted) {
                     // Reverse path filtering.
                     let peer1 = wg.find_peer_by_ip(src);
                     if peer1.is_none() || !Arc::ptr_eq(&peer0, &peer1.unwrap()) {
                         debug!("Get transport message: allowed IPs check failed.");
                     } else if len as usize <= decrypted.len() {
-                        wg.tun.write(&decrypted[..len as usize]).unwrap();
+                        should_write = true;
+                        packet_len = len as usize;
                     } else {
                         debug!("Get transport message: packet truncated?");
                     }
-                }
-                peer.on_recv(decrypted.is_empty());
-                if peer.info.endpoint != Some(addr) {
-                    should_set_endpoint = true;
                 }
             } else {
                 debug!("Get transport message, decryption failed.");
@@ -345,6 +356,10 @@ fn udp_process_transport(wg: &Arc<WgState>, p: &[u8], addr: SocketAddrV6) {
         }
         // Release peer.
     };
+    if should_write {
+        let mut tun = &wg.tun;
+        await!(tun.write_async(&decrypted[..packet_len]));
+    }
     if should_set_endpoint {
         // Lock peer.
         peer0.write().unwrap().set_endpoint(addr);
@@ -355,23 +370,23 @@ fn udp_process_transport(wg: &Arc<WgState>, p: &[u8], addr: SocketAddrV6) {
 }
 
 /// Receiving loop.
-fn udp_processing(wg: &Arc<WgState>) {
+async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
     let mut p = [0u8; BUFSIZE];
     loop {
-        if wg.exiting.load(Ordering::Relaxed) {
-            break;
-        }
+        use tokio::async_await::compat::forward::IntoAwaitable;
+
         // Clone the `Arc` to not hold the lock while blocking.
         let socket = {
             let guard = wg.socket.read().unwrap();
             guard.clone()
         };
-        let (len, addr) = match socket.recv_from(&mut p) {
-            Ok(x) => x,
-            Err(e) => if e.kind() == ErrorKind::Interrupted {
+        let mut recv = socket.recv_from_async(&mut p).into_awaitable();
+        let mut recv_socket = receiver.next();
+        let (len, addr) = select! {
+            recv => recv.unwrap(),
+            recv_socket => {
+                *wg.socket.write().unwrap() = Arc::new(recv_socket.unwrap().unwrap());
                 continue;
-            } else {
-                panic!("recv_from failed: {}", e);
             },
         };
 
@@ -391,7 +406,7 @@ fn udp_processing(wg: &Arc<WgState>) {
             1 => udp_process_handshake_init(&wg, p, addr),
             2 => udp_process_handshake_resp(&wg, p, addr),
             3 => udp_process_cookie_reply(&wg, p),
-            4 => udp_process_transport(&wg, p, addr),
+            4 => await!(udp_process_transport(&wg, p, addr)),
             _ => (),
         }
     }
@@ -430,20 +445,11 @@ fn padding() {
 }
 
 /// Sending thread loop.
-fn tun_packet_processing(wg: &Arc<WgState>) {
+async fn tun_packet_processing(wg: Arc<WgState>) {
     let mut pkt = [0u8; BUFSIZE];
     loop {
-        if wg.exiting.load(Ordering::Relaxed) {
-            break;
-        }
-        let len = match wg.tun.read(&mut pkt) {
-            Ok(x) => x,
-            Err(e) => if e.kind() == ErrorKind::Interrupted {
-                continue;
-            } else {
-                panic!("Tun read failed: {}", e);
-            },
-        };
+        let mut tun = &wg.tun;
+        let len = await!(tun.read_async(&mut pkt)).unwrap();
 
         let padded_len = pad_len(len);
         // Do not leak other packets' data!
@@ -469,24 +475,24 @@ fn tun_packet_processing(wg: &Arc<WgState>) {
             continue;
         }
         let peer0 = peer.unwrap();
+
+        let mut encrypted: [u8; BUFSIZE] = unsafe { uninitialized() };
+        let encrypted = &mut encrypted[..pkt.len() + 32];
+        let endpoint;
+        let mut should_send = false;
+
         let should_handshake = {
             // Lock peer.
             let peer = peer0.read().unwrap();
-            if peer.get_endpoint().is_none() {
-                // TODO ICMP host unreachable?
-                continue;
-            }
+            endpoint = match peer.get_endpoint() {
+                None => continue,
+                Some(e) => e,
+            };
 
             if let Some(t) = peer.find_transport_to_send() {
-                let mut encrypted: [u8; BUFSIZE] = unsafe { uninitialized() };
-                let encrypted = &mut encrypted[..pkt.len() + 32];
                 let (result, should_handshake) = t.encrypt(pkt, encrypted);
                 if result.is_ok() {
-                    wg.socket
-                        .read()
-                        .unwrap()
-                        .send_to(encrypted, peer.get_endpoint().unwrap())
-                        .unwrap();
+                    should_send = true;
                     peer.count_send(encrypted.len());
                     peer.on_send_transport();
                 }
@@ -498,6 +504,11 @@ fn tun_packet_processing(wg: &Arc<WgState>) {
             }
             // Release peer.
         };
+
+        if should_send {
+            let socket = wg.socket.read().unwrap().clone();
+            await!(socket.send_to_async(encrypted, endpoint));
+        }
 
         if should_handshake {
             do_handshake(&wg, &peer0);
@@ -523,10 +534,8 @@ pub struct SetPeerCommand {
 
 impl WgState {
     /// Create a new `WgState`, start worker threads.
-    pub fn new(mut info: WgInfo, tun: Tun) -> Result<Arc<WgState>, Error> {
+    pub fn new(mut info: WgInfo, tun: AsyncTun) -> Result<Arc<WgState>, Error> {
         sodium_init().map_err(|_| format_err!("Failed to init libsodium"))?;
-        #[cfg(not(windows))]
-        interrupt::init()?;
 
         let mut cookie = [0u8; 32];
         randombytes_into(&mut cookie);
@@ -541,51 +550,32 @@ impl WgState {
             rt6: RwLock::new(IpLookupTable::new()),
             load_monitor: Mutex::new(LoadMonitor::new(HANDSHAKES_PER_SEC)),
             cookie_secret: RwLock::new(cookie),
-            cookie_reset_timer: Mutex::new(None),
-            exiting: AtomicBool::new(false),
             socket: RwLock::new(Arc::new(socket)),
+            socket_sender: Mutex::new(None),
             tun,
-            worker_threads: Mutex::new(vec![]),
         });
-        {
-            let weak_wg = Arc::downgrade(&wg);
-            let cookie_reset_timer = TimerHandle::create(Box::new(move || {
-                if let Some(wg) = weak_wg.upgrade() {
-                    let mut cookie_secret = wg.cookie_secret.write().unwrap();
-                    randombytes_into(cookie_secret.deref_mut());
-                    wg.cookie_reset_timer
-                        .lock()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .adjust_and_activate_secs(120);
-                }
-            }));
-            cookie_reset_timer.adjust_and_activate_secs(120);
-            *wg.cookie_reset_timer.lock().unwrap() = Some(cookie_reset_timer);
-        }
-        {
-            let mut handles = wg.worker_threads.lock().unwrap();
-            {
-                let wg = wg.clone();
-                handles.push(
-                    Builder::new()
-                        .name("rx".to_string())
-                        .spawn(move || udp_processing(&wg))
-                        .unwrap(),
-                );
-            }
-            {
-                let wg = wg.clone();
-                handles.push(
-                    Builder::new()
-                        .name("tx".to_string())
-                        .spawn(move || tun_packet_processing(&wg))
-                        .unwrap(),
-                );
-            }
-        }
         Ok(wg)
+    }
+
+    pub async fn run(wg: Arc<WgState>) {
+        let source = CancellationTokenSource::new();
+        {
+            let wg = wg.clone();
+            source.spawn_async(
+                async move {
+                    loop {
+                        await!(Delay::new(now() + Duration::from_secs(120))).unwrap();
+                        let mut cookie = wg.cookie_secret.write().unwrap();
+                        randombytes_into(&mut cookie[..]);
+                    }
+                },
+            );
+        }
+        let (sender, receiver) = channel(0);
+        *wg.socket_sender.lock().unwrap() = Some(sender);
+        source.spawn_async(udp_processing(wg.clone(), receiver));
+        source.spawn_async(tun_packet_processing(wg));
+        await!(future::empty::<(), ()>());
     }
 
     // These methods help a lot in avoiding deadlocks.
@@ -594,6 +584,7 @@ impl WgState {
     fn prepare_socket(port: &mut u16, fwmark: u32) -> Result<UdpSocket, Error> {
         use socket2::{Domain, Socket, Type};
         let sock = Socket::new(Domain::ipv6(), Type::dgram(), None)?;
+        sock.set_nonblocking(true)?;
         sock.set_only_v6(false)?;
         if fwmark != 0 {
             set_fwmark(&sock, fwmark)?;
@@ -605,7 +596,9 @@ impl WgState {
         if *port == 0 {
             *port = sock.local_addr().unwrap().as_inet6().unwrap().port();
         }
-        Ok(sock.into_udp_socket())
+        let tokio_sock =
+            UdpSocket::from_std(sock.into_udp_socket(), &tokio::reactor::Handle::current())?;
+        Ok(tokio_sock)
     }
 
     fn find_peer_by_id(&self, id: Id) -> Option<SharedPeerState> {
@@ -642,40 +635,6 @@ impl WgState {
         let peers: Vec<X25519Pubkey> = self.pubkey_map.read().unwrap().keys().cloned().collect();
         for p in peers {
             self.remove_peer(&p);
-        }
-    }
-
-    /// Stop all worker threads.
-    pub fn exit(&self) {
-        self.exiting.store(true, Ordering::Relaxed);
-
-        // Remove peers to break reference loop.
-        self.remove_all_peers();
-
-        let mut handles = self.worker_threads.lock().unwrap();
-
-        // Interrupt worker threads.
-        #[cfg(not(windows))]
-        {
-            for h in handles.iter() {
-                interrupt::interrupt(h).unwrap();
-            }
-        }
-        #[cfg(windows)]
-        {
-            use std::net::{Ipv6Addr, SocketAddr};
-            // Send a packet to ourselves to wake up the UDP thread.
-            let sock = self.socket.read().unwrap();
-            let port = sock.local_addr().unwrap().port();
-            let addr = SocketAddr::from((Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), port));
-            sock.send_to(&[0], &addr).unwrap();
-            // Wake up the tun thread.
-            self.tun.interrupt();
-        }
-
-        // Join worker threads.
-        for h in handles.drain(..) {
-            h.join().unwrap();
         }
     }
 
@@ -741,19 +700,11 @@ impl WgState {
 
     /// Change listen port.
     pub fn set_port(&self, mut new_port: u16) -> Result<(), Error> {
-        let mut info = self.info.write().unwrap();
-        let info = info.deref_mut();
-        if new_port == info.port {
-            return Ok(());
-        }
-        let socket = WgState::prepare_socket(&mut new_port, info.fwmark)?;
-        let clone = socket.try_clone()?;
-        *self.socket.write().unwrap() = Arc::new(socket);
-        // Send an empty packet to wake up `recvfrom` so the new socket will be
-        // used.
-        let addr = SocketAddr::from((Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), info.port));
-        clone.send_to(&[], addr)?;
-        info.port = new_port;
+        let new_socket = WgState::prepare_socket(&mut new_port, self.info.read().unwrap().fwmark)?;
+        let sender = self.socket_sender.lock().unwrap().as_ref().unwrap().clone();
+        tokio::spawn_async(async move {
+            await!(sender.send(new_socket)).unwrap();
+        });
         Ok(())
     }
 

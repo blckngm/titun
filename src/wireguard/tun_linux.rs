@@ -1,4 +1,4 @@
-// Copyright 2017 Guanhao Yin <sopium@mysterious.site>
+// Copyright 2017, 2018 Guanhao Yin <sopium@mysterious.site>
 
 // This file is part of TiTun.
 
@@ -18,14 +18,18 @@
 #![cfg(target_os = "linux")]
 
 use failure::Error;
+use mio::event::Evented;
+use mio::unix::EventedFd;
+use mio::{Poll, PollOpt, Ready, Token};
 use nix::fcntl::{fcntl, open, FcntlArg, OFlag};
 use nix::libc::c_short;
 use nix::sys::stat::Mode;
 use nix::unistd::{close, read, write};
 use std::ffi::{CStr, CString};
-use std::io::{Error as IOError, Read, Write};
+use std::io::{self, Error as IOError, Read, Write};
 use std::mem;
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
+use tokio::reactor::PollEvented2;
 
 mod ioctl {
     use super::*;
@@ -41,6 +45,8 @@ mod ioctl {
         pub flags: c_short,
     }
 }
+
+pub type AsyncTun = PollEvented2<Tun>;
 
 /// A linux tun device.
 #[derive(Debug)]
@@ -97,6 +103,12 @@ impl Tun {
         Ok(Tun { fd, name })
     }
 
+    pub fn create_async(name: Option<&str>) -> Result<AsyncTun, Error> {
+        let tun = Tun::create(name)?;
+        tun.set_nonblocking(true)?;
+        Ok(PollEvented2::new(tun))
+    }
+
     /// Get name of this device. Should be the same name if you have
     /// passed one in when createing the device.
     pub fn get_name(&self) -> &str {
@@ -105,12 +117,9 @@ impl Tun {
 
     pub fn set_nonblocking(&self, nb: bool) -> Result<(), Error> {
         let flags = fcntl(self.fd, FcntlArg::F_GETFL)?;
-        let flags = OFlag::from_bits(flags).unwrap();
-        let flags = if nb {
-            flags | OFlag::O_NONBLOCK
-        } else {
-            flags & !OFlag::O_NONBLOCK
-        };
+        // XXX: Nix won't recognize O_LARGEFILE because libc O_LARGEFILE is 0!
+        let mut flags = OFlag::from_bits_truncate(flags);
+        flags.set(OFlag::O_NONBLOCK, nb);
         fcntl(self.fd, FcntlArg::F_SETFL(flags))?;
         Ok(())
     }
@@ -172,5 +181,31 @@ impl<'a> Write for &'a Tun {
 
     fn flush(&mut self) -> Result<(), IOError> {
         Ok(())
+    }
+}
+
+impl Evented for Tun {
+    fn register(
+        &self,
+        poll: &Poll,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
+    ) -> io::Result<()> {
+        EventedFd(&self.fd).register(poll, token, interest, opts)
+    }
+
+    fn reregister(
+        &self,
+        poll: &Poll,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
+    ) -> io::Result<()> {
+        EventedFd(&self.fd).reregister(poll, token, interest, opts)
+    }
+
+    fn deregister(&self, poll: &Poll) -> io::Result<()> {
+        EventedFd(&self.fd).deregister(poll)
     }
 }

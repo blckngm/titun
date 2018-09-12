@@ -15,6 +15,8 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
+#![feature(async_await, await_macro, futures_api, pin)]
+
 #[macro_use]
 extern crate failure;
 #[macro_use]
@@ -118,7 +120,13 @@ fn main() -> Result<(), Error> {
                 #[cfg(windows)]
                 network,
             };
-            run(config)?;
+            tokio::run_async(
+                async move {
+                    if let Err(err) = await!(run(config)) {
+                        error!("Error: {}", err);
+                    }
+                },
+            )
         }
         _ => {
             unreachable!();

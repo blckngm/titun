@@ -1,4 +1,4 @@
-// Copyright 2017 Guanhao Yin <sopium@mysterious.site>
+// Copyright 2017, 2018 Guanhao Yin <sopium@mysterious.site>
 
 // This file is part of TiTun.
 
@@ -34,6 +34,7 @@ extern crate nix;
 extern crate tokio;
 
 mod atomic;
+mod cancellation;
 mod crypto;
 mod ipc;
 

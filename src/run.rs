@@ -15,15 +15,14 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
+use crate::cancellation::*;
 use crate::ipc::start_ipc_server;
 use crate::systemd;
 use crate::wireguard::re_exports::{DH, X25519};
 use crate::wireguard::*;
-use ctrlc;
 use failure::{Error, ResultExt};
-use std::io::{stdin, Read};
-use std::sync::mpsc::channel;
-use std::thread::Builder;
+use std::sync::{Arc, Mutex};
+use tokio::prelude::*;
 
 pub struct Config {
     pub dev_name: String,
@@ -32,11 +31,52 @@ pub struct Config {
     pub network: (::std::net::Ipv4Addr, u32),
 }
 
-pub fn run(c: Config) -> Result<(), Error> {
+pub async fn run(c: Config) -> Result<(), Error> {
+    let source0 = Arc::new(Mutex::new(CancellationTokenSource::new()));
+    let source = source0.clone();
+    source0.lock().unwrap().spawn_async(
+        async move {
+            let mut ctrl_c = await!(tokio_signal::ctrl_c()).unwrap();
+            await!(ctrl_c.next());
+            debug!("Received SIGINT or Ctrl-C, shutting down.");
+            source.lock().unwrap().cancel();
+        },
+    );
+    if c.exit_stdin_eof {
+        let source = source0.clone();
+        source0.lock().unwrap().spawn_async(
+            async move {
+                let mut stdin = tokio::io::stdin();
+                let mut buf = [0u8; 4096];
+                loop {
+                    match await!(stdin.read_async(&mut buf)) {
+                        Ok(0) => break,
+                        Err(_) => break,
+                        _ => (),
+                    }
+                }
+                debug!("Stdin EOF, shutting down.");
+                source.lock().unwrap().cancel();
+            },
+        );
+    }
+    #[cfg(unix)]
+    let source = source0.clone();
+    source0.lock().unwrap().spawn_async(
+        async move {
+            use tokio_signal::unix::{Signal, SIGTERM};
+
+            let mut term = await!(Signal::new(SIGTERM)).unwrap();
+            await!(term.next());
+            debug!("Received SIGTERM, shutting down.");
+            source.lock().unwrap().cancel();
+        },
+    );
+
     #[cfg(windows)]
     let tun = Tun::open(&c.dev_name, c.network).context("Open tun device")?;
-    #[cfg(not(windows))]
-    let tun = Tun::create(Some(&c.dev_name)).context("Open tun device")?;
+    #[cfg(target_os = "linux")]
+    let tun = Tun::create_async(Some(&c.dev_name)).context("Open tun device")?;
     let wg = WgState::new(
         WgInfo {
             port: 0,
@@ -47,40 +87,16 @@ pub fn run(c: Config) -> Result<(), Error> {
     )?;
 
     let weak = ::std::sync::Arc::downgrade(&wg);
-    start_ipc_server(weak, &c.dev_name)?;
-
+    let source = source0.clone();
+    source0.lock().unwrap().spawn_async(
+        async move {
+            let e = await!(start_ipc_server(weak, &c.dev_name)).unwrap_err();
+            error!("Error running IPC server: {}", e);
+            source.lock().unwrap().cancel();
+        },
+    );
     systemd::notify_ready();
 
-    let (exit_tx, exit_rx) = channel();
-    {
-        let exit_tx = exit_tx.clone();
-        ctrlc::set_handler(move || {
-            exit_tx.send(()).unwrap();
-        }).expect("Error setting Ctrl-C handler");
-    }
-
-    if c.exit_stdin_eof {
-        let exit_tx = exit_tx.clone();
-        Builder::new()
-            .name("wait-stdin".to_string())
-            .spawn(move || {
-                let mut buf = [0u8; 4096];
-                loop {
-                    match stdin().read(&mut buf) {
-                        Err(_) => break,
-                        Ok(0) => break,
-                        _ => (),
-                    }
-                }
-                exit_tx.send(()).unwrap();
-            }).unwrap();
-    }
-
-    exit_rx.recv().unwrap();
-
-    debug!("Received signal, shuting down.");
-    wg.exit();
-    drop(wg);
-
+    source0.lock().unwrap().spawn_async(WgState::run(wg));
     Ok(())
 }
