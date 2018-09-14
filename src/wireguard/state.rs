@@ -17,8 +17,10 @@
 
 use crate::atomic::Ordering;
 use crate::cancellation::CancellationTokenSource;
+use crate::udp_socket::UdpSocket;
 use crate::wireguard::re_exports::sodium_init;
 use crate::wireguard::*;
+use either::Either;
 use failure::Error;
 use fnv::FnvHashMap;
 use noise_protocol::U8Array;
@@ -31,10 +33,9 @@ use std::sync::{Arc, Mutex, RwLock, Weak};
 use std::time::Duration;
 use std::time::Instant;
 use tokio::clock::now;
-use tokio::net::UdpSocket;
 use tokio::prelude::*;
-use tokio::timer::Delay;
 use tokio::sync::mpsc::*;
+use tokio::timer::Delay;
 
 // Some Constants.
 
@@ -117,15 +118,19 @@ impl IdMapGuard {
     }
 }
 
-fn udp_process_handshake_init(wg: &Arc<WgState>, p: &[u8], addr: SocketAddrV6) {
+fn udp_process_handshake_init_inner<'a>(
+    wg: &'a Arc<WgState>,
+    p: &'a [u8],
+    addr: SocketAddrV6,
+) -> Option<Either<[u8; 64], [u8; 92]>> {
     if p.len() != HANDSHAKE_INIT_LEN {
-        return;
+        return None;
     }
 
     // Lock info.
     let info = wg.info.read().unwrap();
     if !verify_mac1(&info, p) {
-        return;
+        return None;
     }
 
     if wg.check_handshake_load() {
@@ -135,8 +140,7 @@ fn udp_process_handshake_init(wg: &Arc<WgState>, p: &[u8], addr: SocketAddrV6) {
             let peer_id = Id::from_slice(&p[4..8]);
             let mac1 = get_mac1(p);
             let reply = cookie_reply(info.pubkey(), &cookie, peer_id, &mac1);
-            let _ = wg.socket.read().unwrap().send_to(&reply, addr);
-            return;
+            return Some(Either::Left(reply));
         } else {
             debug!("Mac2 verify OK.");
         }
@@ -155,7 +159,7 @@ fn udp_process_handshake_init(wg: &Arc<WgState>, p: &[u8], addr: SocketAddrV6) {
                 peer.last_handshake = Some(r.timestamp);
             } else {
                 debug!("Handshake timestamp smaller.");
-                return;
+                return None;
             }
 
             let self_id = Id::gen();
@@ -164,7 +168,7 @@ fn udp_process_handshake_init(wg: &Arc<WgState>, p: &[u8], addr: SocketAddrV6) {
             let response = responde(&info, &mut r, self_id);
             if response.is_err() {
                 error!("Failed to generate handshake response.");
-                return;
+                return None;
             }
             let mut response = response.unwrap();
 
@@ -173,7 +177,6 @@ fn udp_process_handshake_init(wg: &Arc<WgState>, p: &[u8], addr: SocketAddrV6) {
 
             cookie_sign(&mut response, peer.get_cookie());
 
-            let _ = wg.socket.read().unwrap().send_to(&response, addr);
             peer.count_send((&response).len());
 
             let t = Transport::new_from_hs(
@@ -190,97 +193,136 @@ fn udp_process_handshake_init(wg: &Arc<WgState>, p: &[u8], addr: SocketAddrV6) {
             // Lock id_map.
             wg.id_map.write().unwrap().insert(self_id, peer0.clone());
             info!("Handshake successful as responder.");
+            return Some(Either::Right(response));
         } else {
             debug!("Get handshake init, but can't find peer by pubkey.");
         }
     } else {
         debug!("Get handshake init, but authentication/decryption failed.");
     }
+    None
 }
 
-fn udp_process_handshake_resp(wg: &WgState, p: &[u8], addr: SocketAddrV6) {
-    if p.len() != HANDSHAKE_RESP_LEN {
-        return;
+async fn udp_process_handshake_init<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: SocketAddrV6) {
+    match udp_process_handshake_init_inner(wg, p, addr) {
+        Some(reply) => {
+            let socket = wg.socket.read().unwrap().clone();
+            let reply = match reply {
+                Either::Left(ref l) => &l[..],
+                Either::Right(ref r) => &r[..],
+            };
+            await!(socket.send_to_async(reply, addr));
+        }
+        // Some(Either::Right(r)) => {
+        //     let socket = wg.socket.read().unwrap().clone();
+        //     await!(socket.send_to_async(&r, addr));
+        // },
+        None => (),
     }
+}
 
-    // Lock info.
-    let info = wg.info.read().unwrap();
-    if !verify_mac1(&info, p) {
-        return;
-    }
-
-    if wg.check_handshake_load() {
-        let cookie = calc_cookie(&wg.get_cookie_secret(), &addr.ip().octets());
-        if !cookie_verify(p, &cookie) {
-            debug!("Mac2 verify failed, send cookie reply.");
-            let peer_id = Id::from_slice(&p[4..8]);
-            let mac1 = get_mac1(p);
-            let reply = cookie_reply(info.pubkey(), &cookie, peer_id, &mac1);
-            let _ = wg.socket.read().unwrap().send_to(&reply, addr);
+async fn udp_process_handshake_resp<'a>(wg: &'a WgState, p: &'a [u8], addr: SocketAddrV6) {
+    let action = 'done: {
+        if p.len() != HANDSHAKE_RESP_LEN {
             return;
-        } else {
-            debug!("Mac2 verify OK.");
         }
-    }
 
-    let self_id = Id::from_slice(&p[8..12]);
+        // Lock info.
+        let info = wg.info.read().unwrap();
+        if !verify_mac1(&info, p) {
+            return;
+        }
 
-    if let Some(peer0) = wg.find_peer_by_id(self_id) {
-        let (peer_id, hs) = {
-            // Lock peer.
-            let peer = peer0.read().unwrap();
-            peer.count_recv(p.len());
-            if peer.handshake.is_none() {
-                debug!("Get handshake response message, but don't know id.");
-                return;
-            }
-            let handshake = peer.handshake.as_ref().unwrap();
-            if handshake.self_id.id != self_id {
-                debug!("Get handshake response message, but don't know id.");
-                return;
-            }
-
-            let mut hs = handshake.hs.clone();
-            if let Ok(peer_id) = process_response(&mut hs, p) {
-                (peer_id, hs)
+        if wg.check_handshake_load() {
+            let cookie = calc_cookie(&wg.get_cookie_secret(), &addr.ip().octets());
+            if !cookie_verify(p, &cookie) {
+                debug!("Mac2 verify failed, send cookie reply.");
+                let peer_id = Id::from_slice(&p[4..8]);
+                let mac1 = get_mac1(p);
+                let reply = cookie_reply(info.pubkey(), &cookie, peer_id, &mac1);
+                let socket = wg.socket.read().unwrap().clone();
+                break 'done Either::Left(
+                    async move {
+                        await!(socket.send_to_async(&reply, addr));
+                    },
+                );
             } else {
-                debug!("Get handshake response message, auth/decryption failed.");
-                return;
+                debug!("Mac2 verify OK.");
             }
-            // Release peer.
-        };
-        info!("Handshake successful as initiator.");
-        // Lock peer.
-        let mut peer = peer0.write().unwrap();
-        let handle = peer.handshake.take().unwrap().self_id;
-        let t = Transport::new_from_hs(handle, peer_id, &hs);
-        peer.push_transport(t.clone());
-        peer.set_endpoint(addr);
-
-        let queued_packets = peer.dequeue_all();
-        if queued_packets.is_empty() {
-            // Send a keep alive packet for key confirmation if there are
-            // nothing else to send.
-            peer.keep_alive
-                .as_ref()
-                .unwrap()
-                .adjust_and_activate_secs(1);
-        } else {
-            // Send queued packets.
-            let mut buf: [u8; BUFSIZE] = unsafe { uninitialized() };
-            for p in queued_packets {
-                let encrypted = &mut buf[..p.len() + 32];
-                t.encrypt(&p, encrypted).0.unwrap();
-                let _ = wg.socket.read().unwrap().send_to(encrypted, addr);
-                peer.count_send(encrypted.len());
-            }
-            peer.on_send_transport();
         }
 
-        // Lock id_map.
-        wg.id_map.write().unwrap().insert(self_id, peer0.clone());
-    } else {
-        debug!("Get handshake response message, but don't know id.");
+        let self_id = Id::from_slice(&p[8..12]);
+
+        if let Some(peer0) = wg.find_peer_by_id(self_id) {
+            let (peer_id, hs) = {
+                // Lock peer.
+                let peer = peer0.read().unwrap();
+                peer.count_recv(p.len());
+                if peer.handshake.is_none() {
+                    debug!("Get handshake response message, but don't know id.");
+                    return;
+                }
+                let handshake = peer.handshake.as_ref().unwrap();
+                if handshake.self_id.id != self_id {
+                    debug!("Get handshake response message, but don't know id.");
+                    return;
+                }
+
+                let mut hs = handshake.hs.clone();
+                if let Ok(peer_id) = process_response(&mut hs, p) {
+                    (peer_id, hs)
+                } else {
+                    debug!("Get handshake response message, auth/decryption failed.");
+                    return;
+                }
+                // Release peer.
+            };
+            info!("Handshake successful as initiator.");
+            // Lock id_map.
+            wg.id_map.write().unwrap().insert(self_id, peer0.clone());
+            // Release id_map.
+            // Lock peer.
+            let mut peer = peer0.write().unwrap();
+            let handle = peer.handshake.take().unwrap().self_id;
+            let t = Transport::new_from_hs(handle, peer_id, &hs);
+            peer.push_transport(t.clone());
+            peer.set_endpoint(addr);
+
+            let queued_packets = peer.dequeue_all();
+            if queued_packets.is_empty() {
+                // Send a keep alive packet for key confirmation if there are
+                // nothing else to send.
+                peer.keep_alive
+                    .as_ref()
+                    .unwrap()
+                    .adjust_and_activate_secs(1);
+            } else {
+                // Send queued packets.
+                for p in &queued_packets {
+                    peer.count_send(p.len() + 32);
+                }
+                peer.on_send_transport();
+                let socket = wg.socket.read().unwrap().clone();
+                break 'done Either::Right(
+                    async move {
+                        let mut buf: [u8; BUFSIZE] = unsafe { uninitialized() };
+                        for p in queued_packets {
+                            let encrypted = &mut buf[..p.len() + 32];
+                            t.encrypt(&p, encrypted).0.unwrap();
+                            await!(socket.send_to_async(encrypted, addr));
+                        }
+                    },
+                );
+            }
+        } else {
+            debug!("Get handshake response message, but don't know id.");
+        }
+        return;
+    };
+
+    match action {
+        Either::Left(l) => await!(l),
+        Either::Right(r) => await!(r),
     }
 }
 
@@ -375,11 +417,7 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
     loop {
         use tokio::async_await::compat::forward::IntoAwaitable;
 
-        // Clone the `Arc` to not hold the lock while blocking.
-        let socket = {
-            let guard = wg.socket.read().unwrap();
-            guard.clone()
-        };
+        let socket = wg.socket.read().unwrap().clone();
         let mut recv = socket.recv_from_async(&mut p).into_awaitable();
         let mut recv_socket = receiver.next();
         let (len, addr) = select! {
@@ -389,6 +427,7 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
                 continue;
             },
         };
+        drop(recv);
 
         let addr = match addr {
             SocketAddr::V6(a6) => a6,
@@ -403,8 +442,8 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
         let p = &p[..len];
 
         match type_ {
-            1 => udp_process_handshake_init(&wg, p, addr),
-            2 => udp_process_handshake_resp(&wg, p, addr),
+            1 => await!(udp_process_handshake_init(&wg, p, addr)),
+            2 => await!(udp_process_handshake_resp(&wg, p, addr)),
             3 => udp_process_cookie_reply(&wg, p),
             4 => await!(udp_process_transport(&wg, p, addr)),
             _ => (),
@@ -582,23 +621,11 @@ impl WgState {
 
     // Create a new socket, set IPv6 only to false, set fwmark, and bind.
     fn prepare_socket(port: &mut u16, fwmark: u32) -> Result<UdpSocket, Error> {
-        use socket2::{Domain, Socket, Type};
-        let sock = Socket::new(Domain::ipv6(), Type::dgram(), None)?;
-        sock.set_nonblocking(true)?;
-        sock.set_only_v6(false)?;
+        let sock = UdpSocket::bind(port)?;
         if fwmark != 0 {
             set_fwmark(&sock, fwmark)?;
         }
-        sock.bind(&From::from(SocketAddr::from((
-            Ipv6Addr::from([0u8; 16]),
-            *port,
-        ))))?;
-        if *port == 0 {
-            *port = sock.local_addr().unwrap().as_inet6().unwrap().port();
-        }
-        let tokio_sock =
-            UdpSocket::from_std(sock.into_udp_socket(), &tokio::reactor::Handle::current())?;
-        Ok(tokio_sock)
+        Ok(sock)
     }
 
     fn find_peer_by_id(&self, id: Id) -> Option<SharedPeerState> {
@@ -702,9 +729,11 @@ impl WgState {
     pub fn set_port(&self, mut new_port: u16) -> Result<(), Error> {
         let new_socket = WgState::prepare_socket(&mut new_port, self.info.read().unwrap().fwmark)?;
         let sender = self.socket_sender.lock().unwrap().as_ref().unwrap().clone();
-        tokio::spawn_async(async move {
-            await!(sender.send(new_socket)).unwrap();
-        });
+        tokio::spawn_async(
+            async move {
+                await!(sender.send(new_socket)).unwrap();
+            },
+        );
         Ok(())
     }
 

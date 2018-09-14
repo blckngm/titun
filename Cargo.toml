@@ -24,6 +24,7 @@ byteorder = "1"
 bytes = "0.4"
 clap = "2.19.3"
 combine = "3.3"
+either = "1.5.0"
 env_logger = "0.5.12"
 failure = "0.1"
 fnv = "1.0.6"
@@ -46,9 +47,6 @@ vec_map = "0.8.1"
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["fileapi", "winbase", "ioapiset", "synchapi", "namedpipeapi"] }
 winreg = "0.5"
-
-[patch.crates-io]
-tokio-udp = { path = "./tokio-udp" }
 
 [profile.release]
 lto = true

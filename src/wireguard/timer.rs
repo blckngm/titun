@@ -19,7 +19,8 @@
 //!
 //! Use tokio-timer under the hood.
 
-use futures::sync::oneshot::{channel, Receiver, Sender};
+use futures::sync::oneshot::{channel, Sender};
+use std::future::Future as Future03;
 use std::sync::atomic::{AtomicBool, Ordering::*};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -27,17 +28,9 @@ use tokio::clock::now;
 use tokio::prelude::*;
 use tokio::timer::Delay;
 
-type Action = Box<Fn() + Send + Sync>;
-
 struct TimerOptions {
     activated: AtomicBool,
     delay: Mutex<Delay>,
-}
-
-struct Timer {
-    rx: Receiver<()>,
-    options: Arc<TimerOptions>,
-    action: Action,
 }
 
 pub struct TimerHandle {
@@ -45,63 +38,58 @@ pub struct TimerHandle {
     options: Arc<TimerOptions>,
 }
 
-impl Future for Timer {
-    type Item = ();
-    type Error = ();
-
-    fn poll(&mut self) -> Poll<(), ()> {
-        match self.rx.poll() {
-            Ok(Async::NotReady) => (),
-            _ => {
-                // Closed or signaled. Exit.
-                return Ok(Async::Ready(()));
-            }
-        };
-        let mut delay = self.options.delay.lock().unwrap();
-        let should_run = match delay.poll() {
-            Ok(Async::Ready(_)) => {
-                let should_run = self.options.activated.swap(false, SeqCst);
-                // Reset delay to get notified again.
-                delay.reset(now() + Duration::from_secs(600));
-                match delay.poll() {
-                    Ok(Async::NotReady) => (),
-                    _ => unreachable!(),
+pub fn create_timer_async<F, Fut>(action: F) -> TimerHandle
+where
+    F: Fn() -> Fut + Send + 'static,
+    Fut: Future03<Output = ()> + Send,
+{
+    let (tx, mut rx) = channel();
+    let options0 = Arc::new(TimerOptions {
+        activated: AtomicBool::new(false),
+        delay: Mutex::new(Delay::new(now())),
+    });
+    let options = options0.clone();
+    tokio::spawn_async(
+        async move {
+            loop {
+                match await!(future::poll_fn(|| {
+                    match rx.poll() {
+                        Ok(Async::NotReady) => (),
+                        _ => return Err(()),
+                    }
+                    let mut delay = options.delay.lock().unwrap();
+                    match delay.poll() {
+                        Ok(Async::Ready(_)) => {
+                            // Reset delay to get notified again.
+                            delay.reset(now() + Duration::from_secs(600));
+                            match delay.poll() {
+                                Ok(Async::NotReady) => (),
+                                _ => unreachable!(),
+                            }
+                            if options.activated.swap(false, SeqCst) {
+                                Ok(Async::Ready(()))
+                            } else {
+                                Ok(Async::NotReady)
+                            }
+                        }
+                        Ok(Async::NotReady) => Ok(Async::NotReady),
+                        Err(e) => panic!(e),
+                    }
+                })) {
+                    Err(_) => break,
+                    _ => (),
                 }
-                should_run
+                await!(action());
             }
-            Ok(Async::NotReady) => false,
-            Err(e) => panic!(e),
-        };
-        drop(delay);
-        // Run action without hoding lock on delay.
-        if should_run {
-            (self.action)();
-        }
-        Ok(Async::NotReady)
+        },
+    );
+    TimerHandle {
+        _tx: tx,
+        options: options0,
     }
-}
-
-pub fn create_timer(action: Box<Fn() + Send + Sync>) -> TimerHandle {
-    TimerHandle::create(action)
 }
 
 impl TimerHandle {
-    /// Create a new timer of the given action.
-    pub fn create(action: Action) -> TimerHandle {
-        let (tx, rx) = channel();
-        let options = Arc::new(TimerOptions {
-            activated: AtomicBool::new(false),
-            delay: Mutex::new(Delay::new(now())),
-        });
-        let t = Timer {
-            rx,
-            action,
-            options: options.clone(),
-        };
-        tokio::spawn(t);
-        TimerHandle { _tx: tx, options }
-    }
-
     /// Reset the timer to some timer later.
     pub fn adjust_and_activate(&self, delay: Duration) {
         let mut d = self.options.delay.lock().unwrap();
@@ -147,9 +135,10 @@ mod tests {
                 let run = Arc::new(AtomicBool::new(false));
                 let t = {
                     let run = run.clone();
-                    TimerHandle::create(Box::new(move || {
+                    create_timer_async(move || {
                         run.store(true, SeqCst);
-                    }))
+                        async { () }
+                    })
                 };
 
                 t.adjust_and_activate(Duration::from_millis(10));
@@ -166,9 +155,10 @@ mod tests {
                 let run = Arc::new(AtomicBool::new(false));
                 let t = {
                     let run = run.clone();
-                    TimerHandle::create(Box::new(move || {
+                    create_timer_async(move || {
                         run.store(true, SeqCst);
-                    }))
+                        async { () }
+                    })
                 };
 
                 t.adjust_and_activate(Duration::from_millis(10));
@@ -205,7 +195,7 @@ mod tests {
                 let run = Arc::new(AtomicBool::new(false));
                 let t = {
                     let run = run.clone();
-                    TimerHandle::create(Box::new(move || {
+                    create_timer(Box::new(move || {
                         run.store(true, SeqCst);
                     }))
                 };

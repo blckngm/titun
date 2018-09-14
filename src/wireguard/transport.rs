@@ -17,11 +17,14 @@
 
 use byteorder::{ByteOrder, LittleEndian};
 use crate::atomic::{AtomicBool, AtomicU64, Ordering};
+use crate::cancellation::CancellationTokenSource;
 use crate::crypto::noise_rust_sodium::ChaCha20Poly1305;
 use crate::wireguard::*;
 use noise_protocol::Cipher;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
+use tokio::clock::now;
+use tokio::timer::Delay;
 
 // That is, 2 ^ 64 - 2 ^ 16 - 1;
 const REKEY_AFTER_MESSAGES: u64 = 0xffff_ffff_fffe_ffff;
@@ -51,9 +54,7 @@ pub struct Transport {
     pub recv_key: SecretKey,
     pub recv_ar: Mutex<AntiReplay>,
 
-    // Use mutex to make the compiler happy.
-    pub rekey_after_time: Mutex<Option<TimerHandle>>,
-    pub reject_after_time: Mutex<Option<TimerHandle>>,
+    source: CancellationTokenSource,
 }
 
 impl Transport {
@@ -79,37 +80,34 @@ impl Transport {
             created: Instant::now(),
             recv_ar: Mutex::new(AntiReplay::new()),
             send_counter: AtomicU64::new(0),
-            rekey_after_time: Mutex::new(None),
-            reject_after_time: Mutex::new(None),
+            source: CancellationTokenSource::new(),
         });
 
-        {
-            let handshake_after = if transport.is_initiator {
-                REKEY_AFTER_TIME
-            } else {
-                REJECT_AFTER_TIME - KEEPALIVE_TIMEOUT - REKEY_TIMEOUT
-            };
+        let handshake_after = if transport.is_initiator {
+            REKEY_AFTER_TIME
+        } else {
+            REJECT_AFTER_TIME - KEEPALIVE_TIMEOUT - REKEY_TIMEOUT
+        };
 
-            let weak = Arc::downgrade(&transport);
-            let r = create_timer(Box::new(move || {
+        let weak = Arc::downgrade(&transport);
+        transport.source.spawn_async(
+            async move {
+                await!(Delay::new(now() + Duration::from_secs(handshake_after))).unwrap();
                 if let Some(t) = weak.upgrade() {
                     t.should_handshake.store(true, Ordering::Relaxed);
                 }
-            }));
-            r.adjust_and_activate_secs(handshake_after);
-            *transport.rekey_after_time.lock().unwrap() = Some(r);
-        }
+            },
+        );
 
-        {
-            let weak = Arc::downgrade(&transport);
-            let r = create_timer(Box::new(move || {
+        let weak = Arc::downgrade(&transport);
+        transport.source.spawn_async(
+            async move {
+                await!(Delay::new(now() + Duration::from_secs(REJECT_AFTER_TIME))).unwrap();
                 if let Some(t) = weak.upgrade() {
                     t.not_too_old.store(false, Ordering::Relaxed);
                 }
-            }));
-            r.adjust_and_activate_secs(REJECT_AFTER_TIME);
-            *transport.reject_after_time.lock().unwrap() = Some(r);
-        }
+            },
+        );
 
         transport
     }

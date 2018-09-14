@@ -16,7 +16,13 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 #![cfg_attr(feature = "bench", feature(test))]
-#![feature(async_await, await_macro, futures_api, pin)]
+#![feature(
+    async_await,
+    await_macro,
+    futures_api,
+    pin,
+    label_break_value
+)]
 
 #[cfg(feature = "bench")]
 extern crate test;
@@ -37,6 +43,7 @@ mod atomic;
 mod cancellation;
 mod crypto;
 mod ipc;
+mod udp_socket;
 
 #[doc(hidden)]
 pub mod run;

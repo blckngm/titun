@@ -17,6 +17,8 @@
 
 use arrayvec::ArrayVec;
 use crate::atomic::{AtomicU64, Ordering};
+use crate::cancellation::CancellationTokenSource;
+use crate::udp_socket::UdpSocket;
 use crate::wireguard::*;
 use failure::Error;
 use rand::{thread_rng, Rng};
@@ -25,7 +27,8 @@ use std::net::SocketAddrV6;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 use tai64::TAI64N;
-use tokio::net::UdpSocket;
+use tokio::clock::now;
+use tokio::timer::Delay;
 
 pub type SharedPeerState = Arc<RwLock<PeerState>>;
 
@@ -58,9 +61,7 @@ pub struct PeerState {
 pub struct Handshake {
     pub self_id: IdMapGuard,
     pub hs: HS,
-    // Resend after REKEY_TIMEOUT.
-    #[allow(dead_code)]
-    pub resend: TimerHandle,
+    pub resend: CancellationTokenSource,
 }
 
 impl PeerState {
@@ -254,13 +255,15 @@ pub fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Result<(), E
         ($action:expr) => {{
             let wg = Arc::downgrade(wg);
             let ps = Arc::downgrade(&ps);
-            Some(create_timer(Box::new(move || {
-                if let Some(wg) = wg.upgrade() {
-                    if let Some(ps) = ps.upgrade() {
-                        $action(wg, ps);
+            Some(create_timer_async(move || {
+                let wg = wg.clone();
+                let ps = ps.clone();
+                async move {
+                    if let (Some(wg), Some(ps)) = (wg.upgrade(), ps.upgrade()) {
+                        await!($action(wg, ps));
                     }
                 }
-            })))
+            }))
         }};
     }
 
@@ -268,19 +271,22 @@ pub fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Result<(), E
     {
         // Lock peer.
         let mut psw = ps.write().unwrap();
-        psw.rekey_no_recv = timer!(|wg, ps| {
+        psw.rekey_no_recv = timer!(async move |wg, ps| {
+            debug!("Timer: rekey_no_recv.");
             do_handshake(&wg, &ps);
         });
-        psw.keep_alive = timer!(|wg: Arc<WgState>, ps: SharedPeerState| {
+        psw.keep_alive = timer!(async move |wg: Arc<WgState>, ps: SharedPeerState| {
             debug!("Timer: keep alive.");
-            let should_handshake = do_keep_alive(&ps.read().unwrap(), &wg.socket.read().unwrap());
+            let socket = wg.socket.read().unwrap().clone();
+            let should_handshake = await!(do_keep_alive1(&ps, &socket));
             if should_handshake {
                 do_handshake(&wg, &ps);
             }
         });
-        psw.persistent_keep_alive = timer!(|wg: Arc<WgState>, ps: SharedPeerState| {
+        psw.persistent_keep_alive = timer!(async move |wg: Arc<WgState>, ps: SharedPeerState| {
             debug!("Timer: persistent_keep_alive.");
-            let should_handshake = do_keep_alive(&ps.read().unwrap(), &wg.socket.read().unwrap());
+            let socket = wg.socket.read().unwrap().clone();
+            let should_handshake = await!(do_keep_alive1(&ps, &socket));
             if should_handshake {
                 do_handshake(&wg, &ps);
             }
@@ -292,11 +298,11 @@ pub fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Result<(), E
                     .adjust_and_activate_secs(u64::from(i));
             }
         });
-        psw.stop_handshake = timer!(|_, ps: SharedPeerState| {
+        psw.stop_handshake = timer!(async move |_, ps: SharedPeerState| {
             debug!("Timer: stop handshake.");
             ps.write().unwrap().handshake = None;
         });
-        psw.clear = timer!(|_, ps: SharedPeerState| {
+        psw.clear = timer!(async move |_, ps: SharedPeerState| {
             debug!("Timer: clear.");
             ps.write().unwrap().clear();
         });
@@ -313,101 +319,109 @@ pub fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Result<(), E
 //
 /// Nothing happens if there is already an ongoing handshake for this peer.
 /// Nothing happens if we don't know peer endpoint.
-pub fn do_handshake(wg: &Arc<WgState>, peer0: &SharedPeerState) {
-    // Lock info.
-    let info = wg.info.read().unwrap();
+pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
+    let source = CancellationTokenSource::new();
 
-    // Lock peer.
-    let mut peer = peer0.write().unwrap();
-    if peer.handshake.is_some() {
-        return;
+    {
+        // Lock info.
+        let info = wg.info.read().unwrap();
+
+        // Lock peer.
+        let mut peer = peer0.write().unwrap();
+        if peer.handshake.is_some() {
+            return;
+        }
+        if peer.get_endpoint().is_none() {
+            return;
+        }
+
+        let id = Id::gen();
+        // Lock id_map.
+        wg.id_map.write().unwrap().insert(id, peer0.clone());
+        let handle = IdMapGuard::new(Arc::downgrade(&wg), id);
+
+        let initiate_result = initiate(&info, &peer.info, id);
+        if initiate_result.is_err() {
+            error!("Failed to generate handshake initiation message.");
+            return;
+        }
+        let (mut i, hs) = initiate_result.unwrap();
+        cookie_sign(&mut i, peer.get_cookie());
+
+        peer.count_send((&i).len());
+
+        peer.last_mac1 = Some(get_mac1(&i));
+
+        let buffer = i;
+        {
+            let wg = Arc::downgrade(wg);
+            let peer = Arc::downgrade(peer0);
+            source.spawn_async(
+                async move {
+                    loop {
+                        if let (Some(wg), Some(peer)) = (wg.upgrade(), peer.upgrade()) {
+                            let socket = wg.socket.read().unwrap().clone();
+                            let endpoint = peer.read().unwrap().info.endpoint;
+                            if let Some(e) = endpoint {
+                                info!("Handshake init.");
+                                await!(socket.send_to_async(&buffer, e));
+                                peer.read().unwrap().count_send(buffer.len());
+                            }
+                        }
+                        let delay_ms = thread_rng().gen_range(5_000, 5_300);
+                        await!(Delay::new(now() + Duration::from_millis(delay_ms))).unwrap();
+                    }
+                },
+            );
+        }
+
+        peer.handshake = Some(Handshake {
+            self_id: handle,
+            hs,
+            resend: source,
+        });
+
+        peer.stop_handshake
+            .as_ref()
+            .unwrap()
+            .adjust_and_activate_if_not_activated(REKEY_ATTEMPT_TIME);
+
+        peer.clear
+            .as_ref()
+            .unwrap()
+            .adjust_and_activate_if_not_activated(3 * REJECT_AFTER_TIME);
     }
-    let endpoint = if peer.get_endpoint().is_none() {
-        return;
-    } else {
-        peer.get_endpoint().unwrap()
-    };
-
-    info!("Handshake init.");
-
-    let id = Id::gen();
-    // Lock id_map.
-    wg.id_map.write().unwrap().insert(id, peer0.clone());
-    let handle = IdMapGuard::new(Arc::downgrade(&wg), id);
-
-    let initiate_result = initiate(&info, &peer.info, id);
-    if initiate_result.is_err() {
-        error!("Failed to generate handshake initiation message.");
-        return;
-    }
-    let (mut i, hs) = initiate_result.unwrap();
-    cookie_sign(&mut i, peer.get_cookie());
-
-    let _ = wg.socket.read().unwrap().send_to(&i, endpoint);
-    peer.count_send((&i).len());
-
-    peer.last_mac1 = Some(get_mac1(&i));
-
-    let resend = {
-        let wg = Arc::downgrade(&wg);
-        let peer = Arc::downgrade(&peer0);
-        Box::new(move || {
-            debug!("Timer: resend.");
-            if let Some(p) = peer.upgrade() {
-                if let Some(wg) = wg.upgrade() {
-                    p.write().unwrap().handshake = None;
-                    do_handshake(&wg, &p);
-                }
-            }
-        })
-    };
-
-    let resend = create_timer(resend);
-    let resend_delay_ms = thread_rng().gen_range(5_000, 5_300);
-    resend.adjust_and_activate(Duration::from_millis(resend_delay_ms));
-
-    peer.handshake = Some(Handshake {
-        self_id: handle,
-        hs,
-        resend,
-    });
-
-    peer.stop_handshake
-        .as_ref()
-        .unwrap()
-        .adjust_and_activate_if_not_activated(REKEY_ATTEMPT_TIME);
-
-    peer.clear
-        .as_ref()
-        .unwrap()
-        .adjust_and_activate_if_not_activated(3 * REJECT_AFTER_TIME);
 }
 
-/// Send a keep-alive message. Returns whether we should init handshake.
-pub fn do_keep_alive(peer: &PeerState, sock: &UdpSocket) -> bool {
-    let e = peer.get_endpoint();
-    if e.is_none() {
-        return false;
-    }
-    let e = e.unwrap();
-
-    let t = peer.find_transport_to_send();
-    if t.is_none() {
-        return peer.really_should_handshake();
-    }
-    let t = t.unwrap();
-
+#[must_use]
+pub async fn do_keep_alive1<'a>(peer0: &'a SharedPeerState, sock: &'a UdpSocket) -> bool {
+    let endpoint;
     let mut out = [0u8; 32];
-    let (result, should_handshake) = t.encrypt(&[], &mut out);
-    let should_handshake = should_handshake && peer.really_should_handshake();
-    if result.is_err() {
-        return should_handshake;
-    }
+    let should_handshake = {
+        let peer = peer0.read().unwrap();
 
-    let _ = sock.send_to(&out, e);
-    peer.count_send(out.len());
+        endpoint = match peer.get_endpoint() {
+            Some(e) => e,
+            None => return false,
+        };
 
-    peer.on_send_keepalive();
+        let t = peer.find_transport_to_send();
+        if t.is_none() {
+            return peer.really_should_handshake();
+        }
+        let t = t.unwrap();
 
+        let (result, should_handshake) = t.encrypt(&[], &mut out);
+        let should_handshake = should_handshake && peer.really_should_handshake();
+        if result.is_err() {
+            return should_handshake;
+        }
+
+        peer.count_send(out.len());
+
+        peer.on_send_keepalive();
+        should_handshake
+    };
+    await!(sock.send_to_async(&out, endpoint));
     should_handshake
 }
