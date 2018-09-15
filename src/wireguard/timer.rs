@@ -195,9 +195,10 @@ mod tests {
                 let run = Arc::new(AtomicBool::new(false));
                 let t = {
                     let run = run.clone();
-                    create_timer(Box::new(move || {
+                    create_timer_async(move || {
                         run.store(true, SeqCst);
-                    }))
+                        async { () }
+                    })
                 };
 
                 b.lock().unwrap().iter(|| {
