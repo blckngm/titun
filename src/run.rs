@@ -62,6 +62,7 @@ pub async fn run(c: Config) -> Result<(), Error> {
     }
     #[cfg(unix)]
     let source = source0.clone();
+    #[cfg(unix)]
     source0.lock().unwrap().spawn_async(
         async move {
             use tokio_signal::unix::{Signal, SIGTERM};
@@ -74,7 +75,7 @@ pub async fn run(c: Config) -> Result<(), Error> {
     );
 
     #[cfg(windows)]
-    let tun = Tun::open(&c.dev_name, c.network).context("Open tun device")?;
+    let tun = Tun::open_async(&c.dev_name, c.network).context("Open tun device")?;
     #[cfg(target_os = "linux")]
     let tun = Tun::create_async(Some(&c.dev_name)).context("Open tun device")?;
     let wg = WgState::new(

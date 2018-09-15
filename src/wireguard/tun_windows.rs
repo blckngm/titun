@@ -26,6 +26,7 @@ use std::mem::zeroed;
 use std::net::Ipv4Addr;
 use std::ptr::null_mut;
 use std::sync::Mutex;
+use tokio::prelude::*;
 
 use winapi::shared::winerror::ERROR_IO_PENDING;
 use winapi::um::fileapi::{CreateFileA, ReadFile, WriteFile, OPEN_EXISTING};
@@ -48,6 +49,37 @@ fn ctl_code(device_type: u32, function: u32, method: u32, access: u32) -> u32 {
 // TODO: const fn.
 fn tap_control_code(request: u32, method: u32) -> u32 {
     ctl_code(34, request, method, 0)
+}
+
+pub struct AsyncTun {
+    tun: Tun,
+}
+
+impl<'a> Read for &'a AsyncTun {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+        self.tun.read(buf)
+    }
+}
+
+impl<'a> Write for &'a AsyncTun {
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+        self.tun.write(buf)
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> AsyncRead for &'a AsyncTun {
+    // TODO.
+}
+
+impl<'a> AsyncWrite for &'a AsyncTun {
+    // TODO.
+    fn shutdown(&mut self) -> Result<Async<()>> {
+        Ok(Async::Ready(()))
+    }
 }
 
 /// A handle to a tun device.
@@ -257,6 +289,13 @@ impl Tun {
                 cancel_event,
             })
         }
+    }
+
+    pub fn open_async(alias: &str, network: NetworkConfig) -> Result<AsyncTun> {
+        let tun = Tun::open(alias, network)?;
+        Ok(AsyncTun {
+            tun,
+        })
     }
 
     /// Read a packet from the device.

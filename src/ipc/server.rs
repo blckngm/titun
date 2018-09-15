@@ -31,23 +31,9 @@ use tokio::codec::FramedRead;
 use tokio::prelude::*;
 
 #[cfg(windows)]
-pub fn start_ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> {
-    use crate::ipc::windows_named_pipe::*;
-
-    let mut path = Path::new(r#"\\.\pipe\wireguard"#).join(dev_name);
-    path.set_extension("sock");
-    let mut listener = PipeListener::bind(path).context("Bind IPC socket")?;
-    Builder::new()
-        .name("ipc-server".to_string())
-        .spawn(move || {
-            for stream in listener.incoming() {
-                // We only serve one connection at a time.
-                serve(&wg, &stream.unwrap()).unwrap_or_else(|e| {
-                    warn!("Error serving IPC connection: {:?}", e);
-                });
-            }
-        })?;
-    Ok(())
+pub async fn start_ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> {
+    // TODO.
+    unimplemented!()
 }
 
 #[cfg(unix)]

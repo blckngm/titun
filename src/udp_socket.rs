@@ -17,6 +17,7 @@
 
 use mio::net::UdpSocket as MioUdpSocket;
 use std::net::{Ipv6Addr, SocketAddr};
+#[cfg(unix)]
 use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 use tokio::prelude::*;
@@ -141,6 +142,7 @@ impl UdpSocket {
     }
 }
 
+#[cfg(unix)]
 impl AsRawFd for UdpSocket {
     fn as_raw_fd(&self) -> i32 {
         self.socket.get_ref().as_raw_fd()
