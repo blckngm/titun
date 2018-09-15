@@ -30,12 +30,9 @@ use std::mem::uninitialized;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::ops::Deref;
 use std::sync::{Arc, Mutex, RwLock, Weak};
-use std::time::Duration;
 use std::time::Instant;
-use tokio::clock::now;
 use tokio::prelude::*;
 use tokio::sync::mpsc::*;
-use tokio::timer::Delay;
 
 // Some Constants.
 
@@ -603,7 +600,7 @@ impl WgState {
             source.spawn_async(
                 async move {
                     loop {
-                        await!(Delay::new(now() + Duration::from_secs(120))).unwrap();
+                        sleep!(secs 120);
                         let mut cookie = wg.cookie_secret.write().unwrap();
                         randombytes_into(&mut cookie[..]);
                     }

@@ -22,9 +22,7 @@ use crate::crypto::noise_rust_sodium::ChaCha20Poly1305;
 use crate::wireguard::*;
 use noise_protocol::Cipher;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
-use tokio::clock::now;
-use tokio::timer::Delay;
+use std::time::Instant;
 
 // That is, 2 ^ 64 - 2 ^ 16 - 1;
 const REKEY_AFTER_MESSAGES: u64 = 0xffff_ffff_fffe_ffff;
@@ -92,7 +90,7 @@ impl Transport {
         let weak = Arc::downgrade(&transport);
         transport.source.spawn_async(
             async move {
-                await!(Delay::new(now() + Duration::from_secs(handshake_after))).unwrap();
+                sleep!(secs handshake_after);
                 if let Some(t) = weak.upgrade() {
                     t.should_handshake.store(true, Ordering::Relaxed);
                 }
@@ -102,7 +100,7 @@ impl Transport {
         let weak = Arc::downgrade(&transport);
         transport.source.spawn_async(
             async move {
-                await!(Delay::new(now() + Duration::from_secs(REJECT_AFTER_TIME))).unwrap();
+                sleep!(secs REJECT_AFTER_TIME);
                 if let Some(t) = weak.upgrade() {
                     t.not_too_old.store(false, Ordering::Relaxed);
                 }

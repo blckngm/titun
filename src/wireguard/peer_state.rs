@@ -27,8 +27,6 @@ use std::net::SocketAddrV6;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 use tai64::TAI64N;
-use tokio::clock::now;
-use tokio::timer::Delay;
 
 pub type SharedPeerState = Arc<RwLock<PeerState>>;
 
@@ -369,7 +367,7 @@ pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
                             }
                         }
                         let delay_ms = thread_rng().gen_range(5_000, 5_300);
-                        await!(Delay::new(now() + Duration::from_millis(delay_ms))).unwrap();
+                        sleep!(ms delay_ms);
                     }
                 },
             );

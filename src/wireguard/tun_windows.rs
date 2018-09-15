@@ -293,9 +293,7 @@ impl Tun {
 
     pub fn open_async(alias: &str, network: NetworkConfig) -> Result<AsyncTun> {
         let tun = Tun::open(alias, network)?;
-        Ok(AsyncTun {
-            tun,
-        })
+        Ok(AsyncTun { tun })
     }
 
     /// Read a packet from the device.

@@ -116,17 +116,6 @@ impl TimerHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    macro_rules! sleep {
-        ($duration:expr) => {
-            await!(Delay::new(now() + $duration)).unwrap();
-        };
-    }
-
-    macro_rules! sleep_ms {
-        ($ms:expr) => {
-            sleep!(Duration::from_millis($ms));
-        };
-    }
 
     #[test]
     fn smoke() {
@@ -142,7 +131,7 @@ mod tests {
                 };
 
                 t.adjust_and_activate(Duration::from_millis(10));
-                sleep_ms!(30);
+                sleep!(ms 30);
                 assert!(run.load(SeqCst));
             },
         );
@@ -163,22 +152,22 @@ mod tests {
 
                 t.adjust_and_activate(Duration::from_millis(10));
                 t.adjust_and_activate(Duration::from_millis(100));
-                sleep_ms!(20);
+                sleep!(ms 20);
                 assert!(!run.load(SeqCst));
-                sleep_ms!(120);
+                sleep!(ms 120);
                 assert!(run.load(SeqCst));
 
                 run.store(false, SeqCst);
 
                 t.adjust_and_activate(Duration::from_millis(10));
                 t.de_activate();
-                sleep_ms!(20);
+                sleep!(ms 20);
                 assert!(!run.load(SeqCst));
 
                 t.adjust_and_activate(Duration::from_millis(10));
                 t.de_activate();
                 t.adjust_and_activate(Duration::from_millis(15));
-                sleep_ms!(30);
+                sleep!(ms 30);
                 assert!(run.load(SeqCst));
             },
         );

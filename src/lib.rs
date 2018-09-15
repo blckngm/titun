@@ -24,6 +24,23 @@
     label_break_value
 )]
 
+macro_rules! sleep {
+    ($duration:expr) => {{
+        use tokio::clock::now;
+        use tokio::timer::Delay;
+
+        await!(Delay::new(now() + $duration)).unwrap();
+    }};
+    (secs $secs:expr) => {{
+        use std::time::Duration;
+        sleep!(Duration::from_secs($secs));
+    }};
+    (ms $millis:expr) => {{
+        use std::time::Duration;
+        sleep!(Duration::from_millis($millis));
+    }};
+}
+
 #[cfg(feature = "bench")]
 extern crate test;
 
