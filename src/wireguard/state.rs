@@ -70,11 +70,6 @@ pub struct WgState {
     // The secret used to calc cookie.
     pub(crate) cookie_secret: RwLock<[u8; 32]>,
 
-    // RwLock<Arc<_>> is like a RCU structure, i.e., it can be updated while the
-    // old value is still in use.
-    //
-    // The sending task awaits on `send_to_async`, other tasks just call sendto
-    // and ignore result.
     pub(crate) socket: RwLock<Arc<UdpSocket>>,
     pub(crate) socket_sender: Mutex<Option<Sender<UdpSocket>>>,
     pub(crate) tun: AsyncTun,

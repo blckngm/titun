@@ -317,74 +317,70 @@ pub fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Result<(), E
 pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
     let source = CancellationTokenSource::new();
 
-    {
-        // Lock info.
-        let info = wg.info.read().unwrap();
+    // Lock info.
+    let info = wg.info.read().unwrap();
 
-        // Lock peer.
-        let mut peer = peer0.write().unwrap();
-        if peer.handshake.is_some() {
-            return;
-        }
-        if peer.get_endpoint().is_none() {
-            return;
-        }
+    // Lock peer.
+    let mut peer = peer0.write().unwrap();
+    if peer.handshake.is_some() {
+        return;
+    }
+    if peer.get_endpoint().is_none() {
+        return;
+    }
 
-        let id = Id::gen();
-        // Lock id_map.
-        wg.id_map.write().unwrap().insert(id, peer0.clone());
-        let handle = IdMapGuard::new(Arc::downgrade(&wg), id);
+    let id = Id::gen();
+    // Lock id_map.
+    wg.id_map.write().unwrap().insert(id, peer0.clone());
+    let handle = IdMapGuard::new(Arc::downgrade(&wg), id);
 
-        let initiate_result = initiate(&info, &peer.info, id);
-        if initiate_result.is_err() {
+    let (mut init_msg, hs) = match initiate(&info, &peer.info, id) {
+        Err(_) => {
             error!("Failed to generate handshake initiation message.");
             return;
-        }
-        let (mut i, hs) = initiate_result.unwrap();
-        cookie_sign(&mut i, peer.get_cookie());
+        },
+        Ok(x) => x,
+    };
+    cookie_sign(&mut init_msg, peer.get_cookie());
 
-        peer.count_send((&i).len());
+    peer.last_mac1 = Some(get_mac1(&init_msg));
 
-        peer.last_mac1 = Some(get_mac1(&i));
-
-        let buffer = i;
-        {
-            let wg = Arc::downgrade(wg);
-            let peer = Arc::downgrade(peer0);
-            source.spawn_async(
-                async move {
-                    loop {
-                        if let (Some(wg), Some(peer)) = (wg.upgrade(), peer.upgrade()) {
-                            let endpoint = peer.read().unwrap().info.endpoint;
-                            if let Some(e) = endpoint {
-                                info!("Handshake init.");
-                                await!(wg.send_to_async(&buffer, e));
-                                peer.read().unwrap().count_send(buffer.len());
-                            }
+    {
+        let wg = Arc::downgrade(wg);
+        let peer = Arc::downgrade(peer0);
+        source.spawn_async(
+            async move {
+                loop {
+                    if let (Some(wg), Some(peer)) = (wg.upgrade(), peer.upgrade()) {
+                        let endpoint = peer.read().unwrap().info.endpoint;
+                        if let Some(e) = endpoint {
+                            info!("Handshake init.");
+                            await!(wg.send_to_async(&init_msg, e));
+                            peer.read().unwrap().count_send(init_msg.len());
                         }
-                        let delay_ms = thread_rng().gen_range(5_000, 5_300);
-                        sleep!(ms delay_ms);
                     }
-                },
-            );
-        }
-
-        peer.handshake = Some(Handshake {
-            self_id: handle,
-            hs,
-            resend: source,
-        });
-
-        peer.stop_handshake
-            .as_ref()
-            .unwrap()
-            .adjust_and_activate_if_not_activated(REKEY_ATTEMPT_TIME);
-
-        peer.clear
-            .as_ref()
-            .unwrap()
-            .adjust_and_activate_if_not_activated(3 * REJECT_AFTER_TIME);
+                    let delay_ms = thread_rng().gen_range(5_000, 5_300);
+                    sleep!(ms delay_ms);
+                }
+            },
+        );
     }
+
+    peer.handshake = Some(Handshake {
+        self_id: handle,
+        hs,
+        resend: source,
+    });
+
+    peer.stop_handshake
+        .as_ref()
+        .unwrap()
+        .adjust_and_activate_if_not_activated(REKEY_ATTEMPT_TIME);
+
+    peer.clear
+        .as_ref()
+        .unwrap()
+        .adjust_and_activate_if_not_activated(3 * REJECT_AFTER_TIME);
 }
 
 #[must_use]
