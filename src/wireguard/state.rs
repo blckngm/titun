@@ -17,7 +17,7 @@
 
 use crate::atomic::Ordering;
 use crate::cancellation::CancellationTokenSource;
-use crate::udp_socket::UdpSocket;
+use crate::udp_socket::*;
 use crate::wireguard::re_exports::sodium_init;
 use crate::wireguard::*;
 use either::Either;
@@ -203,17 +203,12 @@ fn udp_process_handshake_init_inner<'a>(
 async fn udp_process_handshake_init<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: SocketAddrV6) {
     match udp_process_handshake_init_inner(wg, p, addr) {
         Some(reply) => {
-            let socket = wg.socket.read().unwrap().clone();
             let reply = match reply {
                 Either::Left(ref l) => &l[..],
                 Either::Right(ref r) => &r[..],
             };
-            await!(socket.send_to_async(reply, addr));
+            await!(wg.send_to_async(reply, addr));
         }
-        // Some(Either::Right(r)) => {
-        //     let socket = wg.socket.read().unwrap().clone();
-        //     await!(socket.send_to_async(&r, addr));
-        // },
         None => (),
     }
 }
@@ -237,10 +232,9 @@ async fn udp_process_handshake_resp<'a>(wg: &'a WgState, p: &'a [u8], addr: Sock
                 let peer_id = Id::from_slice(&p[4..8]);
                 let mac1 = get_mac1(p);
                 let reply = cookie_reply(info.pubkey(), &cookie, peer_id, &mac1);
-                let socket = wg.socket.read().unwrap().clone();
                 break 'done Either::Left(
                     async move {
-                        await!(socket.send_to_async(&reply, addr));
+                        await!(wg.send_to_async(&reply, addr));
                     },
                 );
             } else {
@@ -299,14 +293,13 @@ async fn udp_process_handshake_resp<'a>(wg: &'a WgState, p: &'a [u8], addr: Sock
                     peer.count_send(p.len() + 32);
                 }
                 peer.on_send_transport();
-                let socket = wg.socket.read().unwrap().clone();
                 break 'done Either::Right(
                     async move {
                         let mut buf: [u8; BUFSIZE] = unsafe { uninitialized() };
                         for p in queued_packets {
                             let encrypted = &mut buf[..p.len() + 32];
                             t.encrypt(&p, encrypted).0.unwrap();
-                            await!(socket.send_to_async(encrypted, addr));
+                            await!(wg.send_to_async(encrypted, addr));
                         }
                     },
                 );
@@ -542,8 +535,7 @@ async fn tun_packet_processing(wg: Arc<WgState>) {
         };
 
         if should_send {
-            let socket = wg.socket.read().unwrap().clone();
-            await!(socket.send_to_async(encrypted, endpoint));
+            await!(wg.send_to_async(encrypted, endpoint));
         }
 
         if should_handshake {
@@ -614,8 +606,6 @@ impl WgState {
         await!(future::empty::<(), ()>());
     }
 
-    // These methods help a lot in avoiding deadlocks.
-
     // Create a new socket, set IPv6 only to false, set fwmark, and bind.
     fn prepare_socket(port: &mut u16, fwmark: u32) -> Result<UdpSocket, Error> {
         let sock = UdpSocket::bind(port)?;
@@ -623,6 +613,14 @@ impl WgState {
             set_fwmark(&sock, fwmark)?;
         }
         Ok(sock)
+    }
+
+    pub(crate) async fn send_to_async<'a>(
+        &'a self,
+        buf: &'a [u8],
+        target: impl Into<SocketAddr> + 'static,
+    ) -> Result<usize, std::io::Error> {
+        await!(udp_send_to_async(&self.socket, buf, target.into()))
     }
 
     fn find_peer_by_id(&self, id: Id) -> Option<SharedPeerState> {

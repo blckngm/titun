@@ -18,7 +18,6 @@
 use arrayvec::ArrayVec;
 use crate::atomic::{AtomicU64, Ordering};
 use crate::cancellation::CancellationTokenSource;
-use crate::udp_socket::UdpSocket;
 use crate::wireguard::*;
 use failure::Error;
 use rand::{thread_rng, Rng};
@@ -275,16 +274,14 @@ pub fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Result<(), E
         });
         psw.keep_alive = timer!(async move |wg: Arc<WgState>, ps: SharedPeerState| {
             debug!("Timer: keep alive.");
-            let socket = wg.socket.read().unwrap().clone();
-            let should_handshake = await!(do_keep_alive1(&ps, &socket));
+            let should_handshake = await!(do_keep_alive1(&ps, &wg));
             if should_handshake {
                 do_handshake(&wg, &ps);
             }
         });
         psw.persistent_keep_alive = timer!(async move |wg: Arc<WgState>, ps: SharedPeerState| {
             debug!("Timer: persistent_keep_alive.");
-            let socket = wg.socket.read().unwrap().clone();
-            let should_handshake = await!(do_keep_alive1(&ps, &socket));
+            let should_handshake = await!(do_keep_alive1(&ps, &wg));
             if should_handshake {
                 do_handshake(&wg, &ps);
             }
@@ -358,11 +355,10 @@ pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
                 async move {
                     loop {
                         if let (Some(wg), Some(peer)) = (wg.upgrade(), peer.upgrade()) {
-                            let socket = wg.socket.read().unwrap().clone();
                             let endpoint = peer.read().unwrap().info.endpoint;
                             if let Some(e) = endpoint {
                                 info!("Handshake init.");
-                                await!(socket.send_to_async(&buffer, e));
+                                await!(wg.send_to_async(&buffer, e));
                                 peer.read().unwrap().count_send(buffer.len());
                             }
                         }
@@ -392,7 +388,7 @@ pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
 }
 
 #[must_use]
-pub async fn do_keep_alive1<'a>(peer0: &'a SharedPeerState, sock: &'a UdpSocket) -> bool {
+pub async fn do_keep_alive1<'a>(peer0: &'a SharedPeerState, wg: &'a WgState) -> bool {
     let endpoint;
     let mut out = [0u8; 32];
     let should_handshake = {
@@ -420,6 +416,6 @@ pub async fn do_keep_alive1<'a>(peer0: &'a SharedPeerState, sock: &'a UdpSocket)
         peer.on_send_keepalive();
         should_handshake
     };
-    await!(sock.send_to_async(&out, endpoint));
+    await!(wg.send_to_async(&out, endpoint));
     should_handshake
 }

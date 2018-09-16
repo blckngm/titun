@@ -20,6 +20,7 @@ use std::net::{Ipv6Addr, SocketAddr};
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
+use std::sync::RwLock;
 use tokio::prelude::*;
 use tokio::reactor::PollEvented2;
 use tokio::sync::mpsc::*;
@@ -27,7 +28,7 @@ use tokio::sync::mpsc::*;
 /// Like tokio UdpSocket, but can be sent to from multiple tasks.
 pub struct UdpSocket {
     socket: Arc<PollEvented2<MioUdpSocket>>,
-    send_tx: Sender<(Vec<u8>, SocketAddr)>,
+    send_tx: Sender<(Vec<u8>, SocketAddr, Sender<()>)>,
 }
 
 impl UdpSocket {
@@ -48,15 +49,16 @@ impl UdpSocket {
         let socket = Arc::new(PollEvented2::new(mio_sock));
 
         let socket_clone = socket.clone();
-        let (send_tx, mut send_rx) = channel::<(Vec<u8>, SocketAddr)>(16);
+        let (send_tx, mut send_rx) = channel::<(Vec<u8>, SocketAddr, Sender<()>)>(0);
         tokio::spawn_async(
             async move {
-                while let Some(Ok((dgram, target))) = await!(send_rx.next()) {
+                while let Some(Ok((dgram, target, mut done))) = await!(send_rx.next()) {
                     let _ = await!(UdpSocket::real_send_to_async(
                         &socket_clone,
                         &dgram[..],
                         target
                     ));
+                    await!(done.send_async(())).unwrap();
                 }
             },
         );
@@ -126,7 +128,7 @@ impl UdpSocket {
     pub async fn send_to_async<'a>(
         &'a self,
         buf: &'a [u8],
-        target: impl Into<SocketAddr> + 'static,
+        target: SocketAddr,
     ) -> Result<usize, std::io::Error> {
         let target = target.into();
         // First try to send directly.
@@ -136,10 +138,36 @@ impl UdpSocket {
                 return Err(e);
             },
         }
+        let (tx, mut rx) = channel(0);
         // If would block, send via queue.
-        await!(self.send_tx.clone().send((buf.to_vec(), target)));
+        await!(self.send_tx.clone().send((buf.to_vec(), target, tx)));
+        let _ = await!(rx.next());
         Ok(buf.len())
     }
+}
+
+pub async fn udp_send_to_async<'a>(
+    socket: &'a RwLock<Arc<UdpSocket>>,
+    buf: &'a [u8],
+    target: SocketAddr,
+) -> Result<usize, std::io::Error> {
+    let send_tx;
+    let target = target.into();
+    {
+        let socket = socket.read().unwrap();
+        match socket.socket.get_ref().send_to(buf, &target) {
+            Ok(len) => return Ok(len),
+            Err(e) => if e.kind() != std::io::ErrorKind::WouldBlock {
+                return Err(e);
+            },
+        }
+        send_tx = socket.send_tx.clone();
+    }
+    let (tx, mut rx) = channel(0);
+    // If would block, send via queue.
+    await!(send_tx.send((buf.to_vec(), target, tx)));
+    let _ = await!(rx.next());
+    Ok(buf.len())
 }
 
 #[cfg(unix)]
