@@ -21,7 +21,8 @@
     await_macro,
     futures_api,
     pin,
-    label_break_value
+    label_break_value,
+    arbitrary_self_types
 )]
 
 macro_rules! sleep {

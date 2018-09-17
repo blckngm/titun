@@ -20,7 +20,7 @@
 use crate::ipc::commands::*;
 use crate::ipc::parse::*;
 use crate::wireguard::re_exports::U8Array;
-use crate::wireguard::{wg_add_peer, SetPeerCommand, WgState, WgStateOut};
+use crate::wireguard::{SetPeerCommand, WgState, WgStateOut};
 use failure::{Error, ResultExt};
 use hex::encode;
 use std::io::BufWriter;
@@ -150,7 +150,7 @@ fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
             continue;
         }
         if !wg.peer_exists(&p.public_key) {
-            wg_add_peer(wg, &p.public_key).unwrap();
+            wg.add_peer(&p.public_key);
         }
         wg.set_peer(SetPeerCommand {
             public_key: p.public_key,

@@ -53,7 +53,6 @@ use self::cookie::*;
 use self::handshake::*;
 use self::ip::*;
 use self::load_monitor::*;
-pub use self::peer_state::wg_add_peer;
 use self::peer_state::*;
 use self::routing_table::*;
 use self::state::*;

@@ -216,7 +216,7 @@ impl PeerState {
 /// Add a peer to a WG interface.
 ///
 /// Returns `Err` if the peer's public key conflicts with any existing peers.
-pub fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Result<(), Error> {
+pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Result<(), Error> {
     // Lock pubkey_map.
     let mut pubkey_map = wg.pubkey_map.write().unwrap();
 
@@ -338,7 +338,7 @@ pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
         Err(_) => {
             error!("Failed to generate handshake initiation message.");
             return;
-        },
+        }
         Ok(x) => x,
     };
     cookie_sign(&mut init_msg, peer.get_cookie());
