@@ -21,8 +21,10 @@ use crate::systemd;
 use crate::wireguard::re_exports::{DH, X25519};
 use crate::wireguard::*;
 use failure::{Error, ResultExt};
+use std::boxed::FnBox;
 use std::sync::{Arc, Mutex};
 use tokio::prelude::*;
+use tokio::sync::mpsc::*;
 
 pub struct Config {
     pub dev_name: String,
@@ -88,16 +90,19 @@ pub async fn run(c: Config) -> Result<(), Error> {
     )?;
 
     let weak = ::std::sync::Arc::downgrade(&wg);
-    let source = source0.clone();
+    source0.lock().unwrap().spawn_async(WgState::run(wg));
+
+    let (tx, mut rx) = channel::<Box<FnBox() + Send + 'static>>(0);
     source0.lock().unwrap().spawn_async(
         async move {
-            let e = await!(start_ipc_server(weak, &c.dev_name)).unwrap_err();
-            error!("Error running IPC server: {}", e);
-            source.lock().unwrap().cancel();
+            while let Some(action) = await!(rx.next()) {
+                (action.unwrap())();
+            }
         },
     );
+
+    start_ipc_server(weak, &c.dev_name, tx)?;
     systemd::notify_ready();
 
-    source0.lock().unwrap().spawn_async(WgState::run(wg));
     Ok(())
 }

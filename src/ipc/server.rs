@@ -17,33 +17,52 @@
 
 // XXX: named pipe security???
 
+use combine::Parser;
 use crate::ipc::commands::*;
 use crate::ipc::parse::*;
 use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::{SetPeerCommand, WgState, WgStateOut};
 use failure::{Error, ResultExt};
 use hex::encode;
-use std::io::BufWriter;
+use std::boxed::FnBox;
+use std::fmt::Debug;
+use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::Path;
 use std::sync::{Arc, Weak};
+use std::thread::Builder;
 use std::time::SystemTime;
-use tokio::codec::FramedRead;
 use tokio::prelude::*;
+use tokio::sync::mpsc::Sender;
 
 #[cfg(windows)]
-pub async fn start_ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> {
-    // TODO.
-    unimplemented!()
+pub fn start_ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> {
+    use crate::ipc::windows_named_pipe::*;
+
+    let mut path = Path::new(r#"\\.\pipe\wireguard"#).join(dev_name);
+    path.set_extension("sock");
+    let mut listener = PipeListener::bind(path).context("Bind IPC socket")?;
+    Builder::new()
+        .name("ipc-server".to_string())
+        .spawn(move || {
+            for stream in listener.incoming() {
+                // We only serve one connection at a time.
+                serve(&wg, &stream.unwrap()).unwrap_or_else(|e| {
+                    warn!("Error serving IPC connection: {:?}", e);
+                });
+            }
+        })?;
+    Ok(())
 }
 
-#[cfg(unix)]
-pub async fn start_ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> {
-    use crate::cancellation::CancellationTokenSource;
+#[cfg(not(windows))]
+pub fn start_ipc_server(
+    wg: Weak<WgState>,
+    dev_name: &str,
+    sender: Sender<Box<FnBox() + Send + 'static>>,
+) -> Result<(), Error> {
     use nix::sys::stat::{umask, Mode};
     use std::fs::{create_dir_all, remove_file};
-    use tokio::net::UnixListener;
-
-    let source = CancellationTokenSource::new();
+    use std::os::unix::net::UnixListener;
 
     umask(Mode::from_bits(0o077).unwrap());
     let dir = Path::new(r#"/run/wireguard"#);
@@ -52,79 +71,104 @@ pub async fn start_ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), E
     path.set_extension("sock");
     let _ = remove_file(path.as_path());
     let listener = UnixListener::bind(path.as_path()).context("Bind IPC socket.")?;
-    let mut incoming = listener.incoming();
-    loop {
-        let stream = await!(incoming.next()).unwrap()?;
-        let wg = wg.clone();
-        source.spawn_async(
-            async move {
-                if let Err(e) = await!(serve(wg, stream)) {
-                    warn!("Error serving IPC: {}", e);
-                }
-            },
-        );
+    Builder::new()
+        .name("ipc-server".to_string())
+        .spawn(move || {
+            for stream in listener.incoming() {
+                // We only serve one connection at a time.
+                serve(&wg, &stream.unwrap(), sender.clone()).unwrap_or_else(|e| {
+                    warn!("Error serving IPC connection: {:?}", e);
+                });
+            }
+        })?;
+    Ok(())
+}
+
+enum ReadCommandError {
+    EOF,
+    TooLarge,
+    ParseError(Box<dyn Debug>),
+    IoError(::std::io::Error),
+}
+
+impl From<::std::io::Error> for ReadCommandError {
+    fn from(e: ::std::io::Error) -> Self {
+        ReadCommandError::IoError(e)
     }
 }
 
-// TODO: optimization: don't use format.
-macro_rules! writeln_async {
-    ($dst:expr, $fmt:expr, $($arg:tt)*) => {{
-        let it = format!(concat!($fmt, "\n"), $($arg)*);
-        await!($dst.write_all_async(it.as_bytes()))
-    }};
-    ($dst:expr, $fmt:expr) => {
-        await!($dst.write_all_async(concat!($fmt, "\n").as_bytes()))
-    };
-    ($dst:expr) => {
-        await!($dst.write_all_async("\n".as_bytes()))
-    };
-}
-
-async fn write_wg_state(
-    w: impl AsyncWrite + 'static,
-    state: WgStateOut,
-) -> Result<(), ::std::io::Error> {
+fn write_wg_state(w: impl Write, state: &WgStateOut) -> Result<(), ::std::io::Error> {
     let mut w = BufWriter::with_capacity(4096, w);
-    writeln_async!(w, "private_key={}", encode(state.private_key.as_slice()))?;
-    writeln_async!(w, "listen_port={}", state.listen_port)?;
+    writeln!(w, "private_key={}", encode(state.private_key.as_slice()))?;
+    writeln!(w, "listen_port={}", state.listen_port)?;
     if state.fwmark != 0 {
-        writeln_async!(w, "fwmark={}", state.fwmark)?;
+        writeln!(w, "fwmark={}", state.fwmark)?;
     }
     for p in &state.peers {
-        writeln_async!(w, "public_key={}", encode(p.public_key.as_slice()))?;
+        writeln!(w, "public_key={}", encode(p.public_key.as_slice()))?;
         if let Some(ref psk) = p.preshared_key {
-            writeln_async!(w, "preshared_key={}", encode(psk))?;
+            writeln!(w, "preshared_key={}", encode(psk))?;
         }
         for a in &p.allowed_ips {
-            writeln_async!(w, "allowed_ip={}/{}", a.0, a.1)?;
+            writeln!(w, "allowed_ip={}/{}", a.0, a.1)?;
         }
-        writeln_async!(
+        writeln!(
             w,
             "persistent_keepalive_interval={}",
             p.persistent_keepalive_interval.unwrap_or(0)
         )?;
         if let Some(ref e) = p.endpoint {
-            writeln_async!(w, "endpoint={}", e)?;
+            writeln!(w, "endpoint={}", e)?;
         }
-        writeln_async!(w, "rx_bytes={}", p.rx_bytes)?;
-        writeln_async!(w, "tx_bytes={}", p.tx_bytes)?;
+        writeln!(w, "rx_bytes={}", p.rx_bytes)?;
+        writeln!(w, "tx_bytes={}", p.tx_bytes)?;
         if let Some(ref t) = p.last_handshake_time {
             let d = t.duration_since(SystemTime::UNIX_EPOCH).unwrap();
             let secs = d.as_secs();
             let nanos = d.subsec_nanos();
-            writeln_async!(w, "last_handshake_time_sec={}", secs)?;
-            writeln_async!(w, "last_handshake_time_nsec={}", nanos)?;
+            writeln!(w, "last_handshake_time_sec={}", secs)?;
+            writeln!(w, "last_handshake_time_nsec={}", nanos)?;
         }
     }
-    writeln_async!(w, "errno=0")?;
-    writeln_async!(w)?;
-    await!(w.flush_async())
+    writeln!(w, "errno=0")?;
+    writeln!(w)?;
+    w.flush()
 }
 
-async fn write_error(mut stream: impl AsyncWrite, errno: i32) -> Result<(), ::std::io::Error> {
-    let output = format!("errno={}\n\n", errno);
-    await!(stream.write_all_async(output.as_bytes()))?;
-    Ok(())
+fn read_command<R>(reader: &mut R) -> Result<WgIpcCommand, ReadCommandError>
+where
+    R: BufRead,
+{
+    let command_buf = {
+        let mut buffer = Vec::with_capacity(4096);
+        let mut line = Vec::with_capacity(128);
+        loop {
+            let len = reader.take(128).read_until(b'\n', &mut line)?;
+            buffer.append(&mut line);
+            if len <= 1 {
+                break;
+            }
+            if buffer.len() > 1024 * 1024 {
+                return Err(ReadCommandError::TooLarge);
+            }
+        }
+        buffer
+    };
+    if command_buf.is_empty() {
+        return Err(ReadCommandError::EOF);
+    }
+    let result = match command_parser().parse(&command_buf[..]) {
+        Ok((c, _)) => Ok(c),
+        Err(e) => Err(ReadCommandError::ParseError(Box::new(e))),
+    };
+    result
+}
+
+fn write_error(stream: impl Write, errno: i32) -> Result<(), ::std::io::Error> {
+    let mut writer = BufWriter::with_capacity(128, stream);
+    writeln!(writer, "errno={}", errno)?;
+    writeln!(writer)?;
+    writer.flush()
 }
 
 fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
@@ -150,7 +194,7 @@ fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
             continue;
         }
         if !wg.peer_exists(&p.public_key) {
-            wg.add_peer(&p.public_key);
+            wg.add_peer(&p.public_key).unwrap();
         }
         wg.set_peer(SetPeerCommand {
             public_key: p.public_key,
@@ -163,43 +207,48 @@ fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
     }
 }
 
-pub async fn serve<S>(wg: Weak<WgState>, stream: S) -> Result<(), Error>
+pub fn serve<S>(
+    wg: &Weak<WgState>,
+    stream: S,
+    sender: Sender<Box<FnBox() + Send + 'static>>,
+) -> Result<(), Error>
 where
-    S: AsyncRead + AsyncWrite + 'static,
+    S: Read + Write + Clone,
 {
-    let (read_half, write_half) = stream.split();
-
-    let mut commands = FramedRead::new(read_half, command_decoder());
-
-    let c = match await!(commands.next()) {
-        Some(Err(ReadCommandError::IoError(e))) => {
+    let mut buf_reader = BufReader::with_capacity(4096, stream.clone());
+    let c = match read_command(&mut buf_reader) {
+        Err(ReadCommandError::IoError(e)) => {
             bail!("IO Error: {}", e);
         }
-        Some(Err(ReadCommandError::ParseError(e))) => {
-            await!(write_error(write_half, /* EINVAL */ 22))?;
+        Err(ReadCommandError::ParseError(e)) => {
+            write_error(stream.clone(), /* EINVAL */ 22)?;
             bail!("Failed to parse command: {:?}", e);
         }
-        Some(Err(ReadCommandError::TooLarge)) => {
-            await!(write_error(write_half, /* ENOMEM */ 12))?;
+        Err(ReadCommandError::TooLarge) => {
+            write_error(stream, /* ENOMEM */ 12)?;
             bail!("Failed to read command, command too large.");
         }
-        None => return Ok(()),
-        Some(Ok(c)) => c,
+        Err(ReadCommandError::EOF) => return Ok(()),
+        Ok(c) => c,
     };
     let wg = match wg.upgrade() {
         None => {
-            await!(write_error(write_half, /* ENXIO */ 6))?;
+            write_error(stream.clone(), /* ENXIO */ 6)?;
             bail!("WgState no longer available");
         }
         Some(wg) => wg,
     };
     match c {
         WgIpcCommand::Get => {
-            await!(write_wg_state(write_half, wg.get_state()))?;
+            write_wg_state(stream.clone(), &wg.get_state())?;
         }
         WgIpcCommand::Set(sc) => {
-            process_wg_set(&wg, sc);
-            await!(write_error(write_half, 0))?;
+            sender
+                .send(Box::new(move || {
+                    process_wg_set(&wg, sc);
+                })).wait()
+                .unwrap();
+            write_error(stream.clone(), 0)?;
         }
     }
     Ok(())

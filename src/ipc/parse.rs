@@ -15,21 +15,17 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use bytes::BytesMut;
 use combine::parser::byte::{byte, bytes, digit};
 use combine::parser::range::recognize;
 use combine::parser::repeat::skip_until;
 use combine::*;
+use crate::ipc::commands::*;
 use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::X25519Key;
 use failure::Error;
 use hex::decode;
-use std::fmt::Debug;
 use std::net::IpAddr;
 use std::str::FromStr;
-use tokio::codec::Decoder;
-
-use super::commands::*;
 
 struct HexArr<A>(A);
 
@@ -267,52 +263,6 @@ where
     get_command.or(set_command_parser().map(WgIpcCommand::Set))
 }
 
-#[derive(Debug)]
-pub enum ReadCommandError {
-    TooLarge,
-    ParseError(Box<dyn Debug + 'static + Send>),
-    IoError(std::io::Error),
-}
-
-impl From<std::io::Error> for ReadCommandError {
-    fn from(e: std::io::Error) -> Self {
-        ReadCommandError::IoError(e)
-    }
-}
-
-#[derive(Default)]
-pub struct CommandDecoder {}
-
-impl Decoder for CommandDecoder {
-    type Item = WgIpcCommand;
-    type Error = ReadCommandError;
-
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        if src.is_empty() {
-            return Ok(None);
-        }
-
-        if src.len() > 1024 * 1024 {
-            return Err(ReadCommandError::TooLarge);
-        }
-
-        for i in 0..src.len() - 1 {
-            if src[i] == b'\n' && src[i + 1] == b'\n' {
-                let chunk = src.split_to(i + 2);
-                match command_parser().parse(&chunk[..]) {
-                    Ok((c, _)) => return Ok(Some(c)),
-                    Err(e) => return Err(ReadCommandError::ParseError(Box::new(e))),
-                };
-            }
-        }
-        Ok(None)
-    }
-}
-
-pub fn command_decoder() -> CommandDecoder {
-    Default::default()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -344,18 +294,5 @@ mod tests {
         let input = &include_bytes!("example.txt")[..];
         println!("Result: {:?}", command_parser().easy_parse(input));
         assert!(command_parser().easy_parse(input).is_ok());
-    }
-
-    #[test]
-    fn test_decoder() {
-        use bytes::BufMut;
-
-        let mut decoder = command_decoder();
-        let mut buf = BytesMut::with_capacity(4096);
-        buf.put("get=1\n".as_bytes());
-        assert_eq!(decoder.decode(&mut buf).unwrap(), None);
-        buf.put("\ng".as_bytes());
-        assert_eq!(decoder.decode(&mut buf).unwrap(), Some(WgIpcCommand::Get));
-        assert_eq!(buf, "g".as_bytes());
     }
 }

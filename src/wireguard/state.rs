@@ -73,9 +73,6 @@ pub struct WgState {
     pub(crate) socket: RwLock<Arc<UdpSocket>>,
     pub(crate) socket_sender: Mutex<Option<Sender<UdpSocket>>>,
     pub(crate) tun: AsyncTun,
-
-    // Save the executor so that more tasks can be spawn from the sync world.
-    pub(crate) executor: Mutex<Option<Box<tokio::executor::Executor + Send + Sync>>>,
 }
 
 impl Drop for WgState {
@@ -579,14 +576,12 @@ impl WgState {
             socket: RwLock::new(Arc::new(socket)),
             socket_sender: Mutex::new(None),
             tun,
-            executor: Mutex::new(None),
         });
         Ok(wg)
     }
 
     pub async fn run(wg: Arc<WgState>) {
         let source = CancellationTokenSource::new();
-        *wg.executor.lock().unwrap() = Some(Box::new(tokio::executor::DefaultExecutor::current()));
         {
             let wg = wg.clone();
             source.spawn_async(
@@ -624,23 +619,8 @@ impl WgState {
     }
 
     /// Add a pper.
-    pub fn add_peer(self: &Arc<Self>, public_key: &X25519Pubkey) {
-        // Adding a peer involves spawning new tasks, so execute it in an async context.
-        use tokio::async_await::compat::backward::Compat;
-
-        let wg = self.clone();
-        let public_key = *public_key;
-        self.executor
-            .lock()
-            .unwrap()
-            .as_mut()
-            .unwrap()
-            .spawn(Box::new(Compat::new(
-                async move {
-                    wg_add_peer(&wg, &public_key).unwrap();
-                    Ok(())
-                },
-            ))).unwrap();
+    pub fn add_peer(self: &Arc<Self>, public_key: &X25519Pubkey) -> Result<(), Error> {
+        wg_add_peer(self, public_key)
     }
 
     fn find_peer_by_id(&self, id: Id) -> Option<SharedPeerState> {
@@ -744,11 +724,7 @@ impl WgState {
     pub fn set_port(&self, mut new_port: u16) -> Result<(), Error> {
         let new_socket = WgState::prepare_socket(&mut new_port, self.info.read().unwrap().fwmark)?;
         let sender = self.socket_sender.lock().unwrap().as_ref().unwrap().clone();
-        tokio::spawn_async(
-            async move {
-                await!(sender.send(new_socket)).unwrap();
-            },
-        );
+        sender.send(new_socket).wait().unwrap();
         Ok(())
     }
 

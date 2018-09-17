@@ -22,7 +22,8 @@
     futures_api,
     pin,
     label_break_value,
-    arbitrary_self_types
+    arbitrary_self_types,
+    fnbox,
 )]
 
 macro_rules! sleep {
