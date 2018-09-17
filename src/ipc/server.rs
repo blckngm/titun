@@ -35,7 +35,11 @@ use tokio::prelude::*;
 use tokio::sync::mpsc::Sender;
 
 #[cfg(windows)]
-pub fn start_ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> {
+pub fn start_ipc_server(
+    wg: Weak<WgState>,
+    dev_name: &str,
+    sender: Sender<Box<FnBox() + Send + 'static>>,
+) -> Result<(), Error> {
     use crate::ipc::windows_named_pipe::*;
 
     let mut path = Path::new(r#"\\.\pipe\wireguard"#).join(dev_name);
@@ -46,7 +50,7 @@ pub fn start_ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
         .spawn(move || {
             for stream in listener.incoming() {
                 // We only serve one connection at a time.
-                serve(&wg, &stream.unwrap()).unwrap_or_else(|e| {
+                serve(&wg, &stream.unwrap(), sender.clone()).unwrap_or_else(|e| {
                     warn!("Error serving IPC connection: {:?}", e);
                 });
             }

@@ -25,8 +25,9 @@ use std::io::{Error, ErrorKind, Read, Result, Write};
 use std::mem::zeroed;
 use std::net::Ipv4Addr;
 use std::ptr::null_mut;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tokio::prelude::*;
+use tokio::sync::mpsc::*;
 
 use winapi::shared::winerror::ERROR_IO_PENDING;
 use winapi::um::fileapi::{CreateFileA, ReadFile, WriteFile, OPEN_EXISTING};
@@ -52,33 +53,55 @@ fn tap_control_code(request: u32, method: u32) -> u32 {
 }
 
 pub struct AsyncTun {
-    tun: Tun,
+    tun: Arc<Tun>,
+    tx: Sender<(Vec<u8>, Sender<(Result<usize>, Vec<u8>)>)>,
 }
 
-impl<'a> Read for &'a AsyncTun {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        self.tun.read(buf)
+impl Drop for AsyncTun {
+    fn drop(&mut self) {
+        self.tun.interrupt();
     }
 }
 
-impl<'a> Write for &'a AsyncTun {
-    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+impl AsyncTun {
+    fn new(tun: Tun) -> AsyncTun {
+        let tun = Arc::new(tun);
+        let (tx, rx) = channel(0);
+        let async_tun = AsyncTun {
+            tun: tun.clone(),
+            tx,
+        };
+        std::thread::Builder::new()
+            .name("tun-read".into())
+            .spawn(move || {
+                let mut rx = rx.wait();
+                while let Some(Ok((mut buffer, back_tx))) = rx.next() {
+                    let result = tun.read(&mut buffer);
+                    let _ = back_tx.send((result, buffer)).wait();
+                }
+            }).unwrap();
+        async_tun
+    }
+
+    pub async fn read_async<'a>(&'a self, buf: &'a mut [u8]) -> Result<usize> {
+        let (back_tx, mut back_rx) = channel(0);
+        let mut buf_vec = Vec::with_capacity(buf.len());
+        unsafe {
+            buf_vec.set_len(buf.len());
+        }
+        await!(self.tx.clone().send((buf_vec, back_tx))).unwrap();
+        let (result, buf_vec) = await!(back_rx.next()).unwrap().unwrap();
+        match result {
+            Ok(len) => {
+                buf[..len].copy_from_slice(&buf_vec[..len]);
+            }
+            _ => (),
+        }
+        result
+    }
+
+    pub async fn write_async<'a>(&'a self, buf: &'a [u8]) -> Result<usize> {
         self.tun.write(buf)
-    }
-
-    fn flush(&mut self) -> Result<()> {
-        Ok(())
-    }
-}
-
-impl<'a> AsyncRead for &'a AsyncTun {
-    // TODO.
-}
-
-impl<'a> AsyncWrite for &'a AsyncTun {
-    // TODO.
-    fn shutdown(&mut self) -> Result<Async<()>> {
-        Ok(Async::Ready(()))
     }
 }
 
@@ -293,7 +316,7 @@ impl Tun {
 
     pub fn open_async(alias: &str, network: NetworkConfig) -> Result<AsyncTun> {
         let tun = Tun::open(alias, network)?;
-        Ok(AsyncTun { tun })
+        Ok(AsyncTun::new(tun))
     }
 
     /// Read a packet from the device.
