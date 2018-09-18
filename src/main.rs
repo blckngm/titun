@@ -28,6 +28,7 @@ use failure::{Error, ResultExt};
 use std::io::{stdin, Read};
 use titun::run::*;
 use titun::wireguard::re_exports::{U8Array, DH, X25519};
+use tokio::async_await::compat::backward::Compat;
 
 fn main() -> Result<(), Error> {
     let default_panic_hook = std::panic::take_hook();
@@ -120,13 +121,14 @@ fn main() -> Result<(), Error> {
                 #[cfg(windows)]
                 network,
             };
-            tokio::run_async(
+            tokio::runtime::current_thread::block_on_all(Compat::new(
                 async move {
                     if let Err(err) = await!(run(config)) {
                         error!("Error: {}", err);
                     }
+                    Ok(()) as Result<(), ()>
                 },
-            )
+            )).unwrap();
         }
         _ => {
             unreachable!();
