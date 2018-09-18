@@ -45,7 +45,6 @@ mod imp {
     use failure::Error;
     use std::process::{Child, Command};
     use titun::wireguard::Tun;
-    use tokio::prelude::*;
 
     fn up_and_ping(name: &str) -> Result<Child, Error> {
         Command::new("ip")
@@ -65,13 +64,12 @@ mod imp {
     pub fn main() -> Result<(), Error> {
         let t = Tun::create_async(Some("tun-test-0"))?;
 
-        up_and_ping(t.get_ref().get_name())?;
+        up_and_ping(t.get_name())?;
 
         let mut buf = [0u8; 2048];
 
         tokio::run_async(
             async move {
-                let mut t = &t;
                 loop {
                     let l = await!(t.read_async(&mut buf)).unwrap();
                     println!("Got packet: {} bytes", l);

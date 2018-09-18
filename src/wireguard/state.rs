@@ -384,8 +384,7 @@ async fn udp_process_transport<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: Sock
         // Release peer.
     };
     if should_write {
-        let mut tun = &wg.tun;
-        await!(tun.write_async(&decrypted[..packet_len]));
+        await!(wg.tun.write_async(&decrypted[..packet_len]));
     }
     if should_set_endpoint {
         // Lock peer.
@@ -472,8 +471,7 @@ fn padding() {
 async fn tun_packet_processing(wg: Arc<WgState>) {
     let mut pkt = [0u8; BUFSIZE];
     loop {
-        let mut tun = &wg.tun;
-        let len = await!(tun.read_async(&mut pkt)).unwrap();
+        let len = await!(wg.tun.read_async(&mut pkt)).unwrap();
 
         let padded_len = pad_len(len);
         // Do not leak other packets' data!

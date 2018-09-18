@@ -19,7 +19,7 @@
 
 use failure::Error;
 use mio::event::Evented;
-use mio::unix::EventedFd;
+use mio::unix::{EventedFd, UnixReady};
 use mio::{Poll, PollOpt, Ready, Token};
 use nix::fcntl::{fcntl, open, FcntlArg, OFlag};
 use nix::libc::c_short;
@@ -29,6 +29,7 @@ use std::ffi::{CStr, CString};
 use std::io::{self, Error as IOError, Read, Write};
 use std::mem;
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
+use tokio::prelude::{future, Async, Future};
 use tokio::reactor::PollEvented2;
 
 mod ioctl {
@@ -46,7 +47,48 @@ mod ioctl {
     }
 }
 
-pub type AsyncTun = PollEvented2<Tun>;
+#[derive(Debug)]
+pub struct AsyncTun {
+    io: PollEvented2<Tun>,
+}
+
+impl AsyncTun {
+    pub fn get_name(&self) -> &str {
+        self.io.get_ref().get_name()
+    }
+
+    pub fn poll_read(&self, buf: &mut [u8]) -> Result<Async<usize>, IOError> {
+        let ready = Ready::readable() | UnixReady::error();
+        match self.io.poll_read_ready(ready) {
+            Ok(Async::Ready(_)) => (),
+            Ok(Async::NotReady) => return Ok(Async::NotReady),
+            Err(e) => return Err(e),
+        }
+        match self.io.get_ref().read(buf) {
+            Ok(x) => Ok(x.into()),
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                self.io.clear_read_ready(ready)?;
+                Ok(Async::NotReady)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn read_async<'a>(
+        &'a self,
+        buf: &'a mut [u8],
+    ) -> impl Future<Item = usize, Error = IOError> + 'a {
+        future::poll_fn(move || self.poll_read(buf))
+    }
+
+    pub async fn write_async<'a>(&'a self, buf: &'a [u8]) -> Result<usize, IOError> {
+        use tokio::prelude::AsyncWriteExt;
+
+        let mut io = &self.io;
+
+        await!(io.write_async(buf))
+    }
+}
 
 /// A linux tun device.
 #[derive(Debug)]
@@ -106,7 +148,9 @@ impl Tun {
     pub fn create_async(name: Option<&str>) -> Result<AsyncTun, Error> {
         let tun = Tun::create(name)?;
         tun.set_nonblocking(true)?;
-        Ok(PollEvented2::new(tun))
+        Ok(AsyncTun {
+            io: PollEvented2::new(tun),
+        })
     }
 
     /// Get name of this device. Should be the same name if you have
