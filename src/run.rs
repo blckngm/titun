@@ -35,6 +35,20 @@ pub struct Config {
 
 pub async fn run(c: Config) -> Result<(), Error> {
     let source0 = Arc::new(Mutex::new(CancellationTokenSource::new()));
+
+    // XXX: On windows, tokio-signal will spawn a never ended task
+    // and prevent the event loop from shuting down on itself.
+    #[cfg(windows)]
+    let token = source0.lock().unwrap().get_token();
+    #[cfg(windows)]
+    tokio::spawn_async(
+        async move {
+            await!(token.cancelled());
+            sleep!(ms 100);
+            std::process::exit(0);
+        },
+    );
+
     let source = source0.clone();
     source0.lock().unwrap().spawn_async(
         async move {
@@ -46,21 +60,25 @@ pub async fn run(c: Config) -> Result<(), Error> {
     );
     if c.exit_stdin_eof {
         let source = source0.clone();
-        source0.lock().unwrap().spawn_async(
-            async move {
-                let mut stdin = tokio::io::stdin();
+        // Cannot use tokio's stdin in single threaded runtime. So use an OS thread.
+        std::thread::Builder::new()
+            .name("wait-stdin".into())
+            .spawn(move || {
+                use std::io::{stdin, Read};
                 let mut buf = [0u8; 4096];
                 loop {
-                    match await!(stdin.read_async(&mut buf)) {
+                    match stdin().read(&mut buf) {
                         Ok(0) => break,
-                        Err(_) => break,
+                        Err(e) => {
+                            warn!("Read from stdin error: {}", e);
+                            break;
+                        }
                         _ => (),
                     }
                 }
                 debug!("Stdin EOF, shutting down.");
                 source.lock().unwrap().cancel();
-            },
-        );
+            }).unwrap();
     }
     #[cfg(unix)]
     let source = source0.clone();
