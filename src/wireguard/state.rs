@@ -723,6 +723,7 @@ impl WgState {
         let new_socket = WgState::prepare_socket(&mut new_port, self.info.read().unwrap().fwmark)?;
         let sender = self.socket_sender.lock().unwrap().as_ref().unwrap().clone();
         sender.send(new_socket).wait().unwrap();
+        self.info.write().unwrap().port = new_port;
         Ok(())
     }
 
