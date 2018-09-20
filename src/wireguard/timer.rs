@@ -175,7 +175,7 @@ mod tests {
 
     #[cfg(feature = "bench")]
     #[bench]
-    fn bench_timer_adjust_and_activate(b0: &mut ::test::Bencher) {
+    fn bench_timer_adjust_and_activate(b0: &mut crate::test::Bencher) {
         // Workaround lifetime issues.
         let b1 = Arc::new(Mutex::new(b0.clone()));
         let b = b1.clone();

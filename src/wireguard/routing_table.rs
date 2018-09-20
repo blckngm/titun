@@ -151,7 +151,7 @@ mod tests {
 
     #[cfg(feature = "bench")]
     #[bench]
-    fn bench_routing_table_four_levels(b: &mut ::test::Bencher) {
+    fn bench_routing_table_four_levels(b: &mut crate::test::Bencher) {
         let mut t = IpLookupTable::new();
         t.insert(Ipv4Addr::new(192, 168, 9, 233), 32, 99);
         t.insert(Ipv4Addr::new(192, 168, 9, 0), 24, 1);
@@ -163,7 +163,7 @@ mod tests {
 
     #[cfg(feature = "bench")]
     #[bench]
-    fn bench_routing_table_one_level(b: &mut ::test::Bencher) {
+    fn bench_routing_table_one_level(b: &mut crate::test::Bencher) {
         let mut t = IpLookupTable::new();
         t.insert(Ipv4Addr::new(192, 168, 9, 233), 32, 99);
         t.insert(Ipv4Addr::new(192, 168, 9, 3), 32, 1);

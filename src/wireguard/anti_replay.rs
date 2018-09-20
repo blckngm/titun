@@ -150,7 +150,7 @@ mod tests {
 
     #[cfg(feature = "bench")]
     #[bench]
-    fn bench_anti_replay_sequential(b: &mut ::test::Bencher) {
+    fn bench_anti_replay_sequential(b: &mut crate::test::Bencher) {
         let mut ar = AntiReplay::new();
         let mut seq = 0;
 
@@ -162,7 +162,7 @@ mod tests {
 
     #[cfg(feature = "bench")]
     #[bench]
-    fn bench_anti_replay_old(b: &mut ::test::Bencher) {
+    fn bench_anti_replay_old(b: &mut crate::test::Bencher) {
         let mut ar = AntiReplay::new();
         ar.check_and_update(12345);
         ar.check_and_update(11234);
@@ -174,7 +174,7 @@ mod tests {
 
     #[cfg(feature = "bench")]
     #[bench]
-    fn bench_anti_replay_large_skip(b: &mut ::test::Bencher) {
+    fn bench_anti_replay_large_skip(b: &mut crate::test::Bencher) {
         let mut ar = AntiReplay::new();
         let mut seq = 0;
 

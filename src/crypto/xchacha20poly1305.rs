@@ -95,7 +95,7 @@ mod benches {
     use crate::wireguard::re_exports::sodium_init;
 
     #[bench]
-    fn bench_encrypt(b: &mut ::test::Bencher) {
+    fn bench_encrypt(b: &mut crate::test::Bencher) {
         let k = [0u8; 32];
         let n = [1u8; 24];
         let ad = [2u8; 16];

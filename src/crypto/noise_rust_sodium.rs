@@ -228,7 +228,7 @@ mod benches {
     use sodiumoxide::randombytes::randombytes_into;
 
     #[bench]
-    fn chacha20poly1305(b: &mut ::test::Bencher) {
+    fn chacha20poly1305(b: &mut crate::test::Bencher) {
         const MSG_LEN: usize = 1400;
         let mut key = [0u8; 32];
         randombytes_into(&mut key);

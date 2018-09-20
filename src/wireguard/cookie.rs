@@ -159,7 +159,7 @@ mod tests {
 
     #[cfg(feature = "bench")]
     #[bench]
-    fn bench_cookie_reply(b: &mut ::test::Bencher) {
+    fn bench_cookie_reply(b: &mut crate::test::Bencher) {
         crate::wireguard::re_exports::sodium_init().unwrap();
 
         let mut pk = [0u8; 32];
