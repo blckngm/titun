@@ -396,11 +396,10 @@ pub async fn do_keep_alive1<'a>(peer0: &'a SharedPeerState, wg: &'a WgState) -> 
             None => return false,
         };
 
-        let t = peer.find_transport_to_send();
-        if t.is_none() {
-            return peer.really_should_handshake();
-        }
-        let t = t.unwrap();
+        let t = match peer.find_transport_to_send() {
+            Some(t) => t,
+            None => return peer.really_should_handshake(),
+        };
 
         let (result, should_handshake) = t.encrypt(&[], &mut out);
         let should_handshake = should_handshake && peer.really_should_handshake();

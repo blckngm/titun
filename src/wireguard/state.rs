@@ -158,12 +158,13 @@ fn udp_process_handshake_init_inner<'a>(
             let self_id = Id::gen();
             r.handshake_state
                 .push_psk(&peer.info.psk.unwrap_or([0u8; 32]));
-            let response = responde(&info, &mut r, self_id);
-            if response.is_err() {
-                error!("Failed to generate handshake response.");
-                return None;
-            }
-            let mut response = response.unwrap();
+            let mut response = match responde(&info, &mut r, self_id) {
+                Err(_) => {
+                    error!("Failed to generate handshake response.");
+                    return None;
+                }
+                Ok(r) => r,
+            };
 
             // Save mac1.
             peer.last_mac1 = Some(get_mac1(&response));
@@ -242,11 +243,13 @@ async fn udp_process_handshake_resp<'a>(wg: &'a WgState, p: &'a [u8], addr: Sock
                 // Lock peer.
                 let peer = peer0.read();
                 peer.count_recv(p.len());
-                if peer.handshake.is_none() {
-                    debug!("Get handshake response message, but don't know id.");
-                    return;
-                }
-                let handshake = peer.handshake.as_ref().unwrap();
+                let handshake = match peer.handshake {
+                    Some(ref h) => h,
+                    None => {
+                        debug!("Get handshake response message, but don't know id.");
+                        return;
+                    }
+                };
                 if handshake.self_id.id != self_id {
                     debug!("Get handshake response message, but don't know id.");
                     return;
@@ -333,14 +336,13 @@ async fn udp_process_transport<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: Sock
 
     let self_id = Id::from_slice(&p[4..8]);
 
-    let maybe_peer0 = wg.find_peer_by_id(self_id);
-
-    if maybe_peer0.is_none() {
-        debug!("Get transport message, but don't know id.");
-        return;
-    }
-
-    let peer0 = maybe_peer0.unwrap();
+    let peer0 = match wg.find_peer_by_id(self_id) {
+        Some(p) => p,
+        None => {
+            debug!("Get transport message, but don't know id.");
+            return;
+        }
+    };
 
     let mut buff: [u8; BUFSIZE] = unsafe { uninitialized() };
     let decrypted = &mut buff[..p.len() - 32];
@@ -478,23 +480,25 @@ async fn tun_packet_processing(wg: Arc<WgState>) {
         }
         let pkt = &pkt[..padded_len];
 
-        let parse_result = parse_ip_packet(pkt);
-        if parse_result.is_err() {
-            error!("Get packet from TUN device, but failed to parse it!");
-            continue;
-        }
-        let dst = parse_result.unwrap().2;
+        let dst = match parse_ip_packet(pkt) {
+            Ok((_, _, dst)) => dst,
+            Err(_) => {
+                error!("Get packet from TUN device, but failed to parse it!");
+                continue;
+            }
+        };
 
-        let peer = wg.find_peer_by_ip(dst);
-        if peer.is_none() {
-            // TODO ICMP no route to host.
-            match dst {
-                IpAddr::V6(i) if i.segments()[0] == 0xff02 => (),
-                _ => debug!("No route to host: {}", dst),
-            };
-            continue;
-        }
-        let peer0 = peer.unwrap();
+        let peer0 = match wg.find_peer_by_ip(dst) {
+            Some(peer) => peer,
+            None => {
+                // TODO ICMP no route to host.
+                match dst {
+                    IpAddr::V6(i) if i.segments()[0] == 0xff02 => (),
+                    _ => debug!("No route to host: {}", dst),
+                };
+                continue;
+            }
+        };
 
         let mut encrypted: [u8; BUFSIZE] = unsafe { uninitialized() };
         let encrypted = &mut encrypted[..pkt.len() + 32];
@@ -813,16 +817,10 @@ impl WgState {
     /// Returns whether a peer is actually removed.
     pub fn remove_peer(&self, peer_pubkey: &X25519Pubkey) -> bool {
         // Remove from pubkey_map.
-        // Lock pubkey_map.
-        let mut pubkey_map = self.pubkey_map.write();
-        let p = pubkey_map.remove(peer_pubkey);
-        if p.is_none() {
-            // Release pubkey_map.
-            return false;
-        }
-        let p = p.unwrap();
-        drop(pubkey_map);
-        // Release pubkey_map.
+        let p = match self.pubkey_map.write().remove(peer_pubkey) {
+            Some(p) => p,
+            None => return false,
+        };
 
         // Lock peer.
         let mut peer = p.write();

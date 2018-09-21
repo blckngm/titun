@@ -111,7 +111,7 @@ pub async fn run(c: Config) -> Result<(), Error> {
     let weak = ::std::sync::Arc::downgrade(&wg);
     source0.lock().spawn_async(WgState::run(wg));
 
-    let (tx, mut rx) = channel::<Box<FnBox() + Send + 'static>>(0);
+    let (tx, mut rx) = channel::<Box<dyn FnBox() + Send + 'static>>(0);
     source0.lock().spawn_async(
         async move {
             while let Some(action) = await!(rx.next()) {

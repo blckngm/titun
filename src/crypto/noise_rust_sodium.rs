@@ -44,7 +44,7 @@ impl X25519Key {
 }
 
 impl ::std::fmt::Debug for X25519Key {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> Result<(), ::std::fmt::Error> {
         write!(f, "X25519Key {{ key: {} }}", ::base64::encode(&self.key.0))
     }
 }

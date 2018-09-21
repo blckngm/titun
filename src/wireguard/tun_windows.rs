@@ -112,7 +112,7 @@ pub struct Tun {
 }
 
 impl Debug for Tun {
-    fn fmt(&self, f: &mut Formatter) -> ::std::result::Result<(), ::std::fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> ::std::result::Result<(), ::std::fmt::Error> {
         write!(f, "Tun {{ handle = {:?} }}", self.handle.0)
     }
 }

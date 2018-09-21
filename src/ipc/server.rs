@@ -38,7 +38,7 @@ use tokio::sync::mpsc::Sender;
 pub fn start_ipc_server(
     wg: Weak<WgState>,
     dev_name: &str,
-    sender: Sender<Box<FnBox() + Send + 'static>>,
+    sender: Sender<Box<dyn FnBox() + Send + 'static>>,
 ) -> Result<(), Error> {
     use crate::ipc::windows_named_pipe::*;
 
@@ -214,7 +214,7 @@ fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
 pub fn serve<S>(
     wg: &Weak<WgState>,
     stream: S,
-    sender: Sender<Box<FnBox() + Send + 'static>>,
+    sender: Sender<Box<dyn FnBox() + Send + 'static>>,
 ) -> Result<(), Error>
 where
     S: Read + Write + Clone,
