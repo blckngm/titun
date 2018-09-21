@@ -19,13 +19,14 @@
 
 //! Tap-windows TUN devices support.
 
+use parking_lot::Mutex;
 use std::ffi::CString;
 use std::fmt::{Debug, Formatter};
 use std::io::{Error, ErrorKind, Read, Result, Write};
 use std::mem::zeroed;
 use std::net::Ipv4Addr;
 use std::ptr::null_mut;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::prelude::*;
 use tokio::sync::mpsc::*;
 
@@ -91,11 +92,8 @@ impl AsyncTun {
         }
         await!(self.tx.clone().send((buf_vec, back_tx))).unwrap();
         let (result, buf_vec) = await!(back_rx.next()).unwrap().unwrap();
-        match result {
-            Ok(len) => {
-                buf[..len].copy_from_slice(&buf_vec[..len]);
-            }
-            _ => (),
+        if let Ok(len) = result {
+            buf[..len].copy_from_slice(&buf_vec[..len]);
         }
         result
     }
@@ -325,7 +323,7 @@ impl Tun {
     pub fn read(&self, buf: &mut [u8]) -> Result<usize> {
         let mut bytes_read = 0;
         unsafe {
-            let mut ow = self.read_overlapped.lock().unwrap();
+            let mut ow = self.read_overlapped.lock();
             let o = &mut ow.o;
             let result = ReadFile(
                 self.handle.0,
@@ -367,7 +365,7 @@ impl Tun {
     pub fn write(&self, buf: &[u8]) -> Result<usize> {
         let mut bytes_written = 0;
         unsafe {
-            let mut ow = self.write_overlapped.lock().unwrap();
+            let mut ow = self.write_overlapped.lock();
             let o = &mut ow.o;
             let result = WriteFile(
                 self.handle.0,

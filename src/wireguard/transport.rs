@@ -21,7 +21,8 @@ use crate::cancellation::CancellationTokenSource;
 use crate::crypto::noise_rust_sodium::ChaCha20Poly1305;
 use crate::wireguard::*;
 use noise_protocol::Cipher;
-use std::sync::{Arc, Mutex};
+use parking_lot::Mutex;
+use std::sync::Arc;
 use std::time::Instant;
 
 // That is, 2 ^ 64 - 2 ^ 16 - 1;
@@ -174,7 +175,7 @@ impl Transport {
             return (Err(()), false);
         }
 
-        if !self.recv_ar.lock().unwrap().check_and_update(counter) {
+        if !self.recv_ar.lock().check_and_update(counter) {
             return (Err(()), false);
         }
 

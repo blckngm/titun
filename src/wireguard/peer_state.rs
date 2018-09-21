@@ -20,10 +20,11 @@ use crate::atomic::{AtomicU64, Ordering};
 use crate::cancellation::CancellationTokenSource;
 use crate::wireguard::*;
 use failure::Error;
+use parking_lot::{Mutex, RwLock};
 use rand::{thread_rng, Rng};
 use std::collections::VecDeque;
 use std::net::SocketAddrV6;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use tai64::TAI64N;
 
@@ -89,7 +90,7 @@ impl PeerState {
         self.handshake = None;
         self.transports.clear();
 
-        self.queue.lock().unwrap().clear();
+        self.queue.lock().clear();
 
         self.rekey_no_recv.as_ref().unwrap().de_activate();
         self.keep_alive.as_ref().unwrap().de_activate();
@@ -198,7 +199,7 @@ impl PeerState {
             .unwrap()
             .adjust_and_activate_secs(REKEY_ATTEMPT_TIME);
 
-        let mut queue = self.queue.lock().unwrap();
+        let mut queue = self.queue.lock();
         while queue.len() >= QUEUE_SIZE {
             queue.pop_front();
         }
@@ -206,7 +207,7 @@ impl PeerState {
     }
 
     pub fn dequeue_all(&self) -> VecDeque<Vec<u8>> {
-        let mut queue = self.queue.lock().unwrap();
+        let mut queue = self.queue.lock();
         let mut out = VecDeque::with_capacity(QUEUE_SIZE);
         ::std::mem::swap(&mut out, &mut queue);
         out
@@ -218,7 +219,7 @@ impl PeerState {
 /// Returns `Err` if the peer's public key conflicts with any existing peers.
 pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Result<(), Error> {
     // Lock pubkey_map.
-    let mut pubkey_map = wg.pubkey_map.write().unwrap();
+    let mut pubkey_map = wg.pubkey_map.write();
 
     if pubkey_map.get(public_key).is_some() {
         bail!("Public key already exists.");
@@ -267,7 +268,7 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
     // Init timers.
     {
         // Lock peer.
-        let mut psw = ps.write().unwrap();
+        let mut psw = ps.write();
         psw.rekey_no_recv = timer!(async move |wg, ps| {
             debug!("Timer: rekey_no_recv.");
             do_handshake(&wg, &ps);
@@ -285,7 +286,7 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
             if should_handshake {
                 do_handshake(&wg, &ps);
             }
-            let p = ps.read().unwrap();
+            let p = ps.read();
             if let Some(i) = p.info.keep_alive_interval {
                 p.persistent_keep_alive
                     .as_ref()
@@ -295,11 +296,11 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
         });
         psw.stop_handshake = timer!(async move |_, ps: SharedPeerState| {
             debug!("Timer: stop handshake.");
-            ps.write().unwrap().handshake = None;
+            ps.write().handshake = None;
         });
         psw.clear = timer!(async move |_, ps: SharedPeerState| {
             debug!("Timer: clear.");
-            ps.write().unwrap().clear();
+            ps.write().clear();
         });
     }
 
@@ -318,10 +319,10 @@ pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
     let source = CancellationTokenSource::new();
 
     // Lock info.
-    let info = wg.info.read().unwrap();
+    let info = wg.info.read();
 
     // Lock peer.
-    let mut peer = peer0.write().unwrap();
+    let mut peer = peer0.write();
     if peer.handshake.is_some() {
         return;
     }
@@ -331,7 +332,7 @@ pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
 
     let id = Id::gen();
     // Lock id_map.
-    wg.id_map.write().unwrap().insert(id, peer0.clone());
+    wg.id_map.write().insert(id, peer0.clone());
     let handle = IdMapGuard::new(Arc::downgrade(&wg), id);
 
     let (mut init_msg, hs) = match initiate(&info, &peer.info, id) {
@@ -352,11 +353,11 @@ pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
             async move {
                 loop {
                     if let (Some(wg), Some(peer)) = (wg.upgrade(), peer.upgrade()) {
-                        let endpoint = peer.read().unwrap().info.endpoint;
+                        let endpoint = peer.read().info.endpoint;
                         if let Some(e) = endpoint {
                             info!("Handshake init.");
                             await!(wg.send_to_async(&init_msg, e));
-                            peer.read().unwrap().count_send(init_msg.len());
+                            peer.read().count_send(init_msg.len());
                         }
                     }
                     let delay_ms = thread_rng().gen_range(5_000, 5_300);
@@ -388,7 +389,7 @@ pub async fn do_keep_alive1<'a>(peer0: &'a SharedPeerState, wg: &'a WgState) -> 
     let endpoint;
     let mut out = [0u8; 32];
     let should_handshake = {
-        let peer = peer0.read().unwrap();
+        let peer = peer0.read();
 
         endpoint = match peer.get_endpoint() {
             Some(e) => e,

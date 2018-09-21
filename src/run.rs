@@ -21,8 +21,9 @@ use crate::systemd;
 use crate::wireguard::re_exports::{DH, X25519};
 use crate::wireguard::*;
 use failure::{Error, ResultExt};
+use parking_lot::Mutex;
 use std::boxed::FnBox;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::prelude::*;
 use tokio::sync::mpsc::*;
 
@@ -39,7 +40,7 @@ pub async fn run(c: Config) -> Result<(), Error> {
     // XXX: On windows, tokio-signal will spawn a never ended task
     // and prevent the event loop from shuting down on itself.
     #[cfg(windows)]
-    let token = source0.lock().unwrap().get_token();
+    let token = source0.lock().get_token();
     #[cfg(windows)]
     tokio::spawn_async(
         async move {
@@ -50,12 +51,12 @@ pub async fn run(c: Config) -> Result<(), Error> {
     );
 
     let source = source0.clone();
-    source0.lock().unwrap().spawn_async(
+    source0.lock().spawn_async(
         async move {
             let mut ctrl_c = await!(tokio_signal::ctrl_c()).unwrap();
             await!(ctrl_c.next());
             debug!("Received SIGINT or Ctrl-C, shutting down.");
-            source.lock().unwrap().cancel();
+            source.lock().cancel();
         },
     );
     if c.exit_stdin_eof {
@@ -77,20 +78,20 @@ pub async fn run(c: Config) -> Result<(), Error> {
                     }
                 }
                 debug!("Stdin EOF, shutting down.");
-                source.lock().unwrap().cancel();
+                source.lock().cancel();
             }).unwrap();
     }
     #[cfg(unix)]
     let source = source0.clone();
     #[cfg(unix)]
-    source0.lock().unwrap().spawn_async(
+    source0.lock().spawn_async(
         async move {
             use tokio_signal::unix::{Signal, SIGTERM};
 
             let mut term = await!(Signal::new(SIGTERM)).unwrap();
             await!(term.next());
             debug!("Received SIGTERM, shutting down.");
-            source.lock().unwrap().cancel();
+            source.lock().cancel();
         },
     );
 
@@ -108,10 +109,10 @@ pub async fn run(c: Config) -> Result<(), Error> {
     )?;
 
     let weak = ::std::sync::Arc::downgrade(&wg);
-    source0.lock().unwrap().spawn_async(WgState::run(wg));
+    source0.lock().spawn_async(WgState::run(wg));
 
     let (tx, mut rx) = channel::<Box<FnBox() + Send + 'static>>(0);
-    source0.lock().unwrap().spawn_async(
+    source0.lock().spawn_async(
         async move {
             while let Some(action) = await!(rx.next()) {
                 (action.unwrap())();

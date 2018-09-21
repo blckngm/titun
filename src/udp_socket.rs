@@ -16,11 +16,11 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use mio::net::UdpSocket as MioUdpSocket;
+use parking_lot::RwLock;
 use std::net::{Ipv6Addr, SocketAddr};
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
-use std::sync::RwLock;
 use tokio::prelude::*;
 use tokio::reactor::PollEvented2;
 use tokio::sync::mpsc::*;
@@ -130,7 +130,6 @@ impl UdpSocket {
         buf: &'a [u8],
         target: SocketAddr,
     ) -> Result<usize, std::io::Error> {
-        let target = target.into();
         // First try to send directly.
         match self.socket.get_ref().send_to(buf, &target) {
             Ok(len) => return Ok(len),
@@ -152,9 +151,8 @@ pub async fn udp_send_to_async<'a>(
     target: SocketAddr,
 ) -> Result<usize, std::io::Error> {
     let send_tx;
-    let target = target.into();
     {
-        let socket = socket.read().unwrap();
+        let socket = socket.read();
         match socket.socket.get_ref().send_to(buf, &target) {
             Ok(len) => return Ok(len),
             Err(e) => if e.kind() != std::io::ErrorKind::WouldBlock {

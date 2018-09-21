@@ -46,7 +46,7 @@ mod imp {
 #[cfg(not(target_pointer_width = "64"))]
 mod imp {
     use super::*;
-    use std::sync::Mutex;
+    use parking_lot::Mutex;
 
     pub struct AtomicU64 {
         inner: Mutex<u64>,
@@ -60,11 +60,11 @@ mod imp {
         }
 
         pub fn load(&self, _: Ordering) -> u64 {
-            *self.inner.lock().unwrap()
+            *self.inner.lock()
         }
 
         pub fn fetch_add(&self, val: u64, _: Ordering) -> u64 {
-            let mut lock = self.inner.lock().unwrap();
+            let mut lock = self.inner.lock();
             let prev = *lock;
             *lock = prev + val;
             prev

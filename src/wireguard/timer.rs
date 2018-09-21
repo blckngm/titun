@@ -20,9 +20,10 @@
 //! Use tokio-timer under the hood.
 
 use futures::sync::oneshot::{channel, Sender};
+use parking_lot::Mutex;
 use std::future::Future as Future03;
 use std::sync::atomic::{AtomicBool, Ordering::*};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::clock::now;
 use tokio::prelude::*;
@@ -52,12 +53,12 @@ where
     tokio::spawn_async(
         async move {
             loop {
-                match await!(future::poll_fn(|| {
+                let wait_result = await!(future::poll_fn(|| {
                     match rx.poll() {
                         Ok(Async::NotReady) => (),
                         _ => return Err(()),
                     }
-                    let mut delay = options.delay.lock().unwrap();
+                    let mut delay = options.delay.lock();
                     match delay.poll() {
                         Ok(Async::Ready(_)) => {
                             // Reset delay to get notified again.
@@ -75,9 +76,9 @@ where
                         Ok(Async::NotReady) => Ok(Async::NotReady),
                         Err(e) => panic!(e),
                     }
-                })) {
-                    Err(_) => break,
-                    _ => (),
+                }));
+                if wait_result.is_err() {
+                    break;
                 }
                 await!(action());
             }
@@ -92,7 +93,7 @@ where
 impl TimerHandle {
     /// Reset the timer to some timer later.
     pub fn adjust_and_activate(&self, delay: Duration) {
-        let mut d = self.options.delay.lock().unwrap();
+        let mut d = self.options.delay.lock();
         d.reset(now() + delay);
         self.options.activated.store(true, SeqCst);
     }

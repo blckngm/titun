@@ -24,12 +24,13 @@ use either::Either;
 use failure::Error;
 use fnv::FnvHashMap;
 use noise_protocol::U8Array;
+use parking_lot::{Mutex, RwLock};
 use sodiumoxide::randombytes::randombytes_into;
 use std::collections::HashMap;
 use std::mem::uninitialized;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::ops::Deref;
-use std::sync::{Arc, Mutex, RwLock, Weak};
+use std::sync::{Arc, Weak};
 use std::time::Instant;
 use tokio::prelude::*;
 use tokio::sync::mpsc::*;
@@ -90,14 +91,14 @@ pub struct IdMapGuard {
 impl Drop for IdMapGuard {
     fn drop(&mut self) {
         if let Some(wg) = self.wg.upgrade() {
-            if let Ok(mut id_map) = wg.id_map.try_write() {
+            if let Some(mut id_map) = wg.id_map.try_write() {
                 id_map.remove(&self.id);
                 return;
             }
             let id = self.id;
             tokio::spawn_async(
                 async move {
-                    wg.id_map.write().unwrap().remove(&id);
+                    wg.id_map.write().remove(&id);
                 },
             );
         }
@@ -120,7 +121,7 @@ fn udp_process_handshake_init_inner<'a>(
     }
 
     // Lock info.
-    let info = wg.info.read().unwrap();
+    let info = wg.info.read();
     if !verify_mac1(&info, p) {
         return None;
     }
@@ -142,7 +143,7 @@ fn udp_process_handshake_init_inner<'a>(
         let r_pubkey = r.handshake_state.get_rs().unwrap();
         if let Some(peer0) = wg.find_peer_by_pubkey(&r_pubkey) {
             // Lock peer.
-            let mut peer = peer0.write().unwrap();
+            let mut peer = peer0.write();
 
             peer.count_recv(p.len());
 
@@ -183,7 +184,7 @@ fn udp_process_handshake_init_inner<'a>(
             peer.handshake = None;
 
             // Lock id_map.
-            wg.id_map.write().unwrap().insert(self_id, peer0.clone());
+            wg.id_map.write().insert(self_id, peer0.clone());
             info!("Handshake successful as responder.");
             return Some(Either::Right(response));
         } else {
@@ -196,15 +197,12 @@ fn udp_process_handshake_init_inner<'a>(
 }
 
 async fn udp_process_handshake_init<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: SocketAddrV6) {
-    match udp_process_handshake_init_inner(wg, p, addr) {
-        Some(reply) => {
-            let reply = match reply {
-                Either::Left(ref l) => &l[..],
-                Either::Right(ref r) => &r[..],
-            };
-            await!(wg.send_to_async(reply, addr));
-        }
-        None => (),
+    if let Some(reply) = udp_process_handshake_init_inner(wg, p, addr) {
+        let reply = match reply {
+            Either::Left(ref l) => &l[..],
+            Either::Right(ref r) => &r[..],
+        };
+        await!(wg.send_to_async(reply, addr));
     }
 }
 
@@ -215,7 +213,7 @@ async fn udp_process_handshake_resp<'a>(wg: &'a WgState, p: &'a [u8], addr: Sock
         }
 
         // Lock info.
-        let info = wg.info.read().unwrap();
+        let info = wg.info.read();
         if !verify_mac1(&info, p) {
             return;
         }
@@ -242,7 +240,7 @@ async fn udp_process_handshake_resp<'a>(wg: &'a WgState, p: &'a [u8], addr: Sock
         if let Some(peer0) = wg.find_peer_by_id(self_id) {
             let (peer_id, hs) = {
                 // Lock peer.
-                let peer = peer0.read().unwrap();
+                let peer = peer0.read();
                 peer.count_recv(p.len());
                 if peer.handshake.is_none() {
                     debug!("Get handshake response message, but don't know id.");
@@ -265,10 +263,10 @@ async fn udp_process_handshake_resp<'a>(wg: &'a WgState, p: &'a [u8], addr: Sock
             };
             info!("Handshake successful as initiator.");
             // Lock id_map.
-            wg.id_map.write().unwrap().insert(self_id, peer0.clone());
+            wg.id_map.write().insert(self_id, peer0.clone());
             // Release id_map.
             // Lock peer.
-            let mut peer = peer0.write().unwrap();
+            let mut peer = peer0.write();
             let handle = peer.handshake.take().unwrap().self_id;
             let t = Transport::new_from_hs(handle, peer_id, &hs);
             peer.push_transport(t.clone());
@@ -316,7 +314,7 @@ fn udp_process_cookie_reply(wg: &WgState, p: &[u8]) {
 
     if let Some(peer) = wg.find_peer_by_id(self_id) {
         // Lock peer.
-        let mut peer = peer.write().unwrap();
+        let mut peer = peer.write();
         peer.count_recv(p.len());
         if let Some(mac1) = peer.last_mac1 {
             if let Ok(cookie) = process_cookie_reply(&peer.info.peer_pubkey, &mac1, p) {
@@ -353,7 +351,7 @@ async fn udp_process_transport<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: Sock
     let mut should_handshake = false;
     {
         // Lock peer.
-        let peer = peer0.read().unwrap();
+        let peer = peer0.read();
         peer.count_recv(p.len());
         if let Some(t) = peer.find_transport_by_id(self_id) {
             let decrypt_result = t.decrypt(p, decrypted);
@@ -388,7 +386,7 @@ async fn udp_process_transport<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: Sock
     }
     if should_set_endpoint {
         // Lock peer.
-        peer0.write().unwrap().set_endpoint(addr);
+        peer0.write().set_endpoint(addr);
     }
     if should_handshake {
         do_handshake(&wg, &peer0);
@@ -401,13 +399,13 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
     loop {
         use tokio::async_await::compat::forward::IntoAwaitable;
 
-        let socket = wg.socket.read().unwrap().clone();
+        let socket = wg.socket.read().clone();
         let mut recv = socket.recv_from_async(&mut p).into_awaitable();
         let mut recv_socket = receiver.next();
         let (len, addr) = select! {
             recv => recv.unwrap(),
             recv_socket => {
-                *wg.socket.write().unwrap() = Arc::new(recv_socket.unwrap().unwrap());
+                *wg.socket.write() = Arc::new(recv_socket.unwrap().unwrap());
                 continue;
             },
         };
@@ -505,7 +503,7 @@ async fn tun_packet_processing(wg: Arc<WgState>) {
 
         let should_handshake = {
             // Lock peer.
-            let peer = peer0.read().unwrap();
+            let peer = peer0.read();
             endpoint = match peer.get_endpoint() {
                 None => continue,
                 Some(e) => e,
@@ -586,14 +584,14 @@ impl WgState {
                 async move {
                     loop {
                         sleep!(secs 120);
-                        let mut cookie = wg.cookie_secret.write().unwrap();
+                        let mut cookie = wg.cookie_secret.write();
                         randombytes_into(&mut cookie[..]);
                     }
                 },
             );
         }
         let (sender, receiver) = channel(0);
-        *wg.socket_sender.lock().unwrap() = Some(sender);
+        *wg.socket_sender.lock() = Some(sender);
         source.spawn_async(udp_processing(wg.clone(), receiver));
         source.spawn_async(tun_packet_processing(wg));
         await!(future::empty::<(), ()>());
@@ -622,7 +620,7 @@ impl WgState {
     }
 
     fn find_peer_by_id(&self, id: Id) -> Option<SharedPeerState> {
-        self.id_map.read().unwrap().get(&id).cloned()
+        self.id_map.read().get(&id).cloned()
     }
 
     /// Check whether a peer exists.
@@ -631,28 +629,28 @@ impl WgState {
     }
 
     fn find_peer_by_pubkey(&self, pk: &X25519Pubkey) -> Option<SharedPeerState> {
-        self.pubkey_map.read().unwrap().get(pk).cloned()
+        self.pubkey_map.read().get(pk).cloned()
     }
 
     /// Find peer by ip address, consulting the routing tables.
     fn find_peer_by_ip(&self, addr: IpAddr) -> Option<SharedPeerState> {
         match addr {
-            IpAddr::V4(ip4) => self.rt4.read().unwrap().longest_match(ip4).cloned(),
-            IpAddr::V6(ip6) => self.rt6.read().unwrap().longest_match(ip6).cloned(),
+            IpAddr::V4(ip4) => self.rt4.read().longest_match(ip4).cloned(),
+            IpAddr::V6(ip6) => self.rt6.read().longest_match(ip6).cloned(),
         }
     }
 
     fn check_handshake_load(&self) -> bool {
-        self.load_monitor.lock().unwrap().check()
+        self.load_monitor.lock().check()
     }
 
     fn get_cookie_secret(&self) -> [u8; 32] {
-        *self.cookie_secret.read().unwrap()
+        *self.cookie_secret.read()
     }
 
     /// Remove all peers.
     pub fn remove_all_peers(&self) {
-        let peers: Vec<X25519Pubkey> = self.pubkey_map.read().unwrap().keys().cloned().collect();
+        let peers: Vec<X25519Pubkey> = self.pubkey_map.read().keys().cloned().collect();
         for p in peers {
             self.remove_peer(&p);
         }
@@ -662,13 +660,13 @@ impl WgState {
     pub fn get_state(&self) -> WgStateOut {
         let peers = {
             // Lock pubkey map.
-            let pubkey_map = self.pubkey_map.read().unwrap();
+            let pubkey_map = self.pubkey_map.read();
 
             pubkey_map
                 .values()
                 .map(|p| {
                     // Lock peer.
-                    let peer = p.read().unwrap();
+                    let peer = p.read();
 
                     PeerStateOut {
                         public_key: peer.info.peer_pubkey,
@@ -686,7 +684,7 @@ impl WgState {
         };
 
         // Lock info.
-        let info = self.info.read().unwrap();
+        let info = self.info.read();
         WgStateOut {
             private_key: info.key.clone(),
             peers,
@@ -701,14 +699,14 @@ impl WgState {
     /// All existing sessions and handshakes will be cleared.
     pub fn set_key(&self, key: X25519Key) {
         // Lock info.
-        let mut info = self.info.write().unwrap();
+        let mut info = self.info.write();
 
         // Lock pubkey map.
-        let pubkey_map = self.pubkey_map.read().unwrap();
+        let pubkey_map = self.pubkey_map.read();
 
         for p in pubkey_map.values() {
             // Lock peer.
-            p.write().unwrap().clear();
+            p.write().clear();
             // Release peer.
         }
 
@@ -720,20 +718,20 @@ impl WgState {
 
     /// Change listen port.
     pub fn set_port(&self, mut new_port: u16) -> Result<(), Error> {
-        let new_socket = WgState::prepare_socket(&mut new_port, self.info.read().unwrap().fwmark)?;
-        let sender = self.socket_sender.lock().unwrap().as_ref().unwrap().clone();
+        let new_socket = WgState::prepare_socket(&mut new_port, self.info.read().fwmark)?;
+        let sender = self.socket_sender.lock().as_ref().unwrap().clone();
         sender.send(new_socket).wait().unwrap();
-        self.info.write().unwrap().port = new_port;
+        self.info.write().port = new_port;
         Ok(())
     }
 
     /// Set fwmark of the UDP socket.
     pub fn set_fwmark(&self, new_fwmark: u32) -> Result<(), Error> {
-        let mut info = self.info.write().unwrap();
+        let mut info = self.info.write();
         if info.fwmark == new_fwmark {
             return Ok(());
         }
-        set_fwmark(self.socket.read().unwrap().deref().deref(), new_fwmark)?;
+        set_fwmark(self.socket.read().deref().deref(), new_fwmark)?;
         info.fwmark = new_fwmark;
         Ok(())
     }
@@ -746,7 +744,7 @@ impl WgState {
             .ok_or_else(|| format_err!("Peer not found"))?;
 
         // Lock peer.
-        let mut peer = peer0.write().unwrap();
+        let mut peer = peer0.write();
 
         if let Some(psk) = command.preshared_key {
             peer.clear();
@@ -771,9 +769,9 @@ impl WgState {
 
         if command.replace_allowed_ips || !command.allowed_ips.is_empty() {
             // Lock rt4.
-            let mut rt4 = self.rt4.write().unwrap();
+            let mut rt4 = self.rt4.write();
             // Lock rt6.
-            let mut rt6 = self.rt6.write().unwrap();
+            let mut rt6 = self.rt6.write();
 
             if command.replace_allowed_ips {
                 for &(a, m) in &peer.info.allowed_ips {
@@ -792,7 +790,7 @@ impl WgState {
                 };
                 let should_add = if let Some(old_peer) = old_peer {
                     if !Arc::ptr_eq(&old_peer, &peer0) {
-                        let his_allowed_ips = &mut old_peer.write().unwrap().info.allowed_ips;
+                        let his_allowed_ips = &mut old_peer.write().info.allowed_ips;
                         let i = his_allowed_ips.iter().position(|x| *x == (a, m)).unwrap();
                         his_allowed_ips.remove(i);
                         true
@@ -816,7 +814,7 @@ impl WgState {
     pub fn remove_peer(&self, peer_pubkey: &X25519Pubkey) -> bool {
         // Remove from pubkey_map.
         // Lock pubkey_map.
-        let mut pubkey_map = self.pubkey_map.write().unwrap();
+        let mut pubkey_map = self.pubkey_map.write();
         let p = pubkey_map.remove(peer_pubkey);
         if p.is_none() {
             // Release pubkey_map.
@@ -827,16 +825,16 @@ impl WgState {
         // Release pubkey_map.
 
         // Lock peer.
-        let mut peer = p.write().unwrap();
+        let mut peer = p.write();
         // This will remove peer from `id_map` through `IdMapGuard`.
         peer.clear();
 
         // Remove from rt4 / rt6.
 
         // Lock rt4.
-        let mut rt4 = self.rt4.write().unwrap();
+        let mut rt4 = self.rt4.write();
         // Lock rt6.
-        let mut rt6 = self.rt6.write().unwrap();
+        let mut rt6 = self.rt6.write();
         for &(a, m) in &peer.info.allowed_ips {
             match a {
                 IpAddr::V4(a) => rt4.remove(a, m),

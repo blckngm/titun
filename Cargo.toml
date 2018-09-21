@@ -35,6 +35,7 @@ log = "0.4.3"
 mio = "0.6"
 nix = "0.11"
 noise-protocol = "0.0.5"
+parking_lot = "0.6"
 rand = "0.5.4"
 sodiumoxide = { package = "rust_sodium", version = "0.9.0" }
 libsodium_sys = { package = "rust_sodium-sys", version = "0.9.0" }
