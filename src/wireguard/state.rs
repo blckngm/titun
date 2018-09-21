@@ -397,7 +397,7 @@ async fn udp_process_transport<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: Sock
 
 /// Receiving loop.
 async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
-    let mut p = [0u8; BUFSIZE];
+    let mut p = vec![0u8; BUFSIZE];
     loop {
         use tokio::async_await::compat::forward::IntoAwaitable;
 
@@ -469,7 +469,7 @@ fn padding() {
 
 /// Sending thread loop.
 async fn tun_packet_processing(wg: Arc<WgState>) {
-    let mut pkt = [0u8; BUFSIZE];
+    let mut pkt = vec![0u8; BUFSIZE];
     loop {
         let len = await!(wg.tun.read_async(&mut pkt)).unwrap();
 
