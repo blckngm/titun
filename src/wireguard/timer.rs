@@ -191,11 +191,11 @@ mod tests {
                     })
                 };
 
-                b.lock().unwrap().iter(|| {
+                b.lock().iter(|| {
                     t.adjust_and_activate(Duration::from_secs(10));
                 });
             },
         );
-        *b0 = b1.lock().unwrap().clone();
+        *b0 = b1.lock().clone();
     }
 }

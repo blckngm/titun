@@ -76,7 +76,7 @@ impl Transport {
             not_too_old: AtomicBool::new(true),
             send_key: sk,
             recv_key: rk,
-            created: Instant::now(),
+            created: tokio::clock::now(),
             recv_ar: Mutex::new(AntiReplay::new()),
             send_counter: AtomicU64::new(0),
             source: CancellationTokenSource::new(),
@@ -150,42 +150,40 @@ impl Transport {
     /// should rekey.
     ///
     /// Length: out.len() + 32 = msg.len().
-    pub fn decrypt(&self, msg: &[u8], out: &mut [u8]) -> (Result<(), ()>, bool) {
+    pub fn decrypt(&self, msg: &[u8], out: &mut [u8]) -> Result<bool, ()> {
         if msg.len() < 32 {
-            return (Err(()), false);
+            return Err(());
         }
 
         if !self.not_too_old.load(Ordering::Relaxed) {
-            return (Err(()), false);
+            return Err(());
         }
 
         if msg[0..4] != [4, 0, 0, 0] {
-            return (Err(()), false);
+            return Err(());
         }
 
         let counter = LittleEndian::read_u64(&msg[8..16]);
 
         if counter >= REJECT_AFTER_MESSAGES {
-            return (Err(()), false);
+            return Err(());
         }
 
         if <ChaCha20Poly1305 as Cipher>::decrypt(&self.recv_key, counter, &[], &msg[16..], out)
             .is_err()
         {
-            return (Err(()), false);
+            return Err(());
         }
 
         if !self.recv_ar.lock().check_and_update(counter) {
-            return (Err(()), false);
+            return Err(());
         }
 
-        let should_handshake = if !self.is_initiator {
+        if !self.is_initiator {
             self.has_received.store(true, Ordering::Relaxed);
-            self.should_handshake.load(Ordering::Relaxed)
+            Ok(self.should_handshake.load(Ordering::Relaxed))
         } else {
-            false
-        };
-
-        (Ok(()), should_handshake)
+            Ok(false)
+        }
     }
 }

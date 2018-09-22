@@ -31,7 +31,6 @@ use std::mem::uninitialized;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
-use std::time::Instant;
 use tokio::prelude::*;
 use tokio::sync::mpsc::*;
 
@@ -321,7 +320,7 @@ fn udp_process_cookie_reply(wg: &WgState, p: &[u8]) {
         peer.count_recv(p.len());
         if let Some(mac1) = peer.last_mac1 {
             if let Ok(cookie) = process_cookie_reply(&peer.info.peer_pubkey, &mac1, p) {
-                peer.cookie = Some((cookie, Instant::now()));
+                peer.cookie = Some((cookie, tokio::clock::now()));
             } else {
                 debug!("Process cookie reply: auth/decryption failed.");
             }
@@ -356,29 +355,29 @@ async fn udp_process_transport<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: Sock
         let peer = peer0.read();
         peer.count_recv(p.len());
         if let Some(t) = peer.find_transport_by_id(self_id) {
-            let decrypt_result = t.decrypt(p, decrypted);
-            if decrypt_result.1 {
-                should_handshake = peer.really_should_handshake();
-            }
-            if decrypt_result.0.is_ok() {
-                peer.on_recv(decrypted.is_empty());
-                if peer.info.endpoint != Some(addr) {
-                    should_set_endpoint = true;
-                }
-                if let Ok((len, src, _)) = parse_ip_packet(decrypted) {
-                    // Reverse path filtering.
-                    let peer1 = wg.find_peer_by_ip(src);
-                    if peer1.is_none() || !Arc::ptr_eq(&peer0, &peer1.unwrap()) {
-                        debug!("Get transport message: allowed IPs check failed.");
-                    } else if len as usize <= decrypted.len() {
-                        should_write = true;
-                        packet_len = len as usize;
-                    } else {
-                        debug!("Get transport message: packet truncated?");
+            match t.decrypt(p, decrypted) {
+                Ok(h) => {
+                    should_handshake = h && peer.really_should_handshake();
+                    peer.on_recv(decrypted.is_empty());
+                    if peer.info.endpoint != Some(addr) {
+                        should_set_endpoint = true;
+                    }
+                    if let Ok((len, src, _)) = parse_ip_packet(decrypted) {
+                        // Reverse path filtering.
+                        let peer1 = wg.find_peer_by_ip(src);
+                        if peer1.is_none() || !Arc::ptr_eq(&peer0, &peer1.unwrap()) {
+                            debug!("Get transport message: allowed IPs check failed.");
+                        } else if len as usize <= decrypted.len() {
+                            should_write = true;
+                            packet_len = len as usize;
+                        } else {
+                            debug!("Get transport message: packet truncated?");
+                        }
                     }
                 }
-            } else {
-                debug!("Get transport message, decryption failed.");
+                Err(_) => {
+                    debug!("Get transport message, decryption failed.");
+                }
             }
         }
         // Release peer.
