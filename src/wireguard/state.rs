@@ -70,7 +70,7 @@ pub struct WgState {
     // The secret used to calc cookie.
     pub(crate) cookie_secret: RwLock<[u8; 32]>,
 
-    pub(crate) socket: RwLock<Arc<UdpSocket>>,
+    pub(crate) socket: RwLock<UdpSocket>,
     pub(crate) socket_sender: Mutex<Option<Sender<UdpSocket>>>,
     pub(crate) tun: AsyncTun,
 }
@@ -278,10 +278,7 @@ async fn udp_process_handshake_resp<'a>(wg: &'a WgState, p: &'a [u8], addr: Sock
             if queued_packets.is_empty() {
                 // Send a keep alive packet for key confirmation if there are
                 // nothing else to send.
-                peer.keep_alive
-                    .as_ref()
-                    .unwrap()
-                    .adjust_and_activate_secs(1);
+                peer.keep_alive.adjust_and_activate_secs(1);
             } else {
                 // Send queued packets.
                 for p in &queued_packets {
@@ -400,13 +397,12 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
     loop {
         use tokio::async_await::compat::forward::IntoAwaitable;
 
-        let socket = wg.socket.read().clone();
-        let mut recv = socket.recv_from_async(&mut p).into_awaitable();
+        let mut recv = future::poll_fn(|| wg.socket.read().poll_recv_from(&mut p)).into_awaitable();
         let mut recv_socket = receiver.next();
         let (len, addr) = select! {
             recv => recv.unwrap(),
             recv_socket => {
-                *wg.socket.write() = Arc::new(recv_socket.unwrap().unwrap());
+                *wg.socket.write() = recv_socket.unwrap().unwrap();
                 continue;
             },
         };
@@ -572,7 +568,7 @@ impl WgState {
             rt6: RwLock::new(IpLookupTable::new()),
             load_monitor: Mutex::new(LoadMonitor::new(HANDSHAKES_PER_SEC)),
             cookie_secret: RwLock::new(cookie),
-            socket: RwLock::new(Arc::new(socket)),
+            socket: RwLock::new(socket),
             socket_sender: Mutex::new(None),
             tun,
         });
@@ -761,12 +757,9 @@ impl WgState {
         if let Some(interval) = command.persistent_keepalive_interval {
             peer.info.keep_alive_interval = if interval > 0 { Some(interval) } else { None };
             if interval > 0 {
-                peer.persistent_keep_alive
-                    .as_ref()
-                    .unwrap()
-                    .adjust_and_activate_secs(5);
+                peer.persistent_keep_alive.adjust_and_activate_secs(5);
             } else {
-                peer.persistent_keep_alive.as_ref().unwrap().de_activate();
+                peer.persistent_keep_alive.de_activate();
             }
         }
 

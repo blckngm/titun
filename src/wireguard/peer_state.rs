@@ -24,11 +24,36 @@ use parking_lot::{Mutex, RwLock};
 use rand::{thread_rng, Rng};
 use std::collections::VecDeque;
 use std::net::SocketAddrV6;
+use std::ops::Deref;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use tai64::TAI64N;
 
 pub type SharedPeerState = Arc<RwLock<PeerState>>;
+
+pub struct InitLater<T> {
+    inner: Option<T>,
+}
+
+impl<T> From<T> for InitLater<T> {
+    fn from(t: T) -> InitLater<T> {
+        InitLater { inner: Some(t) }
+    }
+}
+
+impl<T> From<Option<T>> for InitLater<T> {
+    fn from(t: Option<T>) -> InitLater<T> {
+        InitLater { inner: t }
+    }
+}
+
+impl<T> Deref for InitLater<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        self.inner.as_ref().unwrap()
+    }
+}
 
 pub struct PeerState {
     pub info: PeerInfo,
@@ -45,15 +70,15 @@ pub struct PeerState {
     pub transports: ArrayVec<[Arc<Transport>; 3]>,
 
     // Rekey because of send but not recv in...
-    pub rekey_no_recv: Option<TimerHandle>,
+    pub rekey_no_recv: InitLater<TimerHandle>,
     // Keep alive because of recv but not send in...
-    pub keep_alive: Option<TimerHandle>,
+    pub keep_alive: InitLater<TimerHandle>,
     // Persistent keep-alive.
-    pub persistent_keep_alive: Option<TimerHandle>,
+    pub persistent_keep_alive: InitLater<TimerHandle>,
     // Stop handshake after REKEY_ATTEMPT_TIME.
-    pub stop_handshake: Option<TimerHandle>,
+    pub stop_handshake: InitLater<TimerHandle>,
     // Clear all sessions if no new handshake in REJECT_AFTER_TIME * 3.
-    pub clear: Option<TimerHandle>,
+    pub clear: InitLater<TimerHandle>,
 }
 
 pub struct Handshake {
@@ -92,17 +117,14 @@ impl PeerState {
 
         self.queue.lock().clear();
 
-        self.rekey_no_recv.as_ref().unwrap().de_activate();
-        self.keep_alive.as_ref().unwrap().de_activate();
-        self.clear.as_ref().unwrap().de_activate();
+        self.rekey_no_recv.de_activate();
+        self.keep_alive.de_activate();
+        self.clear.de_activate();
     }
 
     pub fn on_new_transport(&self) {
-        self.stop_handshake.as_ref().unwrap().de_activate();
-        self.clear
-            .as_ref()
-            .unwrap()
-            .adjust_and_activate_secs(3 * REJECT_AFTER_TIME);
+        self.stop_handshake.de_activate();
+        self.clear.adjust_and_activate_secs(3 * REJECT_AFTER_TIME);
     }
 
     /// Add `size` bytes to the received bytes counter.
@@ -116,35 +138,27 @@ impl PeerState {
     }
 
     pub fn on_recv(&self, is_keepalive: bool) {
-        self.rekey_no_recv.as_ref().unwrap().de_activate();
+        self.rekey_no_recv.de_activate();
         if !is_keepalive {
             self.keep_alive
-                .as_ref()
-                .unwrap()
                 .adjust_and_activate_if_not_activated(KEEPALIVE_TIMEOUT);
         }
     }
 
     pub fn on_send_transport(&self) {
-        self.keep_alive.as_ref().unwrap().de_activate();
+        self.keep_alive.de_activate();
         self.rekey_no_recv
-            .as_ref()
-            .unwrap()
             .adjust_and_activate_if_not_activated(KEEPALIVE_TIMEOUT + REKEY_TIMEOUT);
         if let Some(i) = self.info.keep_alive_interval {
             self.persistent_keep_alive
-                .as_ref()
-                .unwrap()
                 .adjust_and_activate_secs(u64::from(i));
         }
     }
 
     pub fn on_send_keepalive(&self) {
-        self.keep_alive.as_ref().unwrap().de_activate();
+        self.keep_alive.de_activate();
         if let Some(i) = self.info.keep_alive_interval {
             self.persistent_keep_alive
-                .as_ref()
-                .unwrap()
                 .adjust_and_activate_secs(u64::from(i));
         }
     }
@@ -195,8 +209,6 @@ impl PeerState {
 
     pub fn enqueue_packet(&self, p: &[u8]) {
         self.stop_handshake
-            .as_ref()
-            .unwrap()
             .adjust_and_activate_secs(REKEY_ATTEMPT_TIME);
 
         let mut queue = self.queue.lock();
@@ -241,11 +253,11 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
         tx_bytes: AtomicU64::new(0),
         queue: Mutex::new(VecDeque::with_capacity(QUEUE_SIZE)),
         transports: ArrayVec::new(),
-        rekey_no_recv: None,
-        keep_alive: None,
-        stop_handshake: None,
-        persistent_keep_alive: None,
-        clear: None,
+        rekey_no_recv: None.into(),
+        keep_alive: None.into(),
+        stop_handshake: None.into(),
+        persistent_keep_alive: None.into(),
+        clear: None.into(),
     };
     let ps = Arc::new(RwLock::new(ps));
 
@@ -253,7 +265,7 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
         ($action:expr) => {{
             let wg = Arc::downgrade(wg);
             let ps = Arc::downgrade(&ps);
-            Some(create_timer_async(move || {
+            create_timer_async(move || {
                 let wg = wg.clone();
                 let ps = ps.clone();
                 async move {
@@ -261,7 +273,7 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
                         await!($action(wg, ps));
                     }
                 }
-            }))
+            }).into()
         }};
     }
 
@@ -289,8 +301,6 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
             let p = ps.read();
             if let Some(i) = p.info.keep_alive_interval {
                 p.persistent_keep_alive
-                    .as_ref()
-                    .unwrap()
                     .adjust_and_activate_secs(u64::from(i));
             }
         });
@@ -374,13 +384,9 @@ pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
     });
 
     peer.stop_handshake
-        .as_ref()
-        .unwrap()
         .adjust_and_activate_if_not_activated(REKEY_ATTEMPT_TIME);
 
     peer.clear
-        .as_ref()
-        .unwrap()
         .adjust_and_activate_if_not_activated(3 * REJECT_AFTER_TIME);
 }
 

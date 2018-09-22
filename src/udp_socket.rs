@@ -66,7 +66,7 @@ impl UdpSocket {
         Ok(UdpSocket { socket, send_tx })
     }
 
-    fn poll_recv_from(&self, buf: &mut [u8]) -> Poll<(usize, SocketAddr), std::io::Error> {
+    pub fn poll_recv_from(&self, buf: &mut [u8]) -> Poll<(usize, SocketAddr), std::io::Error> {
         match self.socket.poll_read_ready(mio::Ready::readable()) {
             Ok(Async::NotReady) => return Ok(Async::NotReady),
             Ok(Async::Ready(_)) => (),
@@ -146,7 +146,7 @@ impl UdpSocket {
 }
 
 pub async fn udp_send_to_async<'a>(
-    socket: &'a RwLock<Arc<UdpSocket>>,
+    socket: &'a RwLock<UdpSocket>,
     buf: &'a [u8],
     target: SocketAddr,
 ) -> Result<usize, std::io::Error> {
