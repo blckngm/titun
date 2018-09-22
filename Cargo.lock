@@ -1255,7 +1255,7 @@ dependencies = [
 
 [[package]]
 name = "titun"
-version = "0.0.5"
+version = "0.0.6-preview"
 dependencies = [
  "arrayvec 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "base64 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",

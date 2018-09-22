@@ -6,7 +6,7 @@ authors = ["sopium"]
 license = "GPL-3.0"
 name = "titun"
 repository = "https://github.com/sopium/titun"
-version = "0.0.5"
+version = "0.0.6-preview"
 
 [[bin]]
 doc = false

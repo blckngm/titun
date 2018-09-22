@@ -64,9 +64,9 @@ fn main() -> Result<(), Error> {
     let sub_pubkey = SubCommand::with_name("pubkey").display_order(3);
 
     let version = if !env!("GIT_HASH").is_empty() {
-        concat!("0.0.5-", env!("GIT_HASH"))
+        concat!(clap::crate_version!(), "-", env!("GIT_HASH"))
     } else {
-        "0.0.5"
+        clap::crate_version!()
     };
 
     let app = App::new("titun")
