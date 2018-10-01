@@ -41,7 +41,7 @@ sodiumoxide = { package = "rust_sodium", version = "0.9.0" }
 libsodium_sys = { package = "rust_sodium-sys", version = "0.9.0" }
 socket2 = "0.3"
 tai64 = {version = "0.2", default-features = false}
-tokio-async-await = "0.1"
+tokio-async-await = "=0.1.2"
 tokio-signal = "0.2"
 vec_map = "0.8.1"
 
