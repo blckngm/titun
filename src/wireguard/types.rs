@@ -41,6 +41,8 @@ pub struct PeerInfo {
     /// Persistent keep-alive interval.
     /// Valid values: 1 - 0xfffe.
     pub keep_alive_interval: Option<u16>,
+    /// Allow roaming.
+    pub roaming: bool,
 }
 
 /// Config info about a WireGuard interface.

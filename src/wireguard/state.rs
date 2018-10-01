@@ -177,7 +177,9 @@ fn udp_process_handshake_init_inner<'a>(
                 r.peer_id,
                 &r.handshake_state,
             );
-            peer.set_endpoint(addr);
+            if peer.info.roaming {
+                peer.set_endpoint(addr);
+            }
             peer.push_transport(t);
             // Now that handshake is successful as responder, no need to do
             // handshake as initiator.
@@ -272,7 +274,9 @@ async fn udp_process_handshake_resp<'a>(wg: &'a WgState, p: &'a [u8], addr: Sock
             let handle = peer.handshake.take().unwrap().self_id;
             let t = Transport::new_from_hs(handle, peer_id, &hs);
             peer.push_transport(t.clone());
-            peer.set_endpoint(addr);
+            if peer.info.roaming {
+                peer.set_endpoint(addr);
+            }
 
             let queued_packets = peer.dequeue_all();
             if queued_packets.is_empty() {
@@ -356,7 +360,7 @@ async fn udp_process_transport<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: Sock
                 Ok(h) => {
                     should_handshake = h && peer.really_should_handshake();
                     peer.on_recv(decrypted.is_empty());
-                    if peer.info.endpoint != Some(addr) {
+                    if peer.info.endpoint != Some(addr) && peer.info.roaming {
                         should_set_endpoint = true;
                     }
                     if let Ok((len, src, _)) = parse_ip_packet(decrypted) {
@@ -752,6 +756,7 @@ impl WgState {
 
         if let Some(endpoint) = command.endpoint {
             peer.info.endpoint = Some(map_ipv4_to_ipv6(endpoint));
+            peer.info.roaming = false;
         }
 
         if let Some(interval) = command.persistent_keepalive_interval {

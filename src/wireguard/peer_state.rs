@@ -93,6 +93,7 @@ impl PeerState {
     }
 
     pub fn set_endpoint(&mut self, a: SocketAddrV6) {
+        assert!(!self.info.roaming);
         self.info.endpoint = Some(a)
     }
 
@@ -244,6 +245,7 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
             keep_alive_interval: None,
             psk: None,
             allowed_ips: vec![],
+            roaming: true,
         },
         last_handshake: None,
         last_mac1: None,

@@ -263,6 +263,7 @@ mod tests {
             endpoint: None,
             allowed_ips: vec![],
             keep_alive_interval: None,
+            roaming: true,
         };
 
         let si = Id::gen();
@@ -307,6 +308,7 @@ mod tests {
             endpoint: None,
             allowed_ips: vec![],
             keep_alive_interval: None,
+            roaming: true,
         };
 
         let si = Id::gen();
