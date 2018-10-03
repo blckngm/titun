@@ -116,7 +116,7 @@ after_build:
 
 test_script:
   - cargo test --locked --release
-  - cargo test --locked --release --no-default-features
+  - cargo test --locked --release --all-features
 
 artifacts:
   - path: titun-windows-gui\installer\Output\titun-setup.exe

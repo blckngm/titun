@@ -15,6 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
+use futures::sync::mpsc::*;
 use mio::net::UdpSocket as MioUdpSocket;
 use parking_lot::RwLock;
 use std::net::{Ipv6Addr, SocketAddr};
@@ -23,7 +24,6 @@ use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 use tokio::prelude::*;
 use tokio::reactor::PollEvented2;
-use tokio::sync::mpsc::*;
 
 /// Like tokio UdpSocket, but can be sent to from multiple tasks.
 pub struct UdpSocket {
@@ -133,9 +133,11 @@ impl UdpSocket {
         // First try to send directly.
         match self.socket.get_ref().send_to(buf, &target) {
             Ok(len) => return Ok(len),
-            Err(e) => if e.kind() != std::io::ErrorKind::WouldBlock {
-                return Err(e);
-            },
+            Err(e) => {
+                if e.kind() != std::io::ErrorKind::WouldBlock {
+                    return Err(e);
+                }
+            }
         }
         let (tx, mut rx) = channel(0);
         // If would block, send via queue.
@@ -155,9 +157,11 @@ pub async fn udp_send_to_async<'a>(
         let socket = socket.read();
         match socket.socket.get_ref().send_to(buf, &target) {
             Ok(len) => return Ok(len),
-            Err(e) => if e.kind() != std::io::ErrorKind::WouldBlock {
-                return Err(e);
-            },
+            Err(e) => {
+                if e.kind() != std::io::ErrorKind::WouldBlock {
+                    return Err(e);
+                }
+            }
         }
         send_tx = socket.send_tx.clone();
     }

@@ -275,7 +275,8 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
                         await!($action(wg, ps));
                     }
                 }
-            }).into()
+            })
+            .into()
         }};
     }
 

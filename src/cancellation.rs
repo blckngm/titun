@@ -15,11 +15,11 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
+use futures::sync::mpsc::*;
 use futures_util::FutureExt;
 use std::future::Future as Future03;
-use tokio::async_await::compat::backward::Compat;
 use tokio::prelude::*;
-use tokio::sync::mpsc::*;
+use tokio_async_await::compat::backward::Compat;
 
 pub struct CancellationTokenSource {
     receiver: Receiver<()>,

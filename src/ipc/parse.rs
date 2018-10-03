@@ -116,7 +116,8 @@ where
         byte(b'['),
         byte(b']'),
         from_str(recognize(skip_until(byte(b']')))),
-    ).map(IpAddr::V6);
+    )
+    .map(IpAddr::V6);
     let ip_addr = from_str(recognize(skip_until(newline().or(byte(b'/').map(|_| ())))));
     let prefix_len = optional(byte(b'/').with(u32_parser()));
     (ipv6_with_brackets.or(ip_addr), prefix_len)

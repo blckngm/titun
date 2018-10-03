@@ -19,6 +19,7 @@
 
 //! Tap-windows TUN devices support.
 
+use futures::sync::mpsc::*;
 use parking_lot::Mutex;
 use std::ffi::CString;
 use std::fmt::{Debug, Formatter};
@@ -28,7 +29,6 @@ use std::net::Ipv4Addr;
 use std::ptr::null_mut;
 use std::sync::Arc;
 use tokio::prelude::*;
-use tokio::sync::mpsc::*;
 
 use winapi::shared::winerror::ERROR_IO_PENDING;
 use winapi::um::fileapi::{CreateFileA, ReadFile, WriteFile, OPEN_EXISTING};
@@ -80,7 +80,8 @@ impl AsyncTun {
                     let result = tun.read(&mut buffer);
                     let _ = back_tx.send((result, buffer)).wait();
                 }
-            }).unwrap();
+            })
+            .unwrap();
         async_tun
     }
 

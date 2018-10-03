@@ -23,8 +23,8 @@ use crate::ipc::parse::*;
 use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::{SetPeerCommand, WgState, WgStateOut};
 use failure::{Error, ResultExt};
+use futures::sync::mpsc::Sender;
 use hex::encode;
-use std::boxed::FnBox;
 use std::fmt::Debug;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::Path;
@@ -32,13 +32,13 @@ use std::sync::{Arc, Weak};
 use std::thread::Builder;
 use std::time::SystemTime;
 use tokio::prelude::*;
-use tokio::sync::mpsc::Sender;
+use tokio_async_await::compat::backward::Compat;
 
 #[cfg(windows)]
 pub fn start_ipc_server(
     wg: Weak<WgState>,
     dev_name: &str,
-    sender: Sender<Box<dyn FnBox() + Send + 'static>>,
+    sender: Sender<Box<dyn Future<Item = (), Error = ()> + Send + 'static>>,
 ) -> Result<(), Error> {
     use crate::ipc::windows_named_pipe::*;
 
@@ -62,7 +62,7 @@ pub fn start_ipc_server(
 pub fn start_ipc_server(
     wg: Weak<WgState>,
     dev_name: &str,
-    sender: Sender<Box<FnBox() + Send + 'static>>,
+    sender: Sender<Box<dyn Future<Item = (), Error = ()> + Send + 'static>>,
 ) -> Result<(), Error> {
     use nix::sys::stat::{umask, Mode};
     use std::fs::{create_dir_all, remove_file};
@@ -175,12 +175,12 @@ fn write_error(stream: impl Write, errno: i32) -> Result<(), ::std::io::Error> {
     writer.flush()
 }
 
-fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
+async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
     if let Some(key) = command.private_key {
         wg.set_key(key);
     }
     if let Some(p) = command.listen_port {
-        wg.set_port(p).unwrap_or_else(|e| {
+        await!(wg.set_port(p)).unwrap_or_else(|e| {
             warn!("Failed to set port: {}", e);
         });
     }
@@ -207,14 +207,15 @@ fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
             allowed_ips: p.allowed_ips,
             persistent_keepalive_interval: p.persistent_keepalive_interval,
             replace_allowed_ips: p.replace_allowed_ips,
-        }).unwrap();
+        })
+        .unwrap();
     }
 }
 
 pub fn serve<S>(
     wg: &Weak<WgState>,
     stream: S,
-    sender: Sender<Box<dyn FnBox() + Send + 'static>>,
+    sender: Sender<Box<dyn Future<Item = (), Error = ()> + Send + 'static>>,
 ) -> Result<(), Error>
 where
     S: Read + Write + Clone,
@@ -248,9 +249,13 @@ where
         }
         WgIpcCommand::Set(sc) => {
             sender
-                .send(Box::new(move || {
-                    process_wg_set(&wg, sc);
-                })).wait()
+                .send(Box::new(Compat::new(
+                    async move {
+                        await!(process_wg_set(&wg, sc));
+                        Ok(())
+                    },
+                )))
+                .wait()
                 .unwrap();
             write_error(stream.clone(), 0)?;
         }

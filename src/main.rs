@@ -28,7 +28,7 @@ use failure::{Error, ResultExt};
 use std::io::{stdin, Read};
 use titun::run::*;
 use titun::wireguard::re_exports::{U8Array, DH, X25519};
-use tokio::async_await::compat::backward::Compat;
+use tokio_async_await::compat::backward::Compat;
 
 fn main() -> Result<(), Error> {
     let default_panic_hook = std::panic::take_hook();
@@ -47,7 +47,8 @@ fn main() -> Result<(), Error> {
                 .value_name("DEVICE_NAME")
                 .required(true)
                 .help("Device name"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("exit-stdin-eof")
                 .long("exit-stdin-eof")
                 .help("Exit if stdin is closed"),
@@ -128,7 +129,8 @@ fn main() -> Result<(), Error> {
                     }
                     Ok(()) as Result<(), ()>
                 },
-            )).unwrap();
+            ))
+            .unwrap();
         }
         _ => {
             unreachable!();

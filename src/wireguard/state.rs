@@ -23,6 +23,7 @@ use crate::wireguard::*;
 use either::Either;
 use failure::Error;
 use fnv::FnvHashMap;
+use futures::sync::mpsc::*;
 use noise_protocol::U8Array;
 use parking_lot::{Mutex, RwLock};
 use sodiumoxide::randombytes::randombytes_into;
@@ -32,7 +33,6 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
 use tokio::prelude::*;
-use tokio::sync::mpsc::*;
 
 // Some Constants.
 
@@ -399,7 +399,7 @@ async fn udp_process_transport<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: Sock
 async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
     let mut p = vec![0u8; BUFSIZE];
     loop {
-        use tokio::async_await::compat::forward::IntoAwaitable;
+        use tokio_async_await::compat::forward::IntoAwaitable;
 
         let mut recv = future::poll_fn(|| wg.socket.read().poll_recv_from(&mut p)).into_awaitable();
         let mut recv_socket = receiver.next();
@@ -682,7 +682,8 @@ impl WgState {
                         allowed_ips: peer.info.allowed_ips.clone(),
                     }
                     // Release peer.
-                }).collect()
+                })
+                .collect()
             // Release pubkey map.
         };
 
@@ -720,10 +721,10 @@ impl WgState {
     }
 
     /// Change listen port.
-    pub fn set_port(&self, mut new_port: u16) -> Result<(), Error> {
+    pub async fn set_port(&self, mut new_port: u16) -> Result<(), Error> {
         let new_socket = WgState::prepare_socket(&mut new_port, self.info.read().fwmark)?;
         let sender = self.socket_sender.lock().as_ref().unwrap().clone();
-        sender.send(new_socket).wait().unwrap();
+        await!(sender.send(new_socket)).unwrap();
         self.info.write().port = new_port;
         Ok(())
     }
@@ -779,7 +780,8 @@ impl WgState {
                     let p = match a {
                         IpAddr::V4(a) => rt4.remove(a, m),
                         IpAddr::V6(a) => rt6.remove(a, m),
-                    }.unwrap();
+                    }
+                    .unwrap();
                     assert!(Arc::ptr_eq(&p, &peer0));
                 }
                 peer.info.allowed_ips.clear();

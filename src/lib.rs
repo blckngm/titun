@@ -23,7 +23,7 @@
     pin,
     label_break_value,
     arbitrary_self_types,
-    fnbox,
+    fnbox
 )]
 
 macro_rules! sleep {
