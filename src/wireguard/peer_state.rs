@@ -93,7 +93,7 @@ impl PeerState {
     }
 
     pub fn set_endpoint(&mut self, a: SocketAddrV6) {
-        assert!(!self.info.roaming);
+        assert!(self.info.roaming);
         self.info.endpoint = Some(a)
     }
 
