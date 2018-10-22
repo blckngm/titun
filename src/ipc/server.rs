@@ -17,7 +17,6 @@
 
 // XXX: named pipe security???
 
-use combine::Parser;
 use crate::ipc::commands::*;
 use crate::ipc::parse::*;
 use crate::wireguard::re_exports::U8Array;
@@ -25,9 +24,9 @@ use crate::wireguard::{SetPeerCommand, WgState, WgStateOut};
 use failure::{Error, ResultExt};
 use futures::sync::mpsc::Sender;
 use hex::encode;
-use std::fmt::Debug;
-use std::io::{BufRead, BufReader, BufWriter, Read, Write};
+use std::io::{BufWriter, Read, Write};
 use std::path::Path;
+use std::pin::Unpin;
 use std::sync::{Arc, Weak};
 use std::thread::Builder;
 use std::time::SystemTime;
@@ -88,19 +87,6 @@ pub fn start_ipc_server(
     Ok(())
 }
 
-enum ReadCommandError {
-    EOF,
-    TooLarge,
-    ParseError(Box<dyn Debug>),
-    IoError(::std::io::Error),
-}
-
-impl From<::std::io::Error> for ReadCommandError {
-    fn from(e: ::std::io::Error) -> Self {
-        ReadCommandError::IoError(e)
-    }
-}
-
 fn write_wg_state(w: impl Write, state: &WgStateOut) -> Result<(), ::std::io::Error> {
     let mut w = BufWriter::with_capacity(4096, w);
     writeln!(w, "private_key={}", encode(state.private_key.as_slice()))?;
@@ -137,35 +123,6 @@ fn write_wg_state(w: impl Write, state: &WgStateOut) -> Result<(), ::std::io::Er
     writeln!(w, "errno=0")?;
     writeln!(w)?;
     w.flush()
-}
-
-fn read_command<R>(reader: &mut R) -> Result<WgIpcCommand, ReadCommandError>
-where
-    R: BufRead,
-{
-    let command_buf = {
-        let mut buffer = Vec::with_capacity(4096);
-        let mut line = Vec::with_capacity(128);
-        loop {
-            let len = reader.take(128).read_until(b'\n', &mut line)?;
-            buffer.append(&mut line);
-            if len <= 1 {
-                break;
-            }
-            if buffer.len() > 1024 * 1024 {
-                return Err(ReadCommandError::TooLarge);
-            }
-        }
-        buffer
-    };
-    if command_buf.is_empty() {
-        return Err(ReadCommandError::EOF);
-    }
-    let result = match command_parser().parse(&command_buf[..]) {
-        Ok((c, _)) => Ok(c),
-        Err(e) => Err(ReadCommandError::ParseError(Box::new(e))),
-    };
-    result
 }
 
 fn write_error(stream: impl Write, errno: i32) -> Result<(), ::std::io::Error> {
@@ -218,23 +175,14 @@ pub fn serve<S>(
     sender: Sender<Box<dyn Future<Item = (), Error = ()> + Send + 'static>>,
 ) -> Result<(), Error>
 where
-    S: Read + Write + Clone,
+    S: Read + Write + Clone + Unpin,
 {
-    let mut buf_reader = BufReader::with_capacity(4096, stream.clone());
-    let c = match read_command(&mut buf_reader) {
-        Err(ReadCommandError::IoError(e)) => {
-            bail!("IO Error: {}", e);
-        }
-        Err(ReadCommandError::ParseError(e)) => {
-            write_error(stream.clone(), /* EINVAL */ 22)?;
-            bail!("Failed to parse command: {:?}", e);
-        }
-        Err(ReadCommandError::TooLarge) => {
-            write_error(stream, /* ENOMEM */ 12)?;
-            bail!("Failed to read command, command too large.");
-        }
-        Err(ReadCommandError::EOF) => return Ok(()),
+    let c = match parse_command_sync(stream.clone().take(1024 * 1024)) {
         Ok(c) => c,
+        Err(e) => {
+            write_error(stream.clone(), /* EINVAL */ 22)?;
+            return Err(e);
+        }
     };
     let wg = match wg.upgrade() {
         None => {

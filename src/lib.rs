@@ -22,8 +22,7 @@
     futures_api,
     pin,
     label_break_value,
-    arbitrary_self_types,
-    fnbox
+    arbitrary_self_types
 )]
 
 macro_rules! sleep {
@@ -40,6 +39,17 @@ macro_rules! sleep {
     (ms $millis:expr) => {{
         use std::time::Duration;
         sleep!(Duration::from_millis($millis));
+    }};
+}
+
+macro_rules! block_on_all_async {
+    ($future:expr) => {{
+        use tokio_async_await::compat::backward::Compat;
+
+        tokio::runtime::current_thread::block_on_all(Compat::new(
+            async move { Ok(await!($future)) as Result<_, ()> },
+        ))
+        .unwrap()
     }};
 }
 

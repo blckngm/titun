@@ -15,253 +15,223 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use combine::parser::byte::{byte, bytes, digit};
-use combine::parser::range::recognize;
-use combine::parser::repeat::skip_until;
-use combine::*;
 use crate::ipc::commands::*;
 use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::X25519Key;
 use failure::Error;
 use hex::decode;
-use std::net::IpAddr;
-use std::str::FromStr;
+use std::pin::Unpin;
+use tokio::prelude::stream::Fuse;
+use tokio::prelude::*;
 
-struct HexArr<A>(A);
+struct Peekable<S: Stream> {
+    stream: Fuse<S>,
+    peeked: Option<S::Item>,
+}
 
-impl<A> FromStr for HexArr<A>
-where
-    A: U8Array,
-{
-    type Err = Error;
+impl<S: Stream> Stream for Peekable<S> {
+    type Item = S::Item;
+    type Error = S::Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let v = decode(s)?;
-        if v.len() != A::len() {
-            bail!("Wrong length");
+    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+        if let Some(item) = self.peeked.take() {
+            return Ok(Async::Ready(Some(item)));
         }
-        Ok(HexArr(A::from_slice(&v)))
+        self.stream.poll()
     }
 }
 
-#[inline(always)]
-fn newline<I>() -> impl Parser<Input = I, Output = ()>
-where
-    I: Stream<Item = u8>,
-    I::Error: ParseError<u8, I::Range, I::Position>,
-{
-    byte(b'\n')
-        .map(|_| ())
-        .or((byte(b'\r'), byte(b'\n')).map(|_| ()))
+impl<S: Stream + Unpin> Peekable<S> {
+    pub fn new(stream: S) -> Self {
+        Peekable {
+            stream: stream.fuse(),
+            peeked: None,
+        }
+    }
+
+    pub async fn peek(&mut self) -> Result<Option<&S::Item>, S::Error> {
+        if self.peeked.is_some() {
+            return Ok(self.peeked.as_ref());
+        }
+        match await!(self.stream.next()) {
+            Some(Ok(item)) => {
+                self.peeked = Some(item);
+                Ok(self.peeked.as_ref())
+            }
+            None => Ok(None),
+            Some(Err(e)) => Err(e),
+        }
+    }
 }
 
-#[inline(always)]
-fn hex_parser<'a, I, A>() -> impl Parser<Input = I, Output = A>
+async fn parse_peer<S>(stream: &mut Peekable<S>) -> Result<WgSetPeerCommand, Error>
 where
-    A: U8Array,
-    I: RangeStream<Item = u8, Range = &'a [u8]>,
-    I::Error: ParseError<u8, I::Range, I::Position>,
+    S: Stream<Item = String, Error = std::io::Error> + Unpin,
 {
-    from_str(recognize(skip_until(newline())))
-        .expected("base64 encoded value")
-        .map(|a: HexArr<A>| a.0)
-}
-
-#[inline(always)]
-fn string<'a, I>(r: &'static str) -> impl Parser<Input = I, Output = ()>
-where
-    I: Stream<Item = u8, Range = &'a [u8]>,
-    I::Error: ParseError<u8, I::Range, I::Position>,
-{
-    // Cannot use `range`, it does work with skip_many, choice and partial parsing.
-    bytes(r.as_bytes()).map(|_| ())
-}
-
-#[inline(always)]
-fn bool_parser<'a, I>() -> impl Parser<Input = I, Output = bool>
-where
-    I: RangeStream<Item = u8, Range = &'a [u8]>,
-    I::Error: ParseError<u8, I::Range, I::Position>,
-{
-    string("true")
-        .map(|_| true)
-        .or(string("false").map(|_| false))
-        .expected("boolean")
-}
-
-#[inline(always)]
-fn u16_parser<'a, I>() -> impl Parser<Input = I, Output = u16>
-where
-    I: RangeStream<Item = u8, Range = &'a [u8]>,
-    I::Error: ParseError<u8, I::Range, I::Position>,
-{
-    from_str(recognize(skip_many1(digit()))).expected("number")
-}
-
-#[inline(always)]
-fn u32_parser<'a, I>() -> impl Parser<Input = I, Output = u32>
-where
-    I: RangeStream<Item = u8, Range = &'a [u8]>,
-    I::Error: ParseError<u8, I::Range, I::Position>,
-{
-    from_str(recognize(skip_many1(digit()))).expected("number")
-}
-
-fn allowed_ip_parser<'a, I>() -> impl Parser<Input = I, Output = (IpAddr, u32)>
-where
-    I: RangeStream<Item = u8, Range = &'a [u8]>,
-    I::Error: ParseError<u8, I::Range, I::Position>,
-{
-    let ipv6_with_brackets = between(
-        byte(b'['),
-        byte(b']'),
-        from_str(recognize(skip_until(byte(b']')))),
-    )
-    .map(IpAddr::V6);
-    let ip_addr = from_str(recognize(skip_until(newline().or(byte(b'/').map(|_| ())))));
-    let prefix_len = optional(byte(b'/').with(u32_parser()));
-    (ipv6_with_brackets.or(ip_addr), prefix_len)
-        .map(|(a, p): (IpAddr, _)| (a, p.unwrap_or_else(|| if a.is_ipv4() { 32 } else { 128 })))
-}
-
-macro_rules! kv {
-    ($name:expr, $v:expr) => {
-        r#try(string(concat!($name, "="))).with($v).skip(newline())
+    let public_key_line = match await!(stream.next()) {
+        None => bail!("Unexpected end of input stream"),
+        Some(line_or_err) => line_or_err?,
     };
-}
-
-fn peer_command_parser<'a, I>() -> impl Parser<Input = I, Output = WgSetPeerCommand>
-where
-    I: RangeStream<Item = u8, Range = &'a [u8]>,
-    I::Error: ParseError<u8, I::Range, I::Position>,
-{
-    macro_rules! set_field {
-        ($name:tt, $v:expr) => {{
-            kv!(stringify!($name), $v).map(|x| {
-                Box::new(move |c: &mut WgSetPeerCommand| {
-                    c.$name = Clone::clone(&x);
-                }) as Box<dyn Fn(&mut WgSetPeerCommand)>
-            })
-        }};
+    let mut kv = public_key_line.splitn(2, '=');
+    let k = kv.next().unwrap();
+    let v = match kv.next() {
+        None => bail!("Invalid line: {}", public_key_line),
+        Some(v) => v,
+    };
+    if k != "public_key" {
+        bail!("Unexpected line {}, expected public_key", public_key_line);
     }
-    macro_rules! set_field_some {
-        ($name:tt, $v:expr) => {{
-            kv!(stringify!($name), $v).map(|x| {
-                Box::new(move |c: &mut WgSetPeerCommand| {
-                    c.$name = Some(Clone::clone(&x));
-                }) as Box<dyn Fn(&mut WgSetPeerCommand)>
-            })
-        }};
+    let v = decode(v)?;
+    if v.len() != 32 {
+        bail!("Invalid length public key");
     }
+    let public_key = U8Array::from_slice(&v[..]);
 
-    let public_key = kv!("public_key", hex_parser::<_, [u8; 32]>());
-    let remove = set_field!(remove, bool_parser());
-    let preshared_key = set_field_some!(preshared_key, hex_parser::<_, [u8; 32]>());
-    let endpoint = set_field_some!(endpoint, from_str(recognize(skip_until(newline()))));
-    let persistent_keepalive_interval =
-        set_field_some!(persistent_keepalive_interval, u16_parser());
-    let replace_allowed_ips = set_field!(replace_allowed_ips, bool_parser());
-
-    let allowed_ip = kv!("allowed_ip", allowed_ip_parser()).map(|a| {
-        Box::new(move |c: &mut WgSetPeerCommand| {
-            c.allowed_ips.push(a);
-        }) as Box<dyn Fn(&mut WgSetPeerCommand)>
-    });
-
-    (
+    let mut peer = WgSetPeerCommand {
         public_key,
-        many::<Vec<_>, _>(choice!(
-            remove,
-            preshared_key,
-            endpoint,
-            persistent_keepalive_interval,
-            replace_allowed_ips,
-            allowed_ip
-        )),
-    )
-        .map(move |(pk, fs)| {
-            let mut result = WgSetPeerCommand {
-                public_key: pk,
-                remove: false,
-                preshared_key: None,
-                endpoint: None,
-                persistent_keepalive_interval: None,
-                replace_allowed_ips: false,
-                allowed_ips: vec![],
-            };
-            for f in fs {
-                (f)(&mut result);
+        remove: false,
+        preshared_key: None,
+        endpoint: None,
+        persistent_keepalive_interval: None,
+        replace_allowed_ips: false,
+        allowed_ips: vec![],
+    };
+
+    loop {
+        let line = match await!(stream.peek())? {
+            None => bail!("Unexpected end of input stream"),
+            Some(line) => line,
+        };
+        if line.is_empty() || line.starts_with("public_key") {
+            break;
+        }
+        let mut kv = line.splitn(2, '=');
+        let k = kv.next().unwrap();
+        let v = match kv.next() {
+            None => bail!("Invalid line: {}", public_key_line),
+            Some(v) => v,
+        };
+        match k {
+            "remove" => peer.remove = v.parse()?,
+            "preshared_key" => {
+                let v = decode(v)?;
+                if v.len() != 32 {
+                    bail!("Invalid length for preshared key");
+                }
+                peer.preshared_key = Some(U8Array::from_slice(&v[..]));
             }
-            result
-        })
+            "endpoint" => peer.endpoint = Some(v.parse()?),
+            "persistent_keepalive_interval" => {
+                peer.persistent_keepalive_interval = Some(v.parse()?)
+            }
+            "replace_allowed_ips" => peer.replace_allowed_ips = v.parse()?,
+            "allowed_ip" => {
+                let mut parts = v.splitn(2, '/');
+                let ip = parts.next().unwrap();
+                let prefix_len = match parts.next() {
+                    None => bail!("Invalid allowed ip: {}", v),
+                    Some(x) => x,
+                };
+                let ip = ip.parse()?;
+                let prefix_len = prefix_len.parse()?;
+                peer.allowed_ips.push((ip, prefix_len));
+            }
+            _ => break,
+        }
+        await!(stream.next());
+    }
+
+    Ok(peer)
 }
 
-fn set_command_parser<'a, I>() -> impl Parser<Input = I, Output = WgSetCommand>
+async fn parse_set_command<S>(stream: &mut Peekable<S>) -> Result<WgSetCommand, Error>
 where
-    I: RangeStream<Item = u8, Range = &'a [u8]>,
-    I::Error: ParseError<u8, I::Range, I::Position>,
+    S: Stream<Item = String, Error = std::io::Error> + Unpin,
 {
-    macro_rules! set_field {
-        ($name:tt, $v:expr) => {{
-            kv!(stringify!($name), $v).map(|x| {
-                Box::new(move |c: &mut WgSetCommand| {
-                    c.$name = x.clone();
-                }) as Box<dyn Fn(&mut WgSetCommand)>
-            })
-        }};
-    }
-    macro_rules! set_field_some {
-        ($name:tt, $v:expr) => {{
-            kv!(stringify!($name), $v).map(|x| {
-                Box::new(move |c: &mut WgSetCommand| {
-                    c.$name = Some(x.clone());
-                }) as Box<dyn Fn(&mut WgSetCommand)>
-            })
-        }};
-    }
-
-    let header = string("set=1").skip(newline());
-
-    let private_key = set_field_some!(private_key, hex_parser::<_, X25519Key>());
-    let listen_port = set_field_some!(listen_port, u16_parser());
-    let fwmark = set_field_some!(fwmark, u32_parser());
-    let replace_peers = set_field!(replace_peers, bool_parser());
-
-    (
-        header,
-        many::<Vec<_>, _>(choice!(private_key, fwmark, listen_port, replace_peers)),
-        many(peer_command_parser()),
-        newline(),
-    )
-        .map(move |(_, ms, peers, _)| {
-            let mut result = WgSetCommand {
-                private_key: None,
-                listen_port: None,
-                fwmark: None,
-                replace_peers: false,
-                peers: vec![],
-            };
-
-            for m in ms {
-                (m)(&mut result);
+    let mut command = WgSetCommand {
+        private_key: None,
+        fwmark: None,
+        listen_port: None,
+        replace_peers: false,
+        peers: vec![],
+    };
+    'outer: loop {
+        let line = match await!(stream.peek())? {
+            None => bail!("Unexpected end of input stream"),
+            Some(line) => line,
+        };
+        if line.is_empty() {
+            await!(stream.next());
+            break;
+        } else if line.starts_with("public_key") {
+            loop {
+                let peer = await!(parse_peer(stream))?;
+                command.peers.push(peer);
+                let line = match await!(stream.peek())? {
+                    None => bail!("Unexpected end of input stream"),
+                    Some(line) => line,
+                };
+                if line.is_empty() {
+                    break 'outer;
+                }
             }
-
-            result.peers = peers;
-            result
-        })
+        } else {
+            let line = await!(stream.next()).unwrap().unwrap();
+            let mut kv = line.splitn(2, '=');
+            let key = kv.next().unwrap();
+            let value = match kv.next() {
+                None => bail!("Invalid line: {}", line),
+                Some(v) => v,
+            };
+            match key.as_ref() {
+                "private_key" => {
+                    let v = decode(value)?;
+                    if v.len() != 32 {
+                        bail!("Invalid length for private_key");
+                    }
+                    command.private_key = Some(X25519Key::from_slice(&v[..]));
+                }
+                "fwmark" => command.fwmark = Some(value.parse()?),
+                "listen_port" => command.listen_port = Some(value.parse()?),
+                "replace_peers" => command.replace_peers = value.parse()?,
+                _ => bail!("Unexpected key: {}", key),
+            }
+        }
+    }
+    Ok(command)
 }
 
-pub fn command_parser<'a, I>() -> impl Parser<Input = I, Output = WgIpcCommand>
+pub async fn parse_command<S>(stream: S) -> Result<WgIpcCommand, Error>
 where
-    I: RangeStream<Item = u8, Range = &'a [u8]>,
-    I::Error: ParseError<u8, I::Range, I::Position>,
+    S: Stream<Item = String, Error = std::io::Error> + Unpin,
 {
-    let get_command = r#try(string("get=1"))
-        .skip(newline())
-        .skip(newline())
-        .map(|_| WgIpcCommand::Get);
+    let mut stream = Peekable::new(stream);
 
-    get_command.or(set_command_parser().map(WgIpcCommand::Set))
+    let first_line = match await!(stream.next()) {
+        None => bail!("Unexpected end of input stream"),
+        Some(line_or_err) => line_or_err?,
+    };
+    match first_line.as_ref() {
+        "get=1" => {
+            let empty_line = match await!(stream.next()) {
+                None => bail!("Unexpected end of input stream"),
+                Some(line_or_err) => line_or_err?,
+            };
+            if !empty_line.is_empty() {
+                bail!("Expected empty line, got {}", empty_line);
+            }
+            Ok(WgIpcCommand::Get)
+        }
+        "set=1" => Ok(WgIpcCommand::Set(await!(parse_set_command(&mut stream))?)),
+        _ => bail!("Unexpected command {}", first_line),
+    }
+}
+
+pub fn parse_command_sync(r: impl std::io::Read + Unpin) -> Result<WgIpcCommand, Error> {
+    let r = tokio_io::io::AllowStdIo::new(r);
+    let lines_codec = tokio::codec::LinesCodec::new_with_max_length(128);
+    let lines_stream = tokio::codec::FramedRead::new(r, lines_codec);
+    block_on_all_async!(parse_command(lines_stream))
 }
 
 #[cfg(test)]
@@ -269,31 +239,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_ip_cidr_parser() {
-        assert_eq!(
-            allowed_ip_parser().parse(b"1.2.3.4/5".as_ref()).unwrap().0,
-            ("1.2.3.4".parse().unwrap(), 5)
-        );
-        assert_eq!(
-            allowed_ip_parser()
-                .parse(b"[2018:3:4::7]".as_ref())
-                .unwrap()
-                .0,
-            ("2018:3:4::7".parse().unwrap(), 128)
-        );
-    }
+    fn test_parsing() {
+        block_on_all_async!(
+            async {
+                let stream = stream::iter_ok(vec!["get=1".into(), "".into()]);
+                let result = await!(parse_command(stream));
+                assert_eq!(result.unwrap(), WgIpcCommand::Get);
 
-    #[test]
-    fn test_parser() {
-        assert_eq!(
-            command_parser().parse(b"get=1\n\n".as_ref()),
-            Ok((WgIpcCommand::Get, "".as_bytes()))
+                let stream = stream::iter_ok(include_str!("example.txt").lines().map(|x| x.into()));
+                let result = await!(parse_command(stream));
+                assert!(result.is_ok());
+            }
         );
-
-        assert!(command_parser().parse("set=1\n\n".as_bytes()).is_ok());
-
-        let input = &include_bytes!("example.txt")[..];
-        println!("Result: {:?}", command_parser().easy_parse(input));
-        assert!(command_parser().easy_parse(input).is_ok());
     }
 }
