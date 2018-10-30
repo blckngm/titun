@@ -178,9 +178,10 @@ where
     S: Read + Write + Clone + Unpin,
 {
     let c = match parse_command_sync(stream.clone().take(1024 * 1024)) {
-        Ok(c) => c,
+        Ok(Some(c)) => c,
+        Ok(None) => return Ok(()),
         Err(e) => {
-            write_error(stream.clone(), /* EINVAL */ 22)?;
+            drop(write_error(stream.clone(), /* EINVAL */ 22));
             return Err(e);
         }
     };

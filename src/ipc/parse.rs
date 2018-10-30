@@ -201,14 +201,14 @@ where
     Ok(command)
 }
 
-pub async fn parse_command<S>(stream: S) -> Result<WgIpcCommand, Error>
+pub async fn parse_command<S>(stream: S) -> Result<Option<WgIpcCommand>, Error>
 where
     S: Stream<Item = String, Error = std::io::Error> + Unpin,
 {
     let mut stream = Peekable::new(stream);
 
     let first_line = match await!(stream.next()) {
-        None => bail!("Unexpected end of input stream"),
+        None => return Ok(None),
         Some(line_or_err) => line_or_err?,
     };
     match first_line.as_ref() {
@@ -220,14 +220,16 @@ where
             if !empty_line.is_empty() {
                 bail!("Expected empty line, got {}", empty_line);
             }
-            Ok(WgIpcCommand::Get)
+            Ok(Some(WgIpcCommand::Get))
         }
-        "set=1" => Ok(WgIpcCommand::Set(await!(parse_set_command(&mut stream))?)),
+        "set=1" => Ok(Some(WgIpcCommand::Set(await!(parse_set_command(
+            &mut stream
+        ))?))),
         _ => bail!("Unexpected command {}", first_line),
     }
 }
 
-pub fn parse_command_sync(r: impl std::io::Read + Unpin) -> Result<WgIpcCommand, Error> {
+pub fn parse_command_sync(r: impl std::io::Read + Unpin) -> Result<Option<WgIpcCommand>, Error> {
     let r = tokio_io::io::AllowStdIo::new(r);
     let lines_codec = tokio::codec::LinesCodec::new_with_max_length(128);
     let lines_stream = tokio::codec::FramedRead::new(r, lines_codec);
