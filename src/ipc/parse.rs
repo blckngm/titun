@@ -246,7 +246,7 @@ mod tests {
             async {
                 let stream = stream::iter_ok(vec!["get=1".into(), "".into()]);
                 let result = await!(parse_command(stream));
-                assert_eq!(result.unwrap(), WgIpcCommand::Get);
+                assert_eq!(result.unwrap(), Some(WgIpcCommand::Get));
 
                 let stream = stream::iter_ok(include_str!("example.txt").lines().map(|x| x.into()));
                 let result = await!(parse_command(stream));
