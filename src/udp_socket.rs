@@ -141,7 +141,7 @@ impl UdpSocket {
         }
         let (tx, mut rx) = channel(0);
         // If would block, send via queue.
-        await!(self.send_tx.clone().send((buf.to_vec(), target, tx)));
+        let _ = await!(self.send_tx.clone().send((buf.to_vec(), target, tx)));
         let _ = await!(rx.next());
         Ok(buf.len())
     }
@@ -167,7 +167,7 @@ pub async fn udp_send_to_async<'a>(
     }
     let (tx, mut rx) = channel(0);
     // If would block, send via queue.
-    await!(send_tx.send((buf.to_vec(), target, tx)));
+    let _ = await!(send_tx.send((buf.to_vec(), target, tx)));
     let _ = await!(rx.next());
     Ok(buf.len())
 }

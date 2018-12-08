@@ -115,7 +115,7 @@ pub async fn run(c: Config) -> Result<(), Error> {
     source0.lock().spawn_async(
         async move {
             while let Some(action) = await!(rx.next()) {
-                await!(action.unwrap());
+                let _ = await!(action.unwrap());
             }
         },
     );

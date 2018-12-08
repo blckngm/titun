@@ -369,7 +369,7 @@ pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
                         let endpoint = peer.read().info.endpoint;
                         if let Some(e) = endpoint {
                             info!("Handshake init.");
-                            await!(wg.send_to_async(&init_msg, e));
+                            let _ = await!(wg.send_to_async(&init_msg, e));
                             peer.read().count_send(init_msg.len());
                         }
                     }
@@ -421,6 +421,6 @@ pub async fn do_keep_alive1<'a>(peer0: &'a SharedPeerState, wg: &'a WgState) -> 
         peer.on_send_keepalive();
         should_handshake
     };
-    await!(wg.send_to_async(&out, endpoint));
+    let _ = await!(wg.send_to_async(&out, endpoint));
     should_handshake
 }

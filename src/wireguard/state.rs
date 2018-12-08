@@ -204,7 +204,7 @@ async fn udp_process_handshake_init<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr:
             Either::Left(ref l) => &l[..],
             Either::Right(ref r) => &r[..],
         };
-        await!(wg.send_to_async(reply, addr));
+        let _ = await!(wg.send_to_async(reply, addr));
     }
 }
 
@@ -229,7 +229,7 @@ async fn udp_process_handshake_resp<'a>(wg: &'a WgState, p: &'a [u8], addr: Sock
                 let reply = cookie_reply(info.pubkey(), &cookie, peer_id, &mac1);
                 break 'done Either::Left(
                     async move {
-                        await!(wg.send_to_async(&reply, addr));
+                        let _ = await!(wg.send_to_async(&reply, addr));
                     },
                 );
             } else {
@@ -295,7 +295,7 @@ async fn udp_process_handshake_resp<'a>(wg: &'a WgState, p: &'a [u8], addr: Sock
                         for p in queued_packets {
                             let encrypted = &mut buf[..p.len() + 32];
                             t.encrypt(&p, encrypted).0.unwrap();
-                            await!(wg.send_to_async(encrypted, addr));
+                            let _ = await!(wg.send_to_async(encrypted, addr));
                         }
                     },
                 );
@@ -384,7 +384,7 @@ async fn udp_process_transport<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: Sock
         // Release peer.
     };
     if should_write {
-        await!(wg.tun.write_async(&decrypted[..packet_len]));
+        let _ = await!(wg.tun.write_async(&decrypted[..packet_len]));
     }
     if should_set_endpoint {
         // Lock peer.
@@ -529,7 +529,7 @@ async fn tun_packet_processing(wg: Arc<WgState>) {
         };
 
         if should_send {
-            await!(wg.send_to_async(encrypted, endpoint));
+            let _ = await!(wg.send_to_async(encrypted, endpoint));
         }
 
         if should_handshake {
@@ -597,7 +597,7 @@ impl WgState {
         *wg.socket_sender.lock() = Some(sender);
         source.spawn_async(udp_processing(wg.clone(), receiver));
         source.spawn_async(tun_packet_processing(wg));
-        await!(future::empty::<(), ()>());
+        let _ = await!(future::empty::<(), ()>());
     }
 
     // Create a new socket, set IPv6 only to false, set fwmark, and bind.

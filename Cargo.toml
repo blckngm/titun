@@ -1,5 +1,3 @@
-cargo-features = ["rename-dependency"]
-
 [package]
 edition = "2018"
 authors = ["sopium"]
