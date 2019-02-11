@@ -15,9 +15,9 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use blake2_rfc::blake2s::Blake2s;
 use crate::crypto::noise_rust_sodium::{ChaCha20Poly1305, X25519};
 use crate::wireguard::*;
+use blake2_rfc::blake2s::Blake2s;
 use noise_protocol::patterns::noise_ik_psk2;
 use noise_protocol::*;
 use sodiumoxide::utils::memcmp;

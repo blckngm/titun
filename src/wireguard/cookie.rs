@@ -15,9 +15,9 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use blake2_rfc::blake2s::{blake2s, Blake2s};
 use crate::crypto::xchacha20poly1305::{decrypt, encrypt};
 use crate::wireguard::{Id, X25519Pubkey};
+use blake2_rfc::blake2s::{blake2s, Blake2s};
 use sodiumoxide::randombytes::randombytes_into;
 use sodiumoxide::utils::memcmp;
 

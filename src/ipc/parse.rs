@@ -20,7 +20,7 @@ use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::X25519Key;
 use failure::Error;
 use hex::decode;
-use std::pin::Unpin;
+use std::marker::Unpin;
 use tokio::prelude::stream::Fuse;
 use tokio::prelude::*;
 

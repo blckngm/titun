@@ -15,10 +15,10 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use arrayvec::ArrayVec;
 use crate::atomic::{AtomicU64, Ordering};
 use crate::cancellation::CancellationTokenSource;
 use crate::wireguard::*;
+use arrayvec::ArrayVec;
 use failure::Error;
 use parking_lot::{Mutex, RwLock};
 use rand::{thread_rng, Rng};

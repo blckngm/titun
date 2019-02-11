@@ -24,6 +24,7 @@ use either::Either;
 use failure::Error;
 use fnv::FnvHashMap;
 use futures::sync::mpsc::*;
+use futures_util::FutureExt;
 use noise_protocol::U8Array;
 use parking_lot::{Mutex, RwLock};
 use sodiumoxide::randombytes::randombytes_into;
@@ -401,11 +402,12 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
     loop {
         use tokio_async_await::compat::forward::IntoAwaitable;
 
-        let mut recv = future::poll_fn(|| wg.socket.read().poll_recv_from(&mut p)).into_awaitable();
-        let mut recv_socket = receiver.next();
+        let mut recv = future::poll_fn(|| wg.socket.read().poll_recv_from(&mut p))
+            .into_awaitable()
+            .fuse();
         let (len, addr) = select! {
-            recv => recv.unwrap(),
-            recv_socket => {
+            recv = recv => recv.unwrap(),
+            recv_socket = receiver.next().fuse() => {
                 *wg.socket.write() = recv_socket.unwrap().unwrap();
                 continue;
             },

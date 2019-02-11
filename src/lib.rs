@@ -20,7 +20,6 @@
     async_await,
     await_macro,
     futures_api,
-    pin,
     label_break_value,
     arbitrary_self_types
 )]
