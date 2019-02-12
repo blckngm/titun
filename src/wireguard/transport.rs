@@ -15,13 +15,13 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::atomic::{AtomicBool, AtomicU64, Ordering};
 use crate::cancellation::CancellationTokenSource;
 use crate::crypto::noise_rust_sodium::ChaCha20Poly1305;
 use crate::wireguard::*;
 use byteorder::{ByteOrder, LittleEndian};
 use noise_protocol::Cipher;
 use parking_lot::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 

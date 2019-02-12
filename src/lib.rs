@@ -67,7 +67,6 @@ extern crate nix;
 #[macro_use]
 extern crate tokio;
 
-mod atomic;
 mod cancellation;
 mod crypto;
 mod ipc;

@@ -15,7 +15,6 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::atomic::{AtomicU64, Ordering};
 use crate::cancellation::CancellationTokenSource;
 use crate::wireguard::*;
 use arrayvec::ArrayVec;
@@ -25,6 +24,7 @@ use rand::{thread_rng, Rng};
 use std::collections::VecDeque;
 use std::net::SocketAddrV6;
 use std::ops::Deref;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use tai64::TAI64N;

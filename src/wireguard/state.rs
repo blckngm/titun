@@ -15,7 +15,6 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::atomic::Ordering;
 use crate::cancellation::CancellationTokenSource;
 use crate::udp_socket::*;
 use crate::wireguard::re_exports::sodium_init;
@@ -32,6 +31,7 @@ use std::collections::HashMap;
 use std::mem::uninitialized;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::ops::Deref;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use tokio::prelude::*;
 
