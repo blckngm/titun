@@ -22,8 +22,8 @@ use crate::wireguard::*;
 use either::Either;
 use failure::Error;
 use fnv::FnvHashMap;
-use futures::sync::mpsc::*;
-use futures_util::FutureExt;
+use futures::channel::mpsc::*;
+use futures::prelude::*;
 use noise_protocol::U8Array;
 use parking_lot::{Mutex, RwLock};
 use sodiumoxide::randombytes::randombytes_into;
@@ -33,7 +33,6 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
-use tokio::prelude::*;
 
 // Some Constants.
 
@@ -96,10 +95,10 @@ impl Drop for IdMapGuard {
                 return;
             }
             let id = self.id;
-            tokio::spawn_async(
+            spawn_async!(
                 async move {
                     wg.id_map.write().remove(&id);
-                },
+                }
             );
         }
     }
@@ -400,19 +399,24 @@ async fn udp_process_transport<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: Sock
 async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
     let mut p = vec![0u8; BUFSIZE];
     loop {
-        use tokio_async_await::compat::forward::IntoAwaitable;
+        let (len, addr) = {
+            let recv = futures::future::poll_fn(|lw| {
+                let socket = wg.socket.read();
 
-        let mut recv = future::poll_fn(|| wg.socket.read().poll_recv_from(&mut p))
-            .into_awaitable()
+                let recv = socket.recv_from_async(&mut p);
+                pin_mut!(recv);
+                recv.poll(lw)
+            })
             .fuse();
-        let (len, addr) = select! {
-            recv = recv => recv.unwrap(),
-            recv_socket = receiver.next().fuse() => {
-                *wg.socket.write() = recv_socket.unwrap().unwrap();
-                continue;
-            },
+            pin_mut!(recv);
+            select! {
+                recv = recv => recv.unwrap(),
+                recv_socket = receiver.next() => {
+                    *wg.socket.write() = recv_socket.unwrap();
+                    continue;
+                },
+            }
         };
-        drop(recv);
 
         let addr = match addr {
             SocketAddr::V6(a6) => a6,
@@ -599,7 +603,7 @@ impl WgState {
         *wg.socket_sender.lock() = Some(sender);
         source.spawn_async(udp_processing(wg.clone(), receiver));
         source.spawn_async(tun_packet_processing(wg));
-        let _ = await!(future::empty::<(), ()>());
+        let _ = await!(future::empty::<()>());
     }
 
     // Create a new socket, set IPv6 only to false, set fwmark, and bind.
@@ -616,7 +620,15 @@ impl WgState {
         buf: &'a [u8],
         target: impl Into<SocketAddr> + 'static,
     ) -> Result<usize, std::io::Error> {
-        await!(udp_send_to_async(&self.socket, buf, target.into()))
+        let target = target.into();
+        await!(futures::future::poll_fn(move |lw| {
+            use futures::Future;
+
+            let socket = self.socket.read();
+            let send = socket.send_to_async(buf, target);
+            pin_mut!(send);
+            send.poll(lw)
+        }))
     }
 
     /// Add a pper.
@@ -725,7 +737,7 @@ impl WgState {
     /// Change listen port.
     pub async fn set_port(&self, mut new_port: u16) -> Result<(), Error> {
         let new_socket = WgState::prepare_socket(&mut new_port, self.info.read().fwmark)?;
-        let sender = self.socket_sender.lock().as_ref().unwrap().clone();
+        let mut sender = self.socket_sender.lock().as_ref().unwrap().clone();
         await!(sender.send(new_socket)).unwrap();
         self.info.write().port = new_port;
         Ok(())

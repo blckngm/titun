@@ -15,11 +15,8 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use futures::sync::mpsc::*;
-use futures_util::FutureExt;
-use std::future::Future as Future03;
-use tokio::prelude::*;
-use tokio_async_await::compat::backward::Compat;
+use futures::channel::mpsc::*;
+use futures::prelude::*;
 
 pub struct CancellationTokenSource {
     receiver: Receiver<()>,
@@ -54,24 +51,27 @@ impl CancellationTokenSource {
 
     pub fn spawn_async<T>(&self, future: T)
     where
-        T: Future03<Output = ()> + Send + 'static,
+        T: Future<Output = ()> + Send + 'static,
     {
-        let compat = Compat::new(future.map(|_| Ok(())));
-        self.spawn(compat);
-    }
-
-    pub fn spawn<T>(&self, future: T)
-    where
-        T: Future<Item = (), Error = ()> + Send + 'static,
-    {
-        let cancelled = Compat::new(self.get_token().cancelled().map(|_| Ok(())));
-        tokio::spawn(future.select(cancelled).then(|_| Ok(())));
+        let cancelled = self.get_token().cancelled().fuse();
+        spawn_async!(
+            async move {
+                pin_mut!(cancelled);
+                let f = future.fuse();
+                pin_mut!(f);
+                select! {
+                    _ = cancelled => (),
+                    _ = f => (),
+                }
+            }
+        );
     }
 }
 
 impl CancellationToken {
-    pub async fn cancelled(self) {
-        await!(self.sender.send_all(stream::repeat(()))).unwrap_err();
+    pub async fn cancelled(mut self) {
+        let mut infinite = stream::repeat(());
+        await!(self.sender.send_all(&mut infinite)).unwrap_err();
     }
 }
 
@@ -81,13 +81,13 @@ mod tests {
 
     #[test]
     fn cancellation() {
-        tokio::run_async(
+        block_on_all_async!(
             async {
                 let source = CancellationTokenSource::new();
-                source.spawn(future::empty());
-                source.spawn(future::empty());
+                source.spawn_async(future::empty());
+                source.spawn_async(future::empty());
                 drop(source);
-            },
+            }
         );
     }
 }

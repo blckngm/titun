@@ -22,7 +22,9 @@ use crate::ipc::parse::*;
 use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::{SetPeerCommand, WgState, WgStateOut};
 use failure::{Error, ResultExt};
-use futures::sync::mpsc::Sender;
+use futures::channel::mpsc::Sender;
+use futures::future::FutureObj;
+use futures::prelude::{FutureExt, SinkExt};
 use hex::encode;
 use std::io::{BufWriter, Read, Write};
 use std::marker::Unpin;
@@ -30,14 +32,12 @@ use std::path::Path;
 use std::sync::{Arc, Weak};
 use std::thread::Builder;
 use std::time::SystemTime;
-use tokio::prelude::*;
-use tokio_async_await::compat::backward::Compat;
 
 #[cfg(windows)]
 pub fn start_ipc_server(
     wg: Weak<WgState>,
     dev_name: &str,
-    sender: Sender<Box<dyn Future<Item = (), Error = ()> + Send + 'static>>,
+    sender: Sender<FutureObj<'static, ()>>,
 ) -> Result<(), Error> {
     use crate::ipc::windows_named_pipe::*;
 
@@ -61,7 +61,7 @@ pub fn start_ipc_server(
 pub fn start_ipc_server(
     wg: Weak<WgState>,
     dev_name: &str,
-    sender: Sender<Box<dyn Future<Item = (), Error = ()> + Send + 'static>>,
+    sender: Sender<FutureObj<'static, ()>>,
 ) -> Result<(), Error> {
     use nix::sys::stat::{umask, Mode};
     use std::fs::{create_dir_all, remove_file};
@@ -172,7 +172,7 @@ async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
 pub fn serve<S>(
     wg: &Weak<WgState>,
     stream: S,
-    sender: Sender<Box<dyn Future<Item = (), Error = ()> + Send + 'static>>,
+    mut sender: Sender<FutureObj<'static, ()>>,
 ) -> Result<(), Error>
 where
     S: Read + Write + Clone + Unpin,
@@ -197,15 +197,16 @@ where
             write_wg_state(stream.clone(), &wg.get_state())?;
         }
         WgIpcCommand::Set(sc) => {
-            sender
-                .send(Box::new(Compat::new(
+            futures::executor::block_on(
+                sender.send(
                     async move {
                         await!(process_wg_set(&wg, sc));
-                        Ok(())
-                    },
-                )))
-                .wait()
-                .unwrap();
+                    }
+                        .boxed()
+                        .into(),
+                ),
+            )
+            .unwrap();
             write_error(stream.clone(), 0)?;
         }
     }

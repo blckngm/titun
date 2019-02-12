@@ -25,10 +25,10 @@ extern crate log;
 use base64::{decode, encode};
 use clap::{App, AppSettings, Arg, SubCommand};
 use failure::{Error, ResultExt};
+use futures::{FutureExt, TryFutureExt};
 use std::io::{stdin, Read};
 use titun::run::*;
 use titun::wireguard::re_exports::{U8Array, DH, X25519};
-use tokio_async_await::compat::backward::Compat;
 
 fn main() -> Result<(), Error> {
     let default_panic_hook = std::panic::take_hook();
@@ -122,14 +122,17 @@ fn main() -> Result<(), Error> {
                 #[cfg(windows)]
                 network,
             };
-            tokio::runtime::current_thread::block_on_all(Compat::new(
+            tokio::runtime::current_thread::block_on_all(
                 async move {
                     if let Err(err) = await!(run(config)) {
                         error!("Error: {}", err);
+                        std::process::exit(1);
                     }
-                    Ok(()) as Result<(), ()>
-                },
-            ))
+                }
+                    .unit_error()
+                    .boxed()
+                    .compat(),
+            )
             .unwrap();
         }
         _ => {

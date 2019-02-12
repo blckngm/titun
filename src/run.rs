@@ -21,7 +21,9 @@ use crate::systemd;
 use crate::wireguard::re_exports::{DH, X25519};
 use crate::wireguard::*;
 use failure::{Error, ResultExt};
-use futures::sync::mpsc::*;
+use futures::channel::mpsc::*;
+use futures::future::FutureObj;
+use futures::StreamExt;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use tokio::prelude::*;
@@ -41,12 +43,12 @@ pub async fn run(c: Config) -> Result<(), Error> {
     #[cfg(windows)]
     let token = source0.lock().get_token();
     #[cfg(windows)]
-    tokio::spawn_async(
+    spawn_async!(
         async move {
             await!(token.cancelled());
             sleep!(ms 100);
             std::process::exit(0);
-        },
+        }
     );
 
     let source = source0.clone();
@@ -111,11 +113,11 @@ pub async fn run(c: Config) -> Result<(), Error> {
     let weak = ::std::sync::Arc::downgrade(&wg);
     source0.lock().spawn_async(WgState::run(wg));
 
-    let (tx, mut rx) = channel::<Box<dyn Future<Item = (), Error = ()> + Send + 'static>>(0);
+    let (tx, mut rx) = channel::<FutureObj<'static, ()>>(0);
     source0.lock().spawn_async(
         async move {
             while let Some(action) = await!(rx.next()) {
-                let _ = await!(action.unwrap());
+                await!(action);
             }
         },
     );

@@ -19,7 +19,6 @@
 //!
 //! Use tokio-timer under the hood.
 
-use futures::sync::oneshot::{channel, Sender};
 use parking_lot::Mutex;
 use std::future::Future as Future03;
 use std::sync::atomic::{AtomicBool, Ordering::*};
@@ -27,6 +26,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::clock::now;
 use tokio::prelude::*;
+use tokio::sync::oneshot::{channel, Sender};
 use tokio::timer::Delay;
 
 struct TimerOptions {
@@ -50,7 +50,7 @@ where
         delay: Mutex::new(Delay::new(now())),
     });
     let options = options0.clone();
-    tokio::spawn_async(
+    spawn_async!(
         async move {
             loop {
                 let wait_result = await!(future::poll_fn(|| {
@@ -82,7 +82,7 @@ where
                 }
                 await!(action());
             }
-        },
+        }
     );
     TimerHandle {
         _tx: tx,
@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn smoke() {
-        tokio::run_async(
+        block_on_all_async!(
             async {
                 let run = Arc::new(AtomicBool::new(false));
                 let t = {
@@ -134,13 +134,13 @@ mod tests {
                 t.adjust_and_activate(Duration::from_millis(10));
                 sleep!(ms 30);
                 assert!(run.load(SeqCst));
-            },
+            }
         );
     }
 
     #[test]
     fn adjust_activate_de_activate() {
-        tokio::run_async(
+        block_on_all_async!(
             async {
                 let run = Arc::new(AtomicBool::new(false));
                 let t = {
@@ -170,7 +170,7 @@ mod tests {
                 t.adjust_and_activate(Duration::from_millis(15));
                 sleep!(ms 30);
                 assert!(run.load(SeqCst));
-            },
+            }
         );
     }
 
@@ -180,7 +180,7 @@ mod tests {
         // Workaround lifetime issues.
         let b1 = Arc::new(Mutex::new(b0.clone()));
         let b = b1.clone();
-        tokio::run_async(
+        block_on_all_async!(
             async move {
                 let run = Arc::new(AtomicBool::new(false));
                 let t = {
@@ -194,7 +194,7 @@ mod tests {
                 b.lock().iter(|| {
                     t.adjust_and_activate(Duration::from_secs(10));
                 });
-            },
+            }
         );
         *b0 = b1.lock().clone();
     }

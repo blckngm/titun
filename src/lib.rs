@@ -43,12 +43,17 @@ macro_rules! sleep {
 
 macro_rules! block_on_all_async {
     ($future:expr) => {{
-        use tokio_async_await::compat::backward::Compat;
+        use futures::{FutureExt, TryFutureExt};
 
-        tokio::runtime::current_thread::block_on_all(Compat::new(
-            async move { Ok(await!($future)) as Result<_, ()> },
-        ))
-        .unwrap()
+        tokio::runtime::current_thread::block_on_all($future.unit_error().boxed().compat()).unwrap()
+    }};
+}
+
+macro_rules! spawn_async {
+    ($future:expr) => {{
+        use futures::{FutureExt, TryFutureExt};
+
+        tokio::spawn($future.unit_error().boxed().compat())
     }};
 }
 
@@ -58,7 +63,7 @@ extern crate test;
 #[macro_use]
 extern crate failure;
 #[macro_use]
-extern crate futures_util;
+extern crate futures;
 #[macro_use]
 extern crate log;
 #[cfg(not(windows))]
@@ -66,6 +71,8 @@ extern crate log;
 extern crate nix;
 #[macro_use]
 extern crate tokio;
+#[macro_use]
+extern crate pin_utils;
 
 mod cancellation;
 mod crypto;

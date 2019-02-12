@@ -25,8 +25,7 @@ either = "1.5.0"
 env_logger = "0.5.12"
 failure = "0.1"
 fnv = "1.0.6"
-futures = { version = "0.1" }
-futures-util-preview = { git = "https://github.com/rust-lang-nursery/futures-rs.git" }
+futures-preview = { version = "0.3.0-alpha.12", features = ["compat"] }
 hex = "0.3"
 log = "0.4.3"
 mio = "0.6"
@@ -40,9 +39,9 @@ socket2 = "0.3"
 tai64 = {version = "0.2", default-features = false}
 tokio = { version = "0.1.15", features = ["async-await-preview"] }
 tokio-io = "0.1.11"
-tokio-async-await = { version = "0.1.5", features = ["async-await-preview"] }
 tokio-signal = "0.2"
 vec_map = "0.8.1"
+pin-utils = "0.1.0-alpha.4"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["fileapi", "winbase", "ioapiset", "synchapi", "namedpipeapi"] }

@@ -19,7 +19,9 @@
 
 //! Tap-windows TUN devices support.
 
-use futures::sync::mpsc::*;
+use futures::channel::mpsc::*;
+use futures::lock::Mutex as AsyncMutex;
+use futures::{SinkExt, StreamExt};
 use parking_lot::Mutex;
 use std::ffi::CString;
 use std::fmt::{Debug, Formatter};
@@ -28,7 +30,6 @@ use std::mem::zeroed;
 use std::net::Ipv4Addr;
 use std::ptr::null_mut;
 use std::sync::Arc;
-use tokio::prelude::*;
 
 use winapi::shared::winerror::ERROR_IO_PENDING;
 use winapi::um::fileapi::{CreateFileA, ReadFile, WriteFile, OPEN_EXISTING};
@@ -43,23 +44,24 @@ use winapi::um::winnt::{
 use winreg::enums::*;
 use winreg::RegKey;
 
-// TODO: const fn.
-fn ctl_code(device_type: u32, function: u32, method: u32, access: u32) -> u32 {
+const fn ctl_code(device_type: u32, function: u32, method: u32, access: u32) -> u32 {
     (device_type << 16) | (access << 14) | (function << 2) | method
 }
 
-// TODO: const fn.
-fn tap_control_code(request: u32, method: u32) -> u32 {
+const fn tap_control_code(request: u32, method: u32) -> u32 {
     ctl_code(34, request, method, 0)
 }
 
+const MAX_PACKET_SIZE: usize = 65536;
+
 pub struct AsyncTun {
     tun: Arc<Tun>,
-    tx: Sender<(Vec<u8>, Sender<(Result<usize>, Vec<u8>)>)>,
+    rx: AsyncMutex<Receiver<Result<Vec<u8>>>>,
 }
 
 impl Drop for AsyncTun {
     fn drop(&mut self) {
+        self.rx.try_lock().unwrap().close();
         self.tun.interrupt();
     }
 }
@@ -67,36 +69,50 @@ impl Drop for AsyncTun {
 impl AsyncTun {
     fn new(tun: Tun) -> AsyncTun {
         let tun = Arc::new(tun);
-        let (tx, rx) = channel(0);
+        let (mut tx, rx) = channel(0);
         let async_tun = AsyncTun {
             tun: tun.clone(),
-            tx,
+            rx: AsyncMutex::new(rx),
         };
         std::thread::Builder::new()
             .name("tun-read".into())
             .spawn(move || {
-                let mut rx = rx.wait();
-                while let Some(Ok((mut buffer, back_tx))) = rx.next() {
-                    let result = tun.read(&mut buffer);
-                    let _ = back_tx.send((result, buffer)).wait();
-                }
+                futures::executor::block_on(
+                    async move {
+                        loop {
+                            let mut buf = Vec::with_capacity(MAX_PACKET_SIZE);
+                            unsafe {
+                                buf.set_len(MAX_PACKET_SIZE);
+                            }
+                            let result = tun.read(&mut buf[..]);
+                            let result = match result {
+                                Ok(len) => {
+                                    buf.truncate(len);
+                                    Ok(buf)
+                                }
+                                Err(e) => Err(e),
+                            };
+                            if let Err(_) = await!(tx.send(result)) {
+                                break;
+                            }
+                        }
+                    },
+                );
             })
             .unwrap();
         async_tun
     }
 
     pub async fn read_async<'a>(&'a self, buf: &'a mut [u8]) -> Result<usize> {
-        let (back_tx, mut back_rx) = channel(0);
-        let mut buf_vec = Vec::with_capacity(buf.len());
-        unsafe {
-            buf_vec.set_len(buf.len());
+        let mut rx = await!(self.rx.lock());
+        match await!(rx.next()).unwrap() {
+            Ok(v) => {
+                let len = std::cmp::min(v.len(), buf.len());
+                buf[..len].copy_from_slice(&v[..len]);
+                Ok(len)
+            }
+            Err(e) => Err(e),
         }
-        await!(self.tx.clone().send((buf_vec, back_tx))).unwrap();
-        let (result, buf_vec) = await!(back_rx.next()).unwrap().unwrap();
-        if let Ok(len) = result {
-            buf[..len].copy_from_slice(&buf_vec[..len]);
-        }
-        result
     }
 
     pub async fn write_async<'a>(&'a self, buf: &'a [u8]) -> Result<usize> {

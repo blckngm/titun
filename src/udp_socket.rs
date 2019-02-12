@@ -15,20 +15,19 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use futures::sync::mpsc::*;
+use futures::lock::Mutex;
 use mio::net::UdpSocket as MioUdpSocket;
-use parking_lot::RwLock;
 use std::net::{Ipv6Addr, SocketAddr};
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
-use std::sync::Arc;
 use tokio::prelude::*;
 use tokio::reactor::PollEvented2;
 
-/// Like tokio UdpSocket, but can be sent to from multiple tasks.
+/// Like tokio UdpSocket, but can be used from multiple tasks concurrently.
 pub struct UdpSocket {
-    socket: Arc<PollEvented2<MioUdpSocket>>,
-    send_tx: Sender<(Vec<u8>, SocketAddr, Sender<()>)>,
+    socket: PollEvented2<MioUdpSocket>,
+    send_lock: Mutex<()>,
+    recv_lock: Mutex<()>,
 }
 
 impl UdpSocket {
@@ -46,27 +45,16 @@ impl UdpSocket {
         }
         let std_sock = sock.into_udp_socket();
         let mio_sock = MioUdpSocket::from_socket(std_sock)?;
-        let socket = Arc::new(PollEvented2::new(mio_sock));
+        let socket = PollEvented2::new(mio_sock);
 
-        let socket_clone = socket.clone();
-        let (send_tx, mut send_rx) = channel::<(Vec<u8>, SocketAddr, Sender<()>)>(0);
-        tokio::spawn_async(
-            async move {
-                while let Some(Ok((dgram, target, mut done))) = await!(send_rx.next()) {
-                    let _ = await!(UdpSocket::real_send_to_async(
-                        &socket_clone,
-                        &dgram[..],
-                        target
-                    ));
-                    await!(done.send_async(())).unwrap();
-                }
-            },
-        );
-
-        Ok(UdpSocket { socket, send_tx })
+        Ok(UdpSocket {
+            socket,
+            send_lock: Mutex::new(()),
+            recv_lock: Mutex::new(()),
+        })
     }
 
-    pub fn poll_recv_from(&self, buf: &mut [u8]) -> Poll<(usize, SocketAddr), std::io::Error> {
+    fn poll_recv_from(&self, buf: &mut [u8]) -> Poll<(usize, SocketAddr), std::io::Error> {
         match self.socket.poll_read_ready(mio::Ready::readable()) {
             Ok(Async::NotReady) => return Ok(Async::NotReady),
             Ok(Async::Ready(_)) => (),
@@ -107,19 +95,12 @@ impl UdpSocket {
     /// Async recvfrom.
     ///
     /// Only one task should use this.
-    pub fn recv_from_async<'a>(
+    pub async fn recv_from_async<'a>(
         &'a self,
         buf: &'a mut [u8],
-    ) -> impl Future<Item = (usize, SocketAddr), Error = std::io::Error> + 'a {
-        future::poll_fn(move || self.poll_recv_from(buf))
-    }
-
-    fn real_send_to_async<'a>(
-        socket: &'a PollEvented2<MioUdpSocket>,
-        buf: &'a [u8],
-        target: SocketAddr,
-    ) -> impl Future<Item = usize, Error = std::io::Error> + 'a {
-        future::poll_fn(move || UdpSocket::poll_send_to(socket, buf, target))
+    ) -> Result<(usize, SocketAddr), std::io::Error> {
+        let _guard = await!(self.recv_lock.lock());
+        await!(future::poll_fn(move || self.poll_recv_from(buf)))
     }
 
     /// Async sendto.
@@ -139,37 +120,14 @@ impl UdpSocket {
                 }
             }
         }
-        let (tx, mut rx) = channel(0);
-        // If would block, send via queue.
-        let _ = await!(self.send_tx.clone().send((buf.to_vec(), target, tx)));
-        let _ = await!(rx.next());
-        Ok(buf.len())
+        // If would block, call send_to_async with lock.
+        let _guard = await!(self.send_lock.lock());
+        await!(future::poll_fn(|| UdpSocket::poll_send_to(
+            &self.socket,
+            buf,
+            target
+        )))
     }
-}
-
-pub async fn udp_send_to_async<'a>(
-    socket: &'a RwLock<UdpSocket>,
-    buf: &'a [u8],
-    target: SocketAddr,
-) -> Result<usize, std::io::Error> {
-    let send_tx;
-    {
-        let socket = socket.read();
-        match socket.socket.get_ref().send_to(buf, &target) {
-            Ok(len) => return Ok(len),
-            Err(e) => {
-                if e.kind() != std::io::ErrorKind::WouldBlock {
-                    return Err(e);
-                }
-            }
-        }
-        send_tx = socket.send_tx.clone();
-    }
-    let (tx, mut rx) = channel(0);
-    // If would block, send via queue.
-    let _ = await!(send_tx.send((buf.to_vec(), target, tx)));
-    let _ = await!(rx.next());
-    Ok(buf.len())
 }
 
 #[cfg(unix)]
