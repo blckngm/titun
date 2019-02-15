@@ -16,10 +16,10 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::cancellation::CancellationTokenSource;
+use crate::either::FutureEitherExt;
 use crate::udp_socket::*;
 use crate::wireguard::re_exports::sodium_init;
 use crate::wireguard::*;
-use either::Either;
 use failure::Error;
 use fnv::FnvHashMap;
 use futures::channel::mpsc::*;
@@ -110,19 +110,21 @@ impl IdMapGuard {
     }
 }
 
-fn udp_process_handshake_init_inner<'a>(
+fn udp_process_handshake_init<'a>(
     wg: &'a Arc<WgState>,
     p: &'a [u8],
     addr: SocketAddrV6,
-) -> Option<Either<[u8; 64], [u8; 92]>> {
+) -> impl Future<Output = ()> + 'a {
+    let no_action = async { () }.right_future();
+
     if p.len() != HANDSHAKE_INIT_LEN {
-        return None;
+        return no_action;
     }
 
     // Lock info.
     let info = wg.info.read();
     if !verify_mac1(&info, p) {
-        return None;
+        return no_action;
     }
 
     if wg.check_handshake_load() {
@@ -132,7 +134,11 @@ fn udp_process_handshake_init_inner<'a>(
             let peer_id = Id::from_slice(&p[4..8]);
             let mac1 = get_mac1(p);
             let reply = cookie_reply(info.pubkey(), &cookie, peer_id, &mac1);
-            return Some(Either::Left(reply));
+            return async move {
+                let _ = await!(wg.send_to_async(&reply[..], addr));
+            }
+                .left_future()
+                .left_future();
         } else {
             debug!("Mac2 verify OK.");
         }
@@ -151,7 +157,7 @@ fn udp_process_handshake_init_inner<'a>(
                 peer.last_handshake = Some(r.timestamp);
             } else {
                 debug!("Handshake timestamp smaller.");
-                return None;
+                return no_action;
             }
 
             let self_id = Id::gen();
@@ -160,7 +166,7 @@ fn udp_process_handshake_init_inner<'a>(
             let mut response = match responde(&info, &mut r, self_id) {
                 Err(_) => {
                     error!("Failed to generate handshake response.");
-                    return None;
+                    return no_action;
                 }
                 Ok(r) => r,
             };
@@ -188,128 +194,121 @@ fn udp_process_handshake_init_inner<'a>(
             // Lock id_map.
             wg.id_map.write().insert(self_id, peer0.clone());
             info!("Handshake successful as responder.");
-            return Some(Either::Right(response));
+            return async move {
+                let _ = await!(wg.send_to_async(&response[..], addr));
+            }
+                .right_future()
+                .left_future();
         } else {
             debug!("Get handshake init, but can't find peer by pubkey.");
         }
     } else {
         debug!("Get handshake init, but authentication/decryption failed.");
     }
-    None
+    no_action
 }
 
-async fn udp_process_handshake_init<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: SocketAddrV6) {
-    if let Some(reply) = udp_process_handshake_init_inner(wg, p, addr) {
-        let reply = match reply {
-            Either::Left(ref l) => &l[..],
-            Either::Right(ref r) => &r[..],
-        };
-        let _ = await!(wg.send_to_async(reply, addr));
+fn udp_process_handshake_resp<'a>(
+    wg: &'a WgState,
+    p: &'a [u8],
+    addr: SocketAddrV6,
+) -> impl Future<Output = ()> + Send + 'a {
+    let no_action = async { () }.left_future();
+
+    if p.len() != HANDSHAKE_RESP_LEN {
+        return no_action;
     }
-}
 
-async fn udp_process_handshake_resp<'a>(wg: &'a WgState, p: &'a [u8], addr: SocketAddrV6) {
-    let action = 'done: {
-        if p.len() != HANDSHAKE_RESP_LEN {
-            return;
-        }
+    // Lock info.
+    let info = wg.info.read();
+    if !verify_mac1(&info, p) {
+        return no_action;
+    }
 
-        // Lock info.
-        let info = wg.info.read();
-        if !verify_mac1(&info, p) {
-            return;
-        }
-
-        if wg.check_handshake_load() {
-            let cookie = calc_cookie(&wg.get_cookie_secret(), &addr.ip().octets());
-            if !cookie_verify(p, &cookie) {
-                debug!("Mac2 verify failed, send cookie reply.");
-                let peer_id = Id::from_slice(&p[4..8]);
-                let mac1 = get_mac1(p);
-                let reply = cookie_reply(info.pubkey(), &cookie, peer_id, &mac1);
-                break 'done Either::Left(
-                    async move {
-                        let _ = await!(wg.send_to_async(&reply, addr));
-                    },
-                );
-            } else {
-                debug!("Mac2 verify OK.");
+    if wg.check_handshake_load() {
+        let cookie = calc_cookie(&wg.get_cookie_secret(), &addr.ip().octets());
+        if !cookie_verify(p, &cookie) {
+            debug!("Mac2 verify failed, send cookie reply.");
+            let peer_id = Id::from_slice(&p[4..8]);
+            let mac1 = get_mac1(p);
+            let reply = cookie_reply(info.pubkey(), &cookie, peer_id, &mac1);
+            return async move {
+                let _ = await!(wg.send_to_async(&reply, addr));
             }
-        }
-
-        let self_id = Id::from_slice(&p[8..12]);
-
-        if let Some(peer0) = wg.find_peer_by_id(self_id) {
-            let (peer_id, hs) = {
-                // Lock peer.
-                let peer = peer0.read();
-                peer.count_recv(p.len());
-                let handshake = match peer.handshake {
-                    Some(ref h) => h,
-                    None => {
-                        debug!("Get handshake response message, but don't know id.");
-                        return;
-                    }
-                };
-                if handshake.self_id.id != self_id {
-                    debug!("Get handshake response message, but don't know id.");
-                    return;
-                }
-
-                let mut hs = handshake.hs.clone();
-                if let Ok(peer_id) = process_response(&mut hs, p) {
-                    (peer_id, hs)
-                } else {
-                    debug!("Get handshake response message, auth/decryption failed.");
-                    return;
-                }
-                // Release peer.
-            };
-            info!("Handshake successful as initiator.");
-            // Lock id_map.
-            wg.id_map.write().insert(self_id, peer0.clone());
-            // Release id_map.
-            // Lock peer.
-            let mut peer = peer0.write();
-            let handle = peer.handshake.take().unwrap().self_id;
-            let t = Transport::new_from_hs(handle, peer_id, &hs);
-            peer.push_transport(t.clone());
-            if peer.info.roaming {
-                peer.set_endpoint(addr);
-            }
-
-            let queued_packets = peer.dequeue_all();
-            if queued_packets.is_empty() {
-                // Send a keep alive packet for key confirmation if there are
-                // nothing else to send.
-                peer.keep_alive.adjust_and_activate_secs(1);
-            } else {
-                // Send queued packets.
-                for p in &queued_packets {
-                    peer.count_send(p.len() + 32);
-                }
-                peer.on_send_transport();
-                break 'done Either::Right(
-                    async move {
-                        let mut buf: [u8; BUFSIZE] = unsafe { uninitialized() };
-                        for p in queued_packets {
-                            let encrypted = &mut buf[..p.len() + 32];
-                            t.encrypt(&p, encrypted).0.unwrap();
-                            let _ = await!(wg.send_to_async(encrypted, addr));
-                        }
-                    },
-                );
-            }
+                .left_future()
+                .right_future();
         } else {
-            debug!("Get handshake response message, but don't know id.");
+            debug!("Mac2 verify OK.");
         }
-        return;
-    };
-
-    match action {
-        Either::Left(l) => await!(l),
-        Either::Right(r) => await!(r),
     }
+
+    let self_id = Id::from_slice(&p[8..12]);
+
+    if let Some(peer0) = wg.find_peer_by_id(self_id) {
+        let (peer_id, hs) = {
+            // Lock peer.
+            let peer = peer0.read();
+            peer.count_recv(p.len());
+            let handshake = match peer.handshake {
+                Some(ref h) => h,
+                None => {
+                    debug!("Get handshake response message, but don't know id.");
+                    return no_action;
+                }
+            };
+            if handshake.self_id.id != self_id {
+                debug!("Get handshake response message, but don't know id.");
+                return no_action;
+            }
+
+            let mut hs = handshake.hs.clone();
+            if let Ok(peer_id) = process_response(&mut hs, p) {
+                (peer_id, hs)
+            } else {
+                debug!("Get handshake response message, auth/decryption failed.");
+                return no_action;
+            }
+            // Release peer.
+        };
+        info!("Handshake successful as initiator.");
+        // Lock id_map.
+        wg.id_map.write().insert(self_id, peer0.clone());
+        // Release id_map.
+        // Lock peer.
+        let mut peer = peer0.write();
+        let handle = peer.handshake.take().unwrap().self_id;
+        let t = Transport::new_from_hs(handle, peer_id, &hs);
+        peer.push_transport(t.clone());
+        if peer.info.roaming {
+            peer.set_endpoint(addr);
+        }
+
+        let queued_packets = peer.dequeue_all();
+        if queued_packets.is_empty() {
+            // Send a keep alive packet for key confirmation if there are
+            // nothing else to send.
+            peer.keep_alive.adjust_and_activate_secs(1);
+        } else {
+            // Send queued packets.
+            for p in &queued_packets {
+                peer.count_send(p.len() + 32);
+            }
+            peer.on_send_transport();
+            return async move {
+                let mut buf: [u8; BUFSIZE] = unsafe { uninitialized() };
+                for p in queued_packets {
+                    let encrypted = &mut buf[..p.len() + 32];
+                    t.encrypt(&p, encrypted).0.unwrap();
+                    let _ = await!(wg.send_to_async(encrypted, addr));
+                }
+            }
+                .right_future()
+                .right_future();
+        }
+    } else {
+        debug!("Get handshake response message, but don't know id.");
+    }
+    no_action
 }
 
 fn udp_process_cookie_reply(wg: &WgState, p: &[u8]) {

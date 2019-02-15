@@ -16,13 +16,7 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 #![cfg_attr(feature = "bench", feature(test))]
-#![feature(
-    async_await,
-    await_macro,
-    futures_api,
-    label_break_value,
-    arbitrary_self_types
-)]
+#![feature(async_await, await_macro, futures_api, arbitrary_self_types)]
 
 macro_rules! sleep {
     ($duration:expr) => {{
@@ -76,6 +70,7 @@ extern crate pin_utils;
 
 mod cancellation;
 mod crypto;
+mod either;
 mod ipc;
 mod udp_socket;
 
