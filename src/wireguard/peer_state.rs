@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::cancellation::CancellationTokenSource;
+use crate::async_scope::AsyncScope;
 use crate::wireguard::*;
 use arrayvec::ArrayVec;
 use failure::Error;
@@ -84,7 +84,7 @@ pub struct PeerState {
 pub struct Handshake {
     pub self_id: IdMapGuard,
     pub hs: HS,
-    pub resend: CancellationTokenSource,
+    pub resend: Arc<AsyncScope>,
 }
 
 impl PeerState {
@@ -329,7 +329,7 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
 /// Nothing happens if there is already an ongoing handshake for this peer.
 /// Nothing happens if we don't know peer endpoint.
 pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
-    let source = CancellationTokenSource::new();
+    let scope = AsyncScope::new();
 
     // Lock info.
     let info = wg.info.read();
@@ -362,7 +362,7 @@ pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
     {
         let wg = Arc::downgrade(wg);
         let peer = Arc::downgrade(peer0);
-        source.spawn_async(
+        scope.spawn_async(
             async move {
                 loop {
                     if let (Some(wg), Some(peer)) = (wg.upgrade(), peer.upgrade()) {
@@ -383,7 +383,7 @@ pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
     peer.handshake = Some(Handshake {
         self_id: handle,
         hs,
-        resend: source,
+        resend: scope,
     });
 
     peer.stop_handshake

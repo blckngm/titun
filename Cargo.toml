@@ -38,6 +38,8 @@ socket2 = "0.3"
 tai64 = {version = "0.2", default-features = false}
 tokio = { version = "0.1.15", features = ["async-await-preview"] }
 tokio-io = "0.1.11"
+tokio-threadpool = "0.1.11"
+
 tokio-signal = "0.2"
 vec_map = "0.8.1"
 pin-utils = "0.1.0-alpha.4"

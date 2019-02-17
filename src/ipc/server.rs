@@ -23,8 +23,7 @@ use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::{SetPeerCommand, WgState, WgStateOut};
 use failure::{Error, ResultExt};
 use futures::channel::mpsc::Sender;
-use futures::future::FutureObj;
-use futures::prelude::{FutureExt, SinkExt};
+use futures::prelude::SinkExt;
 use hex::encode;
 use std::io::{BufWriter, Read, Write};
 use std::marker::Unpin;
@@ -37,7 +36,7 @@ use std::time::SystemTime;
 pub fn start_ipc_server(
     wg: Weak<WgState>,
     dev_name: &str,
-    sender: Sender<FutureObj<'static, ()>>,
+    sender: Sender<Box<FnMut() + Send + 'static>>,
 ) -> Result<(), Error> {
     use crate::ipc::windows_named_pipe::*;
 
@@ -61,7 +60,7 @@ pub fn start_ipc_server(
 pub fn start_ipc_server(
     wg: Weak<WgState>,
     dev_name: &str,
-    sender: Sender<FutureObj<'static, ()>>,
+    sender: Sender<Box<FnMut() + Send + 'static>>,
 ) -> Result<(), Error> {
     use nix::sys::stat::{umask, Mode};
     use std::fs::{create_dir_all, remove_file};
@@ -132,12 +131,12 @@ fn write_error(stream: impl Write, errno: i32) -> Result<(), ::std::io::Error> {
     writer.flush()
 }
 
-async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
+fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
     if let Some(key) = command.private_key {
         wg.set_key(key);
     }
     if let Some(p) = command.listen_port {
-        await!(wg.set_port(p)).unwrap_or_else(|e| {
+        wg.set_port(p).unwrap_or_else(|e| {
             warn!("Failed to set port: {}", e);
         });
     }
@@ -172,7 +171,7 @@ async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
 pub fn serve<S>(
     wg: &Weak<WgState>,
     stream: S,
-    mut sender: Sender<FutureObj<'static, ()>>,
+    mut sender: Sender<Box<FnMut() + Send + 'static>>,
 ) -> Result<(), Error>
 where
     S: Read + Write + Clone + Unpin,
@@ -197,15 +196,11 @@ where
             write_wg_state(stream.clone(), &wg.get_state())?;
         }
         WgIpcCommand::Set(sc) => {
-            futures::executor::block_on(
-                sender.send(
-                    async move {
-                        await!(process_wg_set(&wg, sc));
-                    }
-                        .boxed()
-                        .into(),
-                ),
-            )
+            // FnMut hack.
+            let mut sc = Some(sc);
+            futures::executor::block_on(sender.send(Box::new(move || {
+                process_wg_set(&wg, sc.take().unwrap());
+            })))
             .unwrap();
             write_error(stream.clone(), 0)?;
         }

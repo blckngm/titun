@@ -122,7 +122,8 @@ fn main() -> Result<(), Error> {
                 #[cfg(windows)]
                 network,
             };
-            tokio::runtime::current_thread::block_on_all(
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on_all(
                 async move {
                     if let Err(err) = await!(run(config)) {
                         error!("Error: {}", err);

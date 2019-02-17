@@ -50,7 +50,7 @@ where
         delay: Mutex::new(Delay::new(now())),
     });
     let options = options0.clone();
-    spawn_async!(
+    crate::tokio_spawn(
         async move {
             loop {
                 let wait_result = await!(future::poll_fn(|| {
@@ -82,7 +82,7 @@ where
                 }
                 await!(action());
             }
-        }
+        },
     );
     TimerHandle {
         _tx: tx,
@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn smoke() {
-        block_on_all_async!(
+        crate::tokio_block_on_all(
             async {
                 let run = Arc::new(AtomicBool::new(false));
                 let t = {
@@ -134,13 +134,13 @@ mod tests {
                 t.adjust_and_activate(Duration::from_millis(10));
                 sleep!(ms 30);
                 assert!(run.load(SeqCst));
-            }
+            },
         );
     }
 
     #[test]
     fn adjust_activate_de_activate() {
-        block_on_all_async!(
+        crate::tokio_block_on_all(
             async {
                 let run = Arc::new(AtomicBool::new(false));
                 let t = {
@@ -170,7 +170,7 @@ mod tests {
                 t.adjust_and_activate(Duration::from_millis(15));
                 sleep!(ms 30);
                 assert!(run.load(SeqCst));
-            }
+            },
         );
     }
 
@@ -180,7 +180,7 @@ mod tests {
         // Workaround lifetime issues.
         let b1 = Arc::new(Mutex::new(b0.clone()));
         let b = b1.clone();
-        block_on_all_async!(
+        crate::tokio_block_on_all(
             async move {
                 let run = Arc::new(AtomicBool::new(false));
                 let t = {
@@ -194,7 +194,7 @@ mod tests {
                 b.lock().iter(|| {
                     t.adjust_and_activate(Duration::from_secs(10));
                 });
-            }
+            },
         );
         *b0 = b1.lock().clone();
     }

@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::cancellation::CancellationTokenSource;
+use crate::async_scope::AsyncScope;
 use crate::crypto::noise_rust_sodium::ChaCha20Poly1305;
 use crate::wireguard::*;
 use byteorder::{ByteOrder, LittleEndian};
@@ -53,7 +53,7 @@ pub struct Transport {
     pub recv_key: SecretKey,
     pub recv_ar: Mutex<AntiReplay>,
 
-    source: CancellationTokenSource,
+    scope: Arc<AsyncScope>,
 }
 
 impl Transport {
@@ -79,7 +79,7 @@ impl Transport {
             created: tokio::clock::now(),
             recv_ar: Mutex::new(AntiReplay::new()),
             send_counter: AtomicU64::new(0),
-            source: CancellationTokenSource::new(),
+            scope: AsyncScope::new(),
         });
 
         let handshake_after = if transport.is_initiator {
@@ -89,7 +89,7 @@ impl Transport {
         };
 
         let weak = Arc::downgrade(&transport);
-        transport.source.spawn_async(
+        transport.scope.spawn_async(
             async move {
                 sleep!(secs handshake_after);
                 if let Some(t) = weak.upgrade() {
@@ -99,7 +99,7 @@ impl Transport {
         );
 
         let weak = Arc::downgrade(&transport);
-        transport.source.spawn_async(
+        transport.scope.spawn_async(
             async move {
                 sleep!(secs REJECT_AFTER_TIME);
                 if let Some(t) = weak.upgrade() {

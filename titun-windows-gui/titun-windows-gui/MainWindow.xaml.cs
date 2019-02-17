@@ -337,6 +337,7 @@ namespace titun_windows_gui
                 UseShellExecute = false
             };
             info.EnvironmentVariables.Add("RUST_LOG", "warn");
+            info.EnvironmentVariables.Add("RUST_BACKTRACE", "1");
             var p = titunProcess = new Process()
             {
                 StartInfo = info,

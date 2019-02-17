@@ -19,9 +19,6 @@
 
 //! Tap-windows TUN devices support.
 
-use futures::channel::mpsc::*;
-use futures::lock::Mutex as AsyncMutex;
-use futures::{SinkExt, StreamExt};
 use parking_lot::Mutex;
 use std::ffi::CString;
 use std::fmt::{Debug, Formatter};
@@ -29,7 +26,7 @@ use std::io::{Error, ErrorKind, Read, Result, Write};
 use std::mem::zeroed;
 use std::net::Ipv4Addr;
 use std::ptr::null_mut;
-use std::sync::Arc;
+use tokio::prelude::Async;
 
 use winapi::shared::winerror::ERROR_IO_PENDING;
 use winapi::um::fileapi::{CreateFileA, ReadFile, WriteFile, OPEN_EXISTING};
@@ -52,71 +49,39 @@ const fn tap_control_code(request: u32, method: u32) -> u32 {
     ctl_code(34, request, method, 0)
 }
 
-const MAX_PACKET_SIZE: usize = 65536;
-
 pub struct AsyncTun {
-    tun: Arc<Tun>,
-    rx: AsyncMutex<Receiver<Result<Vec<u8>>>>,
+    tun: Tun,
 }
 
 impl Drop for AsyncTun {
     fn drop(&mut self) {
-        self.rx.try_lock().unwrap().close();
         self.tun.interrupt();
     }
 }
 
 impl AsyncTun {
     fn new(tun: Tun) -> AsyncTun {
-        let tun = Arc::new(tun);
-        let (mut tx, rx) = channel(0);
-        let async_tun = AsyncTun {
-            tun: tun.clone(),
-            rx: AsyncMutex::new(rx),
-        };
-        std::thread::Builder::new()
-            .name("tun-read".into())
-            .spawn(move || {
-                futures::executor::block_on(
-                    async move {
-                        loop {
-                            let mut buf = Vec::with_capacity(MAX_PACKET_SIZE);
-                            unsafe {
-                                buf.set_len(MAX_PACKET_SIZE);
-                            }
-                            let result = tun.read(&mut buf[..]);
-                            let result = match result {
-                                Ok(len) => {
-                                    buf.truncate(len);
-                                    Ok(buf)
-                                }
-                                Err(e) => Err(e),
-                            };
-                            if let Err(_) = await!(tx.send(result)) {
-                                break;
-                            }
-                        }
-                    },
-                );
-            })
-            .unwrap();
-        async_tun
+        AsyncTun { tun }
     }
 
     pub async fn read_async<'a>(&'a self, buf: &'a mut [u8]) -> Result<usize> {
-        let mut rx = await!(self.rx.lock());
-        match await!(rx.next()).unwrap() {
-            Ok(v) => {
-                let len = std::cmp::min(v.len(), buf.len());
-                buf[..len].copy_from_slice(&v[..len]);
-                Ok(len)
+        await!(tokio::prelude::future::poll_fn(
+            || match tokio_threadpool::blocking(|| self.tun.read(buf)).unwrap() {
+                Async::Ready(Ok(x)) => Ok(Async::Ready(x)),
+                Async::Ready(Err(e)) => Err(e),
+                Async::NotReady => Ok(Async::NotReady),
             }
-            Err(e) => Err(e),
-        }
+        ))
     }
 
     pub async fn write_async<'a>(&'a self, buf: &'a [u8]) -> Result<usize> {
-        self.tun.write(buf)
+        await!(tokio::prelude::future::poll_fn(
+            || match tokio_threadpool::blocking(|| self.tun.write(buf)).unwrap() {
+                Async::Ready(Ok(x)) => Ok(Async::Ready(x)),
+                Async::Ready(Err(e)) => Err(e),
+                Async::NotReady => Ok(Async::NotReady),
+            }
+        ))
     }
 }
 

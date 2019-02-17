@@ -15,17 +15,14 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::cancellation::*;
+use crate::async_scope::AsyncScope;
 use crate::ipc::start_ipc_server;
 use crate::systemd;
 use crate::wireguard::re_exports::{DH, X25519};
 use crate::wireguard::*;
 use failure::{Error, ResultExt};
-use futures::channel::mpsc::*;
-use futures::future::FutureObj;
-use futures::StreamExt;
-use parking_lot::Mutex;
-use std::sync::Arc;
+use futures::channel::mpsc::channel;
+use futures::prelude::StreamExt;
 use tokio::prelude::*;
 
 pub struct Config {
@@ -36,40 +33,36 @@ pub struct Config {
 }
 
 pub async fn run(c: Config) -> Result<(), Error> {
-    let source0 = Arc::new(Mutex::new(CancellationTokenSource::new()));
+    let scope0 = AsyncScope::new();
 
     // XXX: On windows, tokio-signal will spawn a never ended task
     // and prevent the event loop from shuting down on itself.
     #[cfg(windows)]
-    let token = source0.lock().get_token();
+    let scope = scope0.clone();
     #[cfg(windows)]
-    spawn_async!(
+    crate::tokio_spawn(
         async move {
-            await!(token.cancelled());
+            await!(scope.cancelled());
             sleep!(ms 100);
             std::process::exit(0);
-        }
+        },
     );
 
-    let source = source0.clone();
-    source0.lock().spawn_async(
+    scope0.spawn_canceller(
         async move {
             let mut ctrl_c = await!(tokio_signal::ctrl_c()).unwrap();
             await!(ctrl_c.next());
             debug!("Received SIGINT or Ctrl-C, shutting down.");
-            source.lock().cancel();
         },
     );
+
     if c.exit_stdin_eof {
-        let source = source0.clone();
-        // Cannot use tokio's stdin in single threaded runtime. So use an OS thread.
-        std::thread::Builder::new()
-            .name("wait-stdin".into())
-            .spawn(move || {
-                use std::io::{stdin, Read};
+        scope0.spawn_canceller(
+            async move {
+                let mut stdin = tokio::io::stdin();
                 let mut buf = [0u8; 4096];
                 loop {
-                    match stdin().read(&mut buf) {
+                    match await!(stdin.read_async(&mut buf)) {
                         Ok(0) => break,
                         Err(e) => {
                             warn!("Read from stdin error: {}", e);
@@ -79,21 +72,17 @@ pub async fn run(c: Config) -> Result<(), Error> {
                     }
                 }
                 debug!("Stdin EOF, shutting down.");
-                source.lock().cancel();
-            })
-            .unwrap();
+            },
+        );
     }
     #[cfg(unix)]
-    let source = source0.clone();
-    #[cfg(unix)]
-    source0.lock().spawn_async(
+    scope0.spawn_canceller(
         async move {
             use tokio_signal::unix::{Signal, SIGTERM};
 
             let mut term = await!(Signal::new(SIGTERM)).unwrap();
             await!(term.next());
             debug!("Received SIGTERM, shutting down.");
-            source.lock().cancel();
         },
     );
 
@@ -111,19 +100,21 @@ pub async fn run(c: Config) -> Result<(), Error> {
     )?;
 
     let weak = ::std::sync::Arc::downgrade(&wg);
-    source0.lock().spawn_async(WgState::run(wg));
 
-    let (tx, mut rx) = channel::<FutureObj<'static, ()>>(0);
-    source0.lock().spawn_async(
-        async move {
-            while let Some(action) = await!(rx.next()) {
-                await!(action);
-            }
-        },
+    scope0.spawn_canceller(WgState::run(wg));
+
+    let (tx, rx) = channel(0);
+
+    // TODO: Replace with Box<FnOnce> once its callable.
+    scope0.spawn_async(
+        rx.for_each(async move |mut action: Box<FnMut() + Send + 'static>| {
+            action();
+        }),
     );
 
     start_ipc_server(weak, &c.dev_name, tx)?;
     systemd::notify_ready();
 
+    await!(scope0.cancelled());
     Ok(())
 }

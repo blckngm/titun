@@ -35,20 +35,19 @@ macro_rules! sleep {
     }};
 }
 
-macro_rules! block_on_all_async {
-    ($future:expr) => {{
-        use futures::{FutureExt, TryFutureExt};
-
-        tokio::runtime::current_thread::block_on_all($future.unit_error().boxed().compat()).unwrap()
-    }};
+pub fn tokio_block_on_all<T, Fut>(fut: Fut) -> T
+where
+    Fut: futures::Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    use futures::*;
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on_all(fut.unit_error().boxed().compat()).unwrap()
 }
 
-macro_rules! spawn_async {
-    ($future:expr) => {{
-        use futures::{FutureExt, TryFutureExt};
-
-        tokio::spawn($future.unit_error().boxed().compat())
-    }};
+fn tokio_spawn(fut: impl futures::Future<Output = ()> + Send + 'static) {
+    use futures::*;
+    tokio::spawn(fut.unit_error().boxed().compat());
 }
 
 #[cfg(feature = "bench")]
@@ -68,7 +67,7 @@ extern crate tokio;
 #[macro_use]
 extern crate pin_utils;
 
-mod cancellation;
+mod async_scope;
 mod crypto;
 mod either;
 mod ipc;

@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::cancellation::CancellationTokenSource;
+use crate::async_scope::AsyncScope;
 use crate::either::FutureEitherExt;
 use crate::udp_socket::*;
 use crate::wireguard::re_exports::sodium_init;
@@ -95,10 +95,10 @@ impl Drop for IdMapGuard {
                 return;
             }
             let id = self.id;
-            spawn_async!(
+            crate::tokio_spawn(
                 async move {
                     wg.id_map.write().remove(&id);
-                }
+                },
             );
         }
     }
@@ -585,7 +585,7 @@ impl WgState {
     }
 
     pub async fn run(wg: Arc<WgState>) {
-        let source = CancellationTokenSource::new();
+        let source = AsyncScope::new();
         {
             let wg = wg.clone();
             source.spawn_async(
@@ -734,10 +734,10 @@ impl WgState {
     }
 
     /// Change listen port.
-    pub async fn set_port(&self, mut new_port: u16) -> Result<(), Error> {
+    pub fn set_port(&self, mut new_port: u16) -> Result<(), Error> {
         let new_socket = WgState::prepare_socket(&mut new_port, self.info.read().fwmark)?;
         let mut sender = self.socket_sender.lock().as_ref().unwrap().clone();
-        await!(sender.send(new_socket)).unwrap();
+        futures::executor::block_on(sender.send(new_socket)).unwrap();
         self.info.write().port = new_port;
         Ok(())
     }

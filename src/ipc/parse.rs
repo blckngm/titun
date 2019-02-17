@@ -233,7 +233,7 @@ pub fn parse_command_sync(r: impl std::io::Read + Unpin) -> Result<Option<WgIpcC
     let r = tokio_io::io::AllowStdIo::new(r);
     let lines_codec = tokio::codec::LinesCodec::new_with_max_length(128);
     let lines_stream = tokio::codec::FramedRead::new(r, lines_codec);
-    block_on_all_async!(parse_command(lines_stream))
+    futures::executor::block_on(parse_command(lines_stream))
 }
 
 #[cfg(test)]
@@ -242,7 +242,7 @@ mod tests {
 
     #[test]
     fn test_parsing() {
-        block_on_all_async!(
+        futures::executor::block_on(
             async {
                 let stream = stream::iter_ok(vec!["get=1".into(), "".into()]);
                 let result = await!(parse_command(stream));
@@ -251,7 +251,7 @@ mod tests {
                 let stream = stream::iter_ok(include_str!("example.txt").lines().map(|x| x.into()));
                 let result = await!(parse_command(stream));
                 assert!(result.is_ok());
-            }
+            },
         );
     }
 }
