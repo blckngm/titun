@@ -229,11 +229,13 @@ where
     }
 }
 
-pub fn parse_command_sync(r: impl std::io::Read + Unpin) -> Result<Option<WgIpcCommand>, Error> {
-    let r = tokio_io::io::AllowStdIo::new(r);
+pub async fn parse_command_io<R>(stream: R) -> Result<Option<WgIpcCommand>, Error>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
     let lines_codec = tokio::codec::LinesCodec::new_with_max_length(128);
-    let lines_stream = tokio::codec::FramedRead::new(r, lines_codec);
-    futures::executor::block_on(parse_command(lines_stream))
+    let lines_stream = tokio::codec::FramedRead::new(stream, lines_codec);
+    await!(parse_command(lines_stream))
 }
 
 #[cfg(test)]

@@ -22,49 +22,41 @@ use crate::ipc::parse::*;
 use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::{SetPeerCommand, WgState, WgStateOut};
 use failure::{Error, ResultExt};
-use futures::channel::mpsc::Sender;
-use futures::prelude::SinkExt;
 use hex::encode;
-use std::io::{BufWriter, Read, Write};
+use std::io::Read;
 use std::marker::Unpin;
 use std::path::Path;
 use std::sync::{Arc, Weak};
-use std::thread::Builder;
 use std::time::SystemTime;
+use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::prelude::AsyncWriteExt;
 
 #[cfg(windows)]
-pub fn start_ipc_server(
-    wg: Weak<WgState>,
-    dev_name: &str,
-    sender: Sender<Box<FnMut() + Send + 'static>>,
-) -> Result<(), Error> {
+pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> {
     use crate::ipc::windows_named_pipe::*;
 
     let mut path = Path::new(r#"\\.\pipe\wireguard"#).join(dev_name);
     path.set_extension("sock");
     let mut listener = PipeListener::bind(path).context("Bind IPC socket")?;
-    Builder::new()
-        .name("ipc-server".to_string())
-        .spawn(move || {
-            for stream in listener.incoming() {
-                // We only serve one connection at a time.
-                serve(&wg, &stream.unwrap(), sender.clone()).unwrap_or_else(|e| {
+    loop {
+        let wg = wg.clone();
+        let stream = await!(listener.accept_async())?;
+        crate::tokio_spawn(
+            async move {
+                await!(serve(&wg, stream)).unwrap_or_else(|e| {
                     warn!("Error serving IPC connection: {:?}", e);
                 });
-            }
-        })?;
-    Ok(())
+            },
+        );
+    }
 }
 
 #[cfg(not(windows))]
-pub fn start_ipc_server(
-    wg: Weak<WgState>,
-    dev_name: &str,
-    sender: Sender<Box<FnMut() + Send + 'static>>,
-) -> Result<(), Error> {
+pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> {
     use nix::sys::stat::{umask, Mode};
     use std::fs::{create_dir_all, remove_file};
-    use std::os::unix::net::UnixListener;
+    use tokio::net::unix::UnixListener;
+    use tokio::prelude::StreamAsyncExt;
 
     umask(Mode::from_bits(0o077).unwrap());
     let dir = Path::new(r#"/run/wireguard"#);
@@ -73,21 +65,41 @@ pub fn start_ipc_server(
     path.set_extension("sock");
     let _ = remove_file(path.as_path());
     let listener = UnixListener::bind(path.as_path()).context("Bind IPC socket.")?;
-    Builder::new()
-        .name("ipc-server".to_string())
-        .spawn(move || {
-            for stream in listener.incoming() {
-                // We only serve one connection at a time.
-                serve(&wg, &stream.unwrap(), sender.clone()).unwrap_or_else(|e| {
-                    warn!("Error serving IPC connection: {:?}", e);
-                });
-            }
-        })?;
-    Ok(())
+
+    let mut incoming = listener.incoming();
+    loop {
+        let wg = wg.clone();
+        match await!(incoming.next()) {
+            Some(Ok(stream)) => crate::tokio_spawn(
+                async move {
+                    await!(serve(&wg, stream)).unwrap_or_else(|e| {
+                        warn!("Error serving IPC connection: {:?}", e);
+                    });
+                },
+            ),
+            Some(Err(e)) => return Err(e.into()),
+            None => unreachable!(),
+        }
+    }
 }
 
-fn write_wg_state(w: impl Write, state: &WgStateOut) -> Result<(), ::std::io::Error> {
-    let mut w = BufWriter::with_capacity(4096, w);
+macro_rules! writeln {
+    ($dst:expr, $fmt:expr, $($arg:tt)*) => {{
+        let it = format!(concat!($fmt, "\n"), $($arg)*);
+        await!($dst.write_all_async(it.as_bytes()))
+    }};
+    ($dst:expr, $fmt:expr) => {
+        await!($dst.write_all_async(concat!($fmt, "\n").as_bytes()))
+    };
+    ($dst:expr) => {
+        await!($dst.write_all_async("\n".as_bytes()))
+    };
+}
+
+async fn write_wg_state(
+    mut w: impl AsyncWrite + Unpin + 'static,
+    state: &WgStateOut,
+) -> Result<(), ::std::io::Error> {
     writeln!(w, "private_key={}", encode(state.private_key.as_slice()))?;
     writeln!(w, "listen_port={}", state.listen_port)?;
     if state.fwmark != 0 {
@@ -121,14 +133,16 @@ fn write_wg_state(w: impl Write, state: &WgStateOut) -> Result<(), ::std::io::Er
     }
     writeln!(w, "errno=0")?;
     writeln!(w)?;
-    w.flush()
+    await!(w.flush_async())
 }
 
-fn write_error(stream: impl Write, errno: i32) -> Result<(), ::std::io::Error> {
-    let mut writer = BufWriter::with_capacity(128, stream);
-    writeln!(writer, "errno={}", errno)?;
-    writeln!(writer)?;
-    writer.flush()
+async fn write_error(
+    mut stream: impl AsyncWrite + Unpin + 'static,
+    errno: i32,
+) -> Result<(), ::std::io::Error> {
+    writeln!(stream, "errno={}", errno)?;
+    writeln!(stream)?;
+    await!(stream.flush_async())
 }
 
 fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
@@ -168,41 +182,36 @@ fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
     }
 }
 
-pub fn serve<S>(
-    wg: &Weak<WgState>,
-    stream: S,
-    mut sender: Sender<Box<FnMut() + Send + 'static>>,
-) -> Result<(), Error>
+pub async fn serve<S>(wg: &Weak<WgState>, stream: S) -> Result<(), Error>
 where
-    S: Read + Write + Clone + Unpin,
+    S: AsyncRead + AsyncWrite + 'static,
 {
-    let c = match parse_command_sync(stream.clone().take(1024 * 1024)) {
+    let (stream_r, stream_w) = stream.split();
+
+    let c = match await!(parse_command_io(stream_r.take(1024 * 1024))) {
         Ok(Some(c)) => c,
         Ok(None) => return Ok(()),
         Err(e) => {
-            drop(write_error(stream.clone(), /* EINVAL */ 22));
+            drop(write_error(stream_w, /* EINVAL */ 22));
             return Err(e);
         }
     };
     let wg = match wg.upgrade() {
         None => {
-            write_error(stream.clone(), /* ENXIO */ 6)?;
+            await!(write_error(stream_w, /* ENXIO */ 6))?;
             bail!("WgState no longer available");
         }
         Some(wg) => wg,
     };
     match c {
         WgIpcCommand::Get => {
-            write_wg_state(stream.clone(), &wg.get_state())?;
+            let state = wg.get_state();
+            await!(write_wg_state(stream_w, &state))?;
         }
         WgIpcCommand::Set(sc) => {
             // FnMut hack.
-            let mut sc = Some(sc);
-            futures::executor::block_on(sender.send(Box::new(move || {
-                process_wg_set(&wg, sc.take().unwrap());
-            })))
-            .unwrap();
-            write_error(stream.clone(), 0)?;
+            process_wg_set(&wg, sc);
+            await!(write_error(stream_w, 0))?;
         }
     }
     Ok(())

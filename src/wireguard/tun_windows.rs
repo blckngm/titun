@@ -26,7 +26,6 @@ use std::io::{Error, ErrorKind, Read, Result, Write};
 use std::mem::zeroed;
 use std::net::Ipv4Addr;
 use std::ptr::null_mut;
-use tokio::prelude::Async;
 
 use winapi::shared::winerror::ERROR_IO_PENDING;
 use winapi::um::fileapi::{CreateFileA, ReadFile, WriteFile, OPEN_EXISTING};
@@ -65,23 +64,11 @@ impl AsyncTun {
     }
 
     pub async fn read_async<'a>(&'a self, buf: &'a mut [u8]) -> Result<usize> {
-        await!(tokio::prelude::future::poll_fn(
-            || match tokio_threadpool::blocking(|| self.tun.read(buf)).unwrap() {
-                Async::Ready(Ok(x)) => Ok(Async::Ready(x)),
-                Async::Ready(Err(e)) => Err(e),
-                Async::NotReady => Ok(Async::NotReady),
-            }
-        ))
+        await!(crate::blocking(|| self.tun.read(buf)))
     }
 
     pub async fn write_async<'a>(&'a self, buf: &'a [u8]) -> Result<usize> {
-        await!(tokio::prelude::future::poll_fn(
-            || match tokio_threadpool::blocking(|| self.tun.write(buf)).unwrap() {
-                Async::Ready(Ok(x)) => Ok(Async::Ready(x)),
-                Async::Ready(Err(e)) => Err(e),
-                Async::NotReady => Ok(Async::NotReady),
-            }
-        ))
+        await!(crate::blocking(|| self.tun.write(buf)))
     }
 }
 

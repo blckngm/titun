@@ -50,6 +50,17 @@ fn tokio_spawn(fut: impl futures::Future<Output = ()> + Send + 'static) {
     tokio::spawn(fut.unit_error().boxed().compat());
 }
 
+fn blocking<T>(f: impl FnOnce() -> T) -> impl futures::Future<Output = T> {
+    async move {
+        // Hack for FnMut.
+        let mut f = Some(f);
+        await!(tokio::prelude::future::poll_fn(|| {
+            tokio_threadpool::blocking(|| f.take().unwrap()())
+        }))
+        .unwrap()
+    }
+}
+
 #[cfg(feature = "bench")]
 extern crate test;
 

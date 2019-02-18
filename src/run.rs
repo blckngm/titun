@@ -16,13 +16,11 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::async_scope::AsyncScope;
-use crate::ipc::start_ipc_server;
+use crate::ipc::ipc_server;
 use crate::systemd;
 use crate::wireguard::re_exports::{DH, X25519};
 use crate::wireguard::*;
 use failure::{Error, ResultExt};
-use futures::channel::mpsc::channel;
-use futures::prelude::StreamExt;
 use tokio::prelude::*;
 
 pub struct Config {
@@ -103,16 +101,12 @@ pub async fn run(c: Config) -> Result<(), Error> {
 
     scope0.spawn_canceller(WgState::run(wg));
 
-    let (tx, rx) = channel(0);
-
-    // TODO: Replace with Box<FnOnce> once its callable.
-    scope0.spawn_async(
-        rx.for_each(async move |mut action: Box<FnMut() + Send + 'static>| {
-            action();
-        }),
+    scope0.spawn_canceller(
+        async move {
+            await!(ipc_server(weak, &c.dev_name))
+                .unwrap_or_else(|e| error!("Failed to start IPC server: {}", e))
+        },
     );
-
-    start_ipc_server(weak, &c.dev_name, tx)?;
     systemd::notify_ready();
 
     await!(scope0.cancelled());

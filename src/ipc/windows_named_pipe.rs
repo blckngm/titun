@@ -25,7 +25,6 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
 #![cfg(windows)]
 
 use std::borrow::Cow;
@@ -33,6 +32,8 @@ use std::ffi::OsString;
 use std::io::{self, Read, Write};
 use std::os::windows::prelude::*;
 use std::path::Path;
+use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::prelude::{Async, Poll};
 use winapi::shared::minwindef::{DWORD, LPCVOID, LPVOID};
 use winapi::shared::winerror::{ERROR_PIPE_CONNECTED, ERROR_PIPE_NOT_CONNECTED};
 use winapi::um::fileapi::{CreateFileW, FlushFileBuffers, ReadFile, WriteFile, OPEN_EXISTING};
@@ -159,6 +160,30 @@ impl<'a> Write for &'a PipeStream {
     }
 }
 
+impl AsyncRead for PipeStream {
+    fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, io::Error> {
+        match tokio_threadpool::blocking(|| self.read(buf)).unwrap() {
+            Async::Ready(Ok(len)) => Ok(Async::Ready(len)),
+            Async::Ready(Err(e)) => Err(e),
+            Async::NotReady => Ok(Async::NotReady),
+        }
+    }
+}
+
+impl AsyncWrite for PipeStream {
+    fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, io::Error> {
+        match tokio_threadpool::blocking(|| self.write(buf)).unwrap() {
+            Async::Ready(Ok(len)) => Ok(Async::Ready(len)),
+            Async::Ready(Err(e)) => Err(e),
+            Async::NotReady => Ok(Async::NotReady),
+        }
+    }
+
+    fn shutdown(&mut self) -> Poll<(), io::Error> {
+        unimplemented!()
+    }
+}
+
 impl Write for PipeStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         (self as &PipeStream).write(buf)
@@ -265,6 +290,15 @@ impl<'a> PipeListener<'a> {
 
     pub fn incoming<'b>(&'b mut self) -> Incoming<'b, 'a> {
         Incoming { listener: self }
+    }
+}
+
+// Unable to make rustc happy about this lifetime with async/await. Just use 'static.
+impl PipeListener<'static> {
+    pub fn accept_async<'a>(
+        &'a mut self,
+    ) -> impl futures::Future<Output = io::Result<PipeStream>> + 'a {
+        crate::blocking(move || self.accept())
     }
 }
 
