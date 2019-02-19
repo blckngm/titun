@@ -188,6 +188,8 @@ where
 {
     let (stream_r, stream_w) = stream.split();
 
+    let stream_w = std::io::BufWriter::with_capacity(4096, stream_w);
+
     let c = match await!(parse_command_io(stream_r.take(1024 * 1024))) {
         Ok(Some(c)) => c,
         Ok(None) => return Ok(()),
