@@ -17,7 +17,7 @@ bench = []
 [dependencies]
 arrayvec = "0.4.6"
 base64 = "0.9"
-blake2-rfc = "0.2.17"
+blake2-rfc = { version = "0.2.18", features = ["simd_asm"]}
 byteorder = "1"
 bytes = "0.4"
 clap = "2.19.3"
@@ -31,15 +31,13 @@ mio = "0.6"
 nix = "0.13"
 noise-protocol = "0.0.5"
 parking_lot = "0.7"
-rand = "0.5.4"
-sodiumoxide = { package = "rust_sodium", version = "0.10.2" }
-libsodium_sys = { package = "rust_sodium-sys", version = "0.10.2" }
+rand = "0.6"
+sodiumoxide = "0.2.0"
+libsodium-sys = "0.2.0"
 socket2 = "0.3"
 tai64 = {version = "0.2", default-features = false}
 tokio = { version = "0.1.15", features = ["async-await-preview"] }
-tokio-io = "0.1.11"
 tokio-threadpool = "0.1.11"
-
 tokio-signal = "0.2"
 vec_map = "0.8.1"
 pin-utils = "0.1.0-alpha.4"
