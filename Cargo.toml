@@ -24,7 +24,7 @@ clap = "2.19.3"
 env_logger = "0.5.12"
 failure = "0.1"
 fnv = "1.0.6"
-futures-preview = { version = "0.3.0-alpha.12", features = ["compat"] }
+futures-preview = { version = "0.3.0-alpha.13", features = ["compat"] }
 hex = "0.3"
 log = "0.4.3"
 mio = "0.6"

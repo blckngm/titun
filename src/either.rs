@@ -17,7 +17,7 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::task::{LocalWaker, Poll};
+use std::task::{Poll, Waker};
 
 #[derive(Debug)]
 pub enum Either<L, R> {
@@ -32,7 +32,7 @@ where
 {
     type Output = T;
 
-    fn poll(self: Pin<&mut Self>, lw: &LocalWaker) -> Poll<T> {
+    fn poll(self: Pin<&mut Self>, lw: &Waker) -> Poll<T> {
         unsafe {
             match self.get_unchecked_mut() {
                 Either::Left(l) => Pin::new_unchecked(l).poll(lw),
