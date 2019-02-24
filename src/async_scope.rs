@@ -59,7 +59,9 @@ impl AsyncScope {
         self.spawn_async(
             async move {
                 await!(future);
-                w.upgrade().map(|c| c.cancel());
+                if let Some(c) = w.upgrade() {
+                    c.cancel();
+                }
             },
         );
     }

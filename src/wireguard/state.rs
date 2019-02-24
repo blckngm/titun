@@ -115,7 +115,7 @@ fn udp_process_handshake_init<'a>(
     p: &'a [u8],
     addr: SocketAddrV6,
 ) -> impl Future<Output = ()> + 'a {
-    let no_action = async { () }.right_future();
+    let no_action = async {}.right_future();
 
     if p.len() != HANDSHAKE_INIT_LEN {
         return no_action;
@@ -213,7 +213,7 @@ fn udp_process_handshake_resp<'a>(
     p: &'a [u8],
     addr: SocketAddrV6,
 ) -> impl Future<Output = ()> + Send + 'a {
-    let no_action = async { () }.left_future();
+    let no_action = async {}.left_future();
 
     if p.len() != HANDSHAKE_RESP_LEN {
         return no_action;
@@ -585,10 +585,10 @@ impl WgState {
     }
 
     pub async fn run(wg: Arc<WgState>) {
-        let source = AsyncScope::new();
+        let scope = AsyncScope::new();
         {
             let wg = wg.clone();
-            source.spawn_async(
+            scope.spawn_async(
                 async move {
                     loop {
                         sleep!(secs 120);
@@ -600,9 +600,9 @@ impl WgState {
         }
         let (sender, receiver) = channel(0);
         *wg.socket_sender.lock() = Some(sender);
-        source.spawn_async(udp_processing(wg.clone(), receiver));
-        source.spawn_async(tun_packet_processing(wg));
-        let _ = await!(future::empty::<()>());
+        scope.spawn_async(udp_processing(wg.clone(), receiver));
+        scope.spawn_async(tun_packet_processing(wg));
+        await!(scope.cancelled());
     }
 
     // Create a new socket, set IPv6 only to false, set fwmark, and bind.

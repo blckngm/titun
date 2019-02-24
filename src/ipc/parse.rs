@@ -183,7 +183,7 @@ where
                 None => bail!("Invalid line: {}", line),
                 Some(v) => v,
             };
-            match key.as_ref() {
+            match key {
                 "private_key" => {
                     let v = decode(value)?;
                     if v.len() != 32 {

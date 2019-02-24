@@ -55,6 +55,9 @@ fn blocking<T>(f: impl FnOnce() -> T) -> impl futures::Future<Output = T> {
         // Hack for FnMut.
         let mut f = Some(f);
         await!(tokio::prelude::future::poll_fn(|| {
+            // The closure is not redundant!
+            // https://github.com/rust-lang/rust-clippy/issues/3071
+            #[allow(clippy::redundant_closure)]
             tokio_threadpool::blocking(|| f.take().unwrap()())
         }))
         .unwrap()
