@@ -26,21 +26,21 @@ failure = "0.1"
 fnv = "1.0.6"
 futures-preview = { version = "0.3.0-alpha.13", features = ["compat"] }
 hex = "0.3"
+libsodium-sys = "0.2.0"
 log = "0.4.3"
 mio = "0.6"
+net2 = "0.2.33"
 nix = "0.13"
 noise-protocol = "0.0.5"
 parking_lot = "0.7"
+pin-utils = "0.1.0-alpha.4"
 rand = "0.6"
 sodiumoxide = "0.2.0"
-libsodium-sys = "0.2.0"
-socket2 = "0.3"
 tai64 = {version = "0.2", default-features = false}
 tokio = { version = "0.1.15", features = ["async-await-preview"] }
-tokio-threadpool = "0.1.11"
 tokio-signal = "0.2"
+tokio-threadpool = "0.1.11"
 vec_map = "0.8.1"
-pin-utils = "0.1.0-alpha.4"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["fileapi", "winbase", "ioapiset", "synchapi", "namedpipeapi"] }

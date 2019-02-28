@@ -17,7 +17,7 @@
 
 use futures::lock::Mutex;
 use mio::net::UdpSocket as MioUdpSocket;
-use std::net::{Ipv6Addr, SocketAddr};
+use std::net::SocketAddr;
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
 use tokio::prelude::*;
@@ -31,22 +31,9 @@ pub struct UdpSocket {
 }
 
 impl UdpSocket {
-    pub fn bind(port: &mut u16) -> Result<UdpSocket, std::io::Error> {
-        use socket2::{Domain, Socket, Type};
-        let sock = Socket::new(Domain::ipv6(), Type::dgram(), None)?;
-        sock.set_nonblocking(true)?;
-        sock.set_only_v6(false)?;
-        sock.bind(&From::from(SocketAddr::from((
-            Ipv6Addr::from([0u8; 16]),
-            *port,
-        ))))?;
-        if *port == 0 {
-            *port = sock.local_addr().unwrap().as_inet6().unwrap().port();
-        }
-        let std_sock = sock.into_udp_socket();
-        let mio_sock = MioUdpSocket::from_socket(std_sock)?;
-        let socket = PollEvented2::new(mio_sock);
-
+    pub fn from_std(socket: std::net::UdpSocket) -> Result<UdpSocket, std::io::Error> {
+        socket.set_nonblocking(true)?;
+        let socket = PollEvented2::new(MioUdpSocket::from_socket(socket)?);
         Ok(UdpSocket {
             socket,
             send_lock: Mutex::new(()),
@@ -93,8 +80,6 @@ impl UdpSocket {
     }
 
     /// Async recvfrom.
-    ///
-    /// Only one task should use this.
     pub async fn recv_from_async<'a>(
         &'a self,
         buf: &'a mut [u8],
@@ -104,8 +89,6 @@ impl UdpSocket {
     }
 
     /// Async sendto.
-    ///
-    /// Multiple tasks can call this concurrently.
     pub async fn send_to_async<'a>(
         &'a self,
         buf: &'a [u8],
@@ -120,7 +103,7 @@ impl UdpSocket {
                 }
             }
         }
-        // If would block, call send_to_async with lock.
+        // If would block, use poll_send_to with lock.
         let _guard = await!(self.send_lock.lock());
         await!(future::poll_fn(|| UdpSocket::poll_send_to(
             &self.socket,

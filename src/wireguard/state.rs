@@ -607,11 +607,20 @@ impl WgState {
 
     // Create a new socket, set IPv6 only to false, set fwmark, and bind.
     fn prepare_socket(port: &mut u16, fwmark: u32) -> Result<UdpSocket, Error> {
-        let sock = UdpSocket::bind(port)?;
-        if fwmark != 0 {
-            set_fwmark(&sock, fwmark)?;
+        let socket = net2::UdpBuilder::new_v6()?
+            .only_v6(false)?
+            .bind((Ipv6Addr::UNSPECIFIED, *port))?;
+
+        if *port == 0 {
+            *port = socket.local_addr()?.port();
         }
-        Ok(sock)
+
+        let socket = UdpSocket::from_std(socket)?;
+
+        if fwmark != 0 {
+            set_fwmark(&socket, fwmark)?;
+        }
+        Ok(socket)
     }
 
     pub(crate) async fn send_to_async<'a>(
