@@ -122,7 +122,15 @@ fn main() -> Result<(), Error> {
                 #[cfg(windows)]
                 network,
             };
-            let rt = tokio::runtime::Runtime::new().unwrap();
+            let threads = if let Ok(Ok(t)) = std::env::var("TITUN_THREADS").map(|t| t.parse()) {
+                t
+            } else {
+                std::cmp::min(2, num_cpus::get())
+            };
+            info!("Will spawn {} worker threads", threads);
+            let rt = tokio::runtime::Builder::new()
+                .core_threads(threads)
+                .build()?;
             rt.block_on_all(
                 async move {
                     if let Err(err) = await!(run(config)) {
