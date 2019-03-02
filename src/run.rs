@@ -50,7 +50,7 @@ pub async fn run(c: Config) -> Result<(), Error> {
         async move {
             let mut ctrl_c = await!(tokio_signal::ctrl_c()).unwrap();
             await!(ctrl_c.next());
-            debug!("Received SIGINT or Ctrl-C, shutting down.");
+            info!("Received SIGINT or Ctrl-C, shutting down.");
         },
     );
 
@@ -69,7 +69,7 @@ pub async fn run(c: Config) -> Result<(), Error> {
                         _ => (),
                     }
                 }
-                debug!("Stdin EOF, shutting down.");
+                info!("Stdin EOF, shutting down.");
             },
         );
     }
@@ -80,7 +80,7 @@ pub async fn run(c: Config) -> Result<(), Error> {
 
             let mut term = await!(Signal::new(SIGTERM)).unwrap();
             await!(term.next());
-            debug!("Received SIGTERM, shutting down.");
+            info!("Received SIGTERM, shutting down.");
         },
     );
 

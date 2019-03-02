@@ -156,7 +156,7 @@ fn udp_process_handshake_init<'a>(
             if Some(r.timestamp) > peer.last_handshake {
                 peer.last_handshake = Some(r.timestamp);
             } else {
-                debug!("Handshake timestamp smaller.");
+                debug!("{}: Handshake timestamp smaller.", peer.info.log_id());
                 return no_action;
             }
 
@@ -165,7 +165,10 @@ fn udp_process_handshake_init<'a>(
                 .push_psk(&peer.info.psk.unwrap_or([0u8; 32]));
             let mut response = match responde(&info, &mut r, self_id) {
                 Err(_) => {
-                    error!("Failed to generate handshake response.");
+                    error!(
+                        "{}: Failed to generate handshake response.",
+                        peer.info.log_id()
+                    );
                     return no_action;
                 }
                 Ok(r) => r,
@@ -193,7 +196,7 @@ fn udp_process_handshake_init<'a>(
 
             // Lock id_map.
             wg.id_map.write().insert(self_id, peer0.clone());
-            info!("Handshake successful as responder.");
+            debug!("{}: Handshake successful as responder.", peer.info.log_id());
             return async move {
                 let _ = await!(wg.send_to_async(&response[..], addr));
             }
@@ -252,25 +255,34 @@ fn udp_process_handshake_resp<'a>(
             let handshake = match peer.handshake {
                 Some(ref h) => h,
                 None => {
-                    debug!("Get handshake response message, but don't know id.");
+                    debug!(
+                        "{}: Get handshake response message, but don't know id.",
+                        peer.info.log_id()
+                    );
                     return no_action;
                 }
             };
             if handshake.self_id.id != self_id {
-                debug!("Get handshake response message, but don't know id.");
+                debug!(
+                    "{}: Get handshake response message, but don't know id.",
+                    peer.info.log_id()
+                );
                 return no_action;
             }
 
             let mut hs = handshake.hs.clone();
             if let Ok(peer_id) = process_response(&mut hs, p) {
+                debug!("{}: Handshake successful as initiator.", peer.info.log_id());
                 (peer_id, hs)
             } else {
-                debug!("Get handshake response message, auth/decryption failed.");
+                debug!(
+                    "{}: Get handshake response message, auth/decryption failed.",
+                    peer.info.log_id()
+                );
                 return no_action;
             }
             // Release peer.
         };
-        info!("Handshake successful as initiator.");
         // Lock id_map.
         wg.id_map.write().insert(self_id, peer0.clone());
         // Release id_map.
@@ -322,7 +334,10 @@ fn udp_process_cookie_reply(wg: &WgState, p: &[u8]) {
             if let Ok(cookie) = process_cookie_reply(&peer.info.peer_pubkey, &mac1, p) {
                 peer.cookie = Some((cookie, tokio::clock::now()));
             } else {
-                debug!("Process cookie reply: auth/decryption failed.");
+                debug!(
+                    "{}: Process cookie reply: auth/decryption failed.",
+                    peer.info.log_id()
+                );
             }
         }
     }
@@ -366,17 +381,26 @@ async fn udp_process_transport<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: Sock
                         // Reverse path filtering.
                         let peer1 = wg.find_peer_by_ip(src);
                         if peer1.is_none() || !Arc::ptr_eq(&peer0, &peer1.unwrap()) {
-                            debug!("Get transport message: allowed IPs check failed.");
+                            debug!(
+                                "{}: Get transport message: allowed IPs check failed.",
+                                peer.info.log_id()
+                            );
                         } else if len as usize <= decrypted.len() {
                             should_write = true;
                             packet_len = len as usize;
                         } else {
-                            debug!("Get transport message: packet truncated?");
+                            debug!(
+                                "{}: Get transport message: packet truncated?",
+                                peer.info.log_id()
+                            );
                         }
                     }
                 }
                 Err(_) => {
-                    debug!("Get transport message, decryption failed.");
+                    debug!(
+                        "{}: Get transport message, decryption failed.",
+                        peer.info.log_id()
+                    );
                 }
             }
         }

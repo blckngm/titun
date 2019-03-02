@@ -131,3 +131,12 @@ impl Deref for Id {
         self.as_slice()
     }
 }
+
+impl PeerInfo {
+    /// Return an identifier suitable for logging.
+    pub(crate) fn log_id(&self) -> String {
+        let mut pk = base64::encode(&self.peer_pubkey);
+        pk.truncate(10);
+        pk
+    }
+}

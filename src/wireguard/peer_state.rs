@@ -284,19 +284,19 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
     {
         // Lock peer.
         let mut psw = ps.write();
-        psw.rekey_no_recv = timer!(async move |wg, ps| {
-            debug!("Timer: rekey_no_recv.");
+        psw.rekey_no_recv = timer!(async move |wg, ps: SharedPeerState| {
+            debug!("{}: timer: rekey_no_recv.", ps.read().info.log_id());
             do_handshake(&wg, &ps);
         });
         psw.keep_alive = timer!(async move |wg: Arc<WgState>, ps: SharedPeerState| {
-            debug!("Timer: keep alive.");
+            debug!("{}: timer: keep alive.", ps.read().info.log_id());
             let should_handshake = await!(do_keep_alive1(&ps, &wg));
             if should_handshake {
                 do_handshake(&wg, &ps);
             }
         });
         psw.persistent_keep_alive = timer!(async move |wg: Arc<WgState>, ps: SharedPeerState| {
-            debug!("Timer: persistent_keep_alive.");
+            debug!("{}: timer: persistent_keep_alive.", ps.read().info.log_id());
             let should_handshake = await!(do_keep_alive1(&ps, &wg));
             if should_handshake {
                 do_handshake(&wg, &ps);
@@ -308,11 +308,11 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
             }
         });
         psw.stop_handshake = timer!(async move |_, ps: SharedPeerState| {
-            debug!("Timer: stop handshake.");
+            debug!("{}: timer: stop handshake.", ps.read().info.log_id());
             ps.write().handshake = None;
         });
         psw.clear = timer!(async move |_, ps: SharedPeerState| {
-            debug!("Timer: clear.");
+            debug!("{}: timer: clear.", ps.read().info.log_id());
             ps.write().clear();
         });
     }
@@ -350,7 +350,10 @@ pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
 
     let (mut init_msg, hs) = match initiate(&info, &peer.info, id) {
         Err(_) => {
-            error!("Failed to generate handshake initiation message.");
+            error!(
+                "{}: failed to generate handshake initiation message.",
+                peer.info.log_id()
+            );
             return;
         }
         Ok(x) => x,
@@ -368,7 +371,7 @@ pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
                     if let (Some(wg), Some(peer)) = (wg.upgrade(), peer.upgrade()) {
                         let endpoint = peer.read().info.endpoint;
                         if let Some(e) = endpoint {
-                            info!("Handshake init.");
+                            debug!("{}: Handshake init.", peer.read().info.log_id());
                             let _ = await!(wg.send_to_async(&init_msg, e));
                             peer.read().count_send(init_msg.len());
                         }
