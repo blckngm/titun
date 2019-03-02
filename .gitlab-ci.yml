@@ -10,31 +10,19 @@ before_script:
 
 test:
   variables:
-    RUSTUP_TOOLCHAIN: nightly-2019-02-27
+    RUSTUP_TOOLCHAIN: nightly
   cache:
     paths:
       - target/
       - cargo/
   script:
   - cargo test --locked --all --verbose --jobs 1 -- --nocapture
-  - cargo test --locked --no-default-features --all --verbose --jobs 1 -- --nocapture
+  - cargo test --locked --all --verbose --jobs 1 --features=bench -- --nocapture
 
 fmt:
   allow_failure: true
   variables:
-    RUSTUP_TOOLCHAIN: nightly-2019-02-27
+    RUSTUP_TOOLCHAIN: nightly
   script:
-  - rustup component add rustfmt-preview
+  - rustup component add rustfmt
   - cargo fmt -- --check
-
-# Ensure that benches compile.
-bench:
-  allow_failure: true
-  variables:
-    RUSTUP_TOOLCHAIN: nightly-2019-02-27
-  cache:
-    paths:
-      - target/
-      - cargo/
-  script:
-    - cargo test --locked --all-features --all --verbose --jobs 1 -- --nocapture
