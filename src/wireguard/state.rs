@@ -767,10 +767,10 @@ impl WgState {
     }
 
     /// Change listen port.
-    pub fn set_port(&self, mut new_port: u16) -> Result<(), Error> {
+    pub async fn set_port(&self, mut new_port: u16) -> Result<(), Error> {
         let new_socket = WgState::prepare_socket(&mut new_port, self.info.read().fwmark)?;
         let mut sender = self.socket_sender.lock().as_ref().unwrap().clone();
-        futures::executor::block_on(sender.send(new_socket)).unwrap();
+        await!(sender.send(new_socket)).unwrap();
         self.info.write().port = new_port;
         Ok(())
     }

@@ -145,12 +145,12 @@ async fn write_error(
     await!(stream.flush_async())
 }
 
-fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
+async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
     if let Some(key) = command.private_key {
         wg.set_key(key);
     }
     if let Some(p) = command.listen_port {
-        wg.set_port(p).unwrap_or_else(|e| {
+        await!(wg.set_port(p)).unwrap_or_else(|e| {
             warn!("Failed to set port: {}", e);
         });
     }
@@ -212,7 +212,7 @@ where
         }
         WgIpcCommand::Set(sc) => {
             // FnMut hack.
-            process_wg_set(&wg, sc);
+            await!(process_wg_set(&wg, sc));
             await!(write_error(stream_w, 0))?;
         }
     }
