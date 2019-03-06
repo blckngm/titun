@@ -86,6 +86,9 @@ mod crypto;
 mod either;
 mod ipc;
 mod udp_socket;
+mod yield_once;
+
+use yield_once::yield_once;
 
 #[doc(hidden)]
 pub mod run;

@@ -422,44 +422,47 @@ async fn udp_process_transport<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: Sock
 async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
     let mut p = vec![0u8; BUFSIZE];
     loop {
-        let (len, addr) = {
-            let recv = futures::future::poll_fn(|lw| {
-                let socket = wg.socket.read();
+        for _ in 0..1024 {
+            let (len, addr) = {
+                let recv = futures::future::poll_fn(|lw| {
+                    let socket = wg.socket.read();
 
-                let recv = socket.recv_from_async(&mut p);
+                    let recv = socket.recv_from_async(&mut p);
+                    pin_mut!(recv);
+                    recv.poll(lw)
+                })
+                .fuse();
                 pin_mut!(recv);
-                recv.poll(lw)
-            })
-            .fuse();
-            pin_mut!(recv);
-            select! {
-                recv = recv => recv.unwrap(),
-                recv_socket = receiver.next() => {
-                    *wg.socket.write() = recv_socket.unwrap();
-                    continue;
-                },
+                select! {
+                    recv = recv => recv.unwrap(),
+                    recv_socket = receiver.next() => {
+                        *wg.socket.write() = recv_socket.unwrap();
+                        continue;
+                    },
+                }
+            };
+
+            let addr = match addr {
+                SocketAddr::V6(a6) => a6,
+                _ => unreachable!(),
+            };
+
+            if len < 12 {
+                continue;
             }
-        };
 
-        let addr = match addr {
-            SocketAddr::V6(a6) => a6,
-            _ => unreachable!(),
-        };
+            let type_ = p[0];
+            let p = &p[..len];
 
-        if len < 12 {
-            continue;
+            match type_ {
+                1 => await!(udp_process_handshake_init(&wg, p, addr)),
+                2 => await!(udp_process_handshake_resp(&wg, p, addr)),
+                3 => udp_process_cookie_reply(&wg, p),
+                4 => await!(udp_process_transport(&wg, p, addr)),
+                _ => (),
+            }
         }
-
-        let type_ = p[0];
-        let p = &p[..len];
-
-        match type_ {
-            1 => await!(udp_process_handshake_init(&wg, p, addr)),
-            2 => await!(udp_process_handshake_resp(&wg, p, addr)),
-            3 => udp_process_cookie_reply(&wg, p),
-            4 => await!(udp_process_transport(&wg, p, addr)),
-            _ => (),
-        }
+        await!(crate::yield_once());
     }
 }
 
@@ -499,71 +502,74 @@ fn padding() {
 async fn tun_packet_processing(wg: Arc<WgState>) {
     let mut pkt = vec![0u8; BUFSIZE];
     loop {
-        let len = await!(wg.tun.read_async(&mut pkt)).unwrap();
+        for _ in 0..1024 {
+            let len = await!(wg.tun.read_async(&mut pkt)).unwrap();
 
-        let padded_len = pad_len(len);
-        // Do not leak other packets' data!
-        for b in &mut pkt[len..padded_len] {
-            *b = 0;
-        }
-        let pkt = &pkt[..padded_len];
-
-        let dst = match parse_ip_packet(pkt) {
-            Ok((_, _, dst)) => dst,
-            Err(_) => {
-                error!("Get packet from TUN device, but failed to parse it!");
-                continue;
+            let padded_len = pad_len(len);
+            // Do not leak other packets' data!
+            for b in &mut pkt[len..padded_len] {
+                *b = 0;
             }
-        };
+            let pkt = &pkt[..padded_len];
 
-        let peer0 = match wg.find_peer_by_ip(dst) {
-            Some(peer) => peer,
-            None => {
-                // TODO ICMP no route to host.
-                match dst {
-                    IpAddr::V6(i) if i.segments()[0] == 0xff02 => (),
-                    _ => debug!("No route to host: {}", dst),
-                };
-                continue;
-            }
-        };
-
-        let mut encrypted: [u8; BUFSIZE] = unsafe { uninitialized() };
-        let encrypted = &mut encrypted[..pkt.len() + 32];
-        let endpoint;
-        let mut should_send = false;
-
-        let should_handshake = {
-            // Lock peer.
-            let peer = peer0.read();
-            endpoint = match peer.get_endpoint() {
-                None => continue,
-                Some(e) => e,
+            let dst = match parse_ip_packet(pkt) {
+                Ok((_, _, dst)) => dst,
+                Err(_) => {
+                    error!("Get packet from TUN device, but failed to parse it!");
+                    continue;
+                }
             };
 
-            if let Some(t) = peer.find_transport_to_send() {
-                let (result, should_handshake) = t.encrypt(pkt, encrypted);
-                if result.is_ok() {
-                    should_send = true;
-                    peer.count_send(encrypted.len());
-                    peer.on_send_transport();
+            let peer0 = match wg.find_peer_by_ip(dst) {
+                Some(peer) => peer,
+                None => {
+                    // TODO ICMP no route to host.
+                    match dst {
+                        IpAddr::V6(i) if i.segments()[0] == 0xff02 => (),
+                        _ => debug!("No route to host: {}", dst),
+                    };
+                    continue;
                 }
-                should_handshake && peer.really_should_handshake()
-            } else {
-                peer.enqueue_packet(pkt);
+            };
 
-                peer.really_should_handshake()
+            let mut encrypted: [u8; BUFSIZE] = unsafe { uninitialized() };
+            let encrypted = &mut encrypted[..pkt.len() + 32];
+            let endpoint;
+            let mut should_send = false;
+
+            let should_handshake = {
+                // Lock peer.
+                let peer = peer0.read();
+                endpoint = match peer.get_endpoint() {
+                    None => continue,
+                    Some(e) => e,
+                };
+
+                if let Some(t) = peer.find_transport_to_send() {
+                    let (result, should_handshake) = t.encrypt(pkt, encrypted);
+                    if result.is_ok() {
+                        should_send = true;
+                        peer.count_send(encrypted.len());
+                        peer.on_send_transport();
+                    }
+                    should_handshake && peer.really_should_handshake()
+                } else {
+                    peer.enqueue_packet(pkt);
+
+                    peer.really_should_handshake()
+                }
+                // Release peer.
+            };
+
+            if should_send {
+                let _ = await!(wg.send_to_async(encrypted, endpoint));
             }
-            // Release peer.
-        };
 
-        if should_send {
-            let _ = await!(wg.send_to_async(encrypted, endpoint));
+            if should_handshake {
+                do_handshake(&wg, &peer0);
+            }
         }
-
-        if should_handshake {
-            do_handshake(&wg, &peer0);
-        }
+        await!(crate::yield_once());
     }
 }
 
