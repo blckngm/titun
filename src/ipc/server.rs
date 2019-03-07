@@ -17,6 +17,7 @@
 
 // XXX: named pipe security???
 
+use crate::async_utils::tokio_spawn;
 use crate::ipc::commands::*;
 use crate::ipc::parse::*;
 use crate::wireguard::re_exports::U8Array;
@@ -41,7 +42,7 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
     loop {
         let wg = wg.clone();
         let stream = await!(listener.accept_async())?;
-        crate::tokio_spawn(
+        tokio_spawn(
             async move {
                 await!(serve(&wg, stream)).unwrap_or_else(|e| {
                     warn!("Error serving IPC connection: {:?}", e);

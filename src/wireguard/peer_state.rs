@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::async_scope::AsyncScope;
+use crate::async_utils::{delay, AsyncScope};
 use crate::wireguard::*;
 use arrayvec::ArrayVec;
 use failure::Error;
@@ -377,7 +377,7 @@ pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
                         }
                     }
                     let delay_ms = thread_rng().gen_range(5_000, 5_300);
-                    sleep!(ms delay_ms);
+                    await!(delay(Duration::from_millis(delay_ms)));
                 }
             },
         );

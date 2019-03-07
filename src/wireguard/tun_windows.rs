@@ -19,6 +19,8 @@
 
 //! Tap-windows TUN devices support.
 
+use crate::async_utils::blocking;
+
 use parking_lot::Mutex;
 use std::ffi::CString;
 use std::fmt::{Debug, Formatter};
@@ -64,11 +66,11 @@ impl AsyncTun {
     }
 
     pub async fn read_async<'a>(&'a self, buf: &'a mut [u8]) -> Result<usize> {
-        await!(crate::blocking(|| self.tun.read(buf)))
+        await!(blocking(|| self.tun.read(buf)))
     }
 
     pub async fn write_async<'a>(&'a self, buf: &'a [u8]) -> Result<usize> {
-        await!(crate::blocking(|| self.tun.write(buf)))
+        await!(blocking(|| self.tun.write(buf)))
     }
 }
 

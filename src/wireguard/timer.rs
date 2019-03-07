@@ -19,6 +19,7 @@
 //!
 //! Use tokio-timer under the hood.
 
+use futures::compat::Future01CompatExt;
 use parking_lot::Mutex;
 use std::future::Future as Future03;
 use std::sync::atomic::{AtomicBool, Ordering::*};
@@ -50,7 +51,7 @@ where
         delay: Mutex::new(Delay::new(now())),
     });
     let options = options0.clone();
-    crate::tokio_spawn(
+    crate::async_utils::tokio_spawn(
         async move {
             loop {
                 let wait_result = await!(future::poll_fn(|| {
@@ -76,7 +77,8 @@ where
                         Ok(Async::NotReady) => Ok(Async::NotReady),
                         Err(e) => panic!(e),
                     }
-                }));
+                })
+                .compat());
                 if wait_result.is_err() {
                     break;
                 }
@@ -117,6 +119,8 @@ impl TimerHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::async_utils::delay;
+    use std::time::Duration;
 
     #[test]
     fn smoke() {
@@ -132,7 +136,7 @@ mod tests {
                 };
 
                 t.adjust_and_activate(Duration::from_millis(10));
-                sleep!(ms 30);
+                await!(delay(Duration::from_millis(30)));
                 assert!(run.load(SeqCst));
             },
         );
@@ -153,22 +157,23 @@ mod tests {
 
                 t.adjust_and_activate(Duration::from_millis(10));
                 t.adjust_and_activate(Duration::from_millis(100));
-                sleep!(ms 20);
+
+                await!(delay(Duration::from_millis(20)));
                 assert!(!run.load(SeqCst));
-                sleep!(ms 120);
+                await!(delay(Duration::from_millis(120)));
                 assert!(run.load(SeqCst));
 
                 run.store(false, SeqCst);
 
                 t.adjust_and_activate(Duration::from_millis(10));
                 t.de_activate();
-                sleep!(ms 20);
+                await!(delay(Duration::from_millis(20)));
                 assert!(!run.load(SeqCst));
 
                 t.adjust_and_activate(Duration::from_millis(10));
                 t.de_activate();
                 t.adjust_and_activate(Duration::from_millis(15));
-                sleep!(ms 30);
+                await!(delay(Duration::from_millis(30)));
                 assert!(run.load(SeqCst));
             },
         );

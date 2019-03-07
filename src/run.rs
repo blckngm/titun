@@ -15,12 +15,14 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::async_scope::AsyncScope;
+use crate::async_utils::{delay, AsyncScope};
 use crate::ipc::ipc_server;
 use crate::systemd;
 use crate::wireguard::re_exports::{DH, X25519};
 use crate::wireguard::*;
 use failure::{Error, ResultExt};
+use futures::compat::Future01CompatExt;
+use std::time::Duration;
 use tokio::prelude::*;
 
 pub struct Config {
@@ -38,17 +40,17 @@ pub async fn run(c: Config) -> Result<(), Error> {
     #[cfg(windows)]
     let scope = scope0.clone();
     #[cfg(windows)]
-    crate::tokio_spawn(
+    crate::async_utils::tokio_spawn(
         async move {
             await!(scope.cancelled());
-            sleep!(ms 100);
+            await!(delay(Duration::from_millis(100)));
             std::process::exit(0);
         },
     );
 
     scope0.spawn_canceller(
         async move {
-            let mut ctrl_c = await!(tokio_signal::ctrl_c()).unwrap();
+            let mut ctrl_c = await!(tokio_signal::ctrl_c().compat()).unwrap();
             await!(ctrl_c.next());
             info!("Received SIGINT or Ctrl-C, shutting down.");
         },

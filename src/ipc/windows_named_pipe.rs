@@ -298,7 +298,7 @@ impl PipeListener<'static> {
     pub fn accept_async<'a>(
         &'a mut self,
     ) -> impl futures::Future<Output = io::Result<PipeStream>> + 'a {
-        crate::blocking(move || self.accept())
+        crate::async_utils::blocking(move || self.accept())
     }
 }
 

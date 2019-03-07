@@ -19,7 +19,11 @@ use futures::channel::oneshot::*;
 use futures::future::Shared;
 use futures::prelude::*;
 use parking_lot::Mutex;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Poll, Waker};
+use std::time::Duration;
 
 /// Manage a group of tasks.
 pub struct AsyncScope {
@@ -76,7 +80,7 @@ impl AsyncScope {
         T: Future<Output = ()> + Send + 'static,
     {
         let cancelled = self.receiver.clone();
-        crate::tokio_spawn(
+        tokio_spawn(
             async move {
                 pin_mut!(cancelled);
                 let f = future.fuse();
@@ -88,6 +92,67 @@ impl AsyncScope {
             },
         );
     }
+}
+
+/// Returns a future that yields, allow other tasks to execute. Like `sched_yield` but for async code.
+pub fn yield_once() -> YieldOnce {
+    YieldOnce { pending: true }
+}
+
+pub struct YieldOnce {
+    pending: bool,
+}
+
+impl Future for YieldOnce {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, waker: &Waker) -> Poll<()> {
+        if self.pending {
+            self.pending = false;
+            waker.wake();
+            Poll::Pending
+        } else {
+            Poll::Ready(())
+        }
+    }
+}
+
+pub async fn delay(duration: Duration) {
+    use futures::compat::Future01CompatExt;
+    use tokio::clock::now;
+    use tokio::timer::Delay;
+
+    await!(Delay::new(now() + duration).compat()).unwrap();
+}
+
+pub fn tokio_block_on_all<T, Fut>(fut: Fut) -> T
+where
+    Fut: futures::Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    use futures::*;
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on_all(fut.unit_error().boxed().compat()).unwrap()
+}
+
+pub fn tokio_spawn(fut: impl futures::Future<Output = ()> + Send + 'static) {
+    use futures::*;
+    tokio::spawn(fut.unit_error().boxed().compat());
+}
+
+pub fn blocking<T>(f: impl FnOnce() -> T) -> impl futures::Future<Output = T> + Unpin {
+    use futures::compat::Future01CompatExt;
+
+    // Hack for FnMut.
+    let mut f = Some(f);
+    tokio::prelude::future::poll_fn(move || {
+        // The closure is not redundant!
+        // https://github.com/rust-lang/rust-clippy/issues/3071
+        #[allow(clippy::redundant_closure)]
+        tokio_threadpool::blocking(|| f.take().unwrap()())
+    })
+    .compat()
+    .map(Result::unwrap)
 }
 
 #[cfg(test)]

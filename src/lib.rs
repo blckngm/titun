@@ -18,52 +18,6 @@
 #![cfg_attr(feature = "bench", feature(test))]
 #![feature(async_await, await_macro, futures_api, arbitrary_self_types)]
 
-macro_rules! sleep {
-    ($duration:expr) => {{
-        use tokio::clock::now;
-        use tokio::timer::Delay;
-
-        await!(Delay::new(now() + $duration)).unwrap();
-    }};
-    (secs $secs:expr) => {{
-        use std::time::Duration;
-        sleep!(Duration::from_secs($secs));
-    }};
-    (ms $millis:expr) => {{
-        use std::time::Duration;
-        sleep!(Duration::from_millis($millis));
-    }};
-}
-
-pub fn tokio_block_on_all<T, Fut>(fut: Fut) -> T
-where
-    Fut: futures::Future<Output = T> + Send + 'static,
-    T: Send + 'static,
-{
-    use futures::*;
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on_all(fut.unit_error().boxed().compat()).unwrap()
-}
-
-fn tokio_spawn(fut: impl futures::Future<Output = ()> + Send + 'static) {
-    use futures::*;
-    tokio::spawn(fut.unit_error().boxed().compat());
-}
-
-fn blocking<T>(f: impl FnOnce() -> T) -> impl futures::Future<Output = T> {
-    async move {
-        // Hack for FnMut.
-        let mut f = Some(f);
-        await!(tokio::prelude::future::poll_fn(|| {
-            // The closure is not redundant!
-            // https://github.com/rust-lang/rust-clippy/issues/3071
-            #[allow(clippy::redundant_closure)]
-            tokio_threadpool::blocking(|| f.take().unwrap()())
-        }))
-        .unwrap()
-    }
-}
-
 #[cfg(feature = "bench")]
 extern crate test;
 
@@ -77,18 +31,15 @@ extern crate log;
 #[macro_use]
 extern crate nix;
 #[macro_use]
-extern crate tokio;
-#[macro_use]
 extern crate pin_utils;
 
-mod async_scope;
+mod async_utils;
 mod crypto;
 mod either;
 mod ipc;
 mod udp_socket;
-mod yield_once;
 
-use yield_once::yield_once;
+pub use async_utils::tokio_block_on_all;
 
 #[doc(hidden)]
 pub mod run;

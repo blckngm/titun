@@ -20,7 +20,8 @@ use mio::net::UdpSocket as MioUdpSocket;
 use std::net::SocketAddr;
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
-use tokio::prelude::*;
+use std::task::Poll;
+use tokio::prelude::{Async, Poll as Poll01};
 use tokio::reactor::PollEvented2;
 
 /// Like tokio UdpSocket, but can be used from multiple tasks concurrently.
@@ -28,6 +29,14 @@ pub struct UdpSocket {
     socket: PollEvented2<MioUdpSocket>,
     send_lock: Mutex<()>,
     recv_lock: Mutex<()>,
+}
+
+fn convert_poll<T, E>(p: Poll01<T, E>) -> Poll<Result<T, E>> {
+    match p {
+        Ok(Async::NotReady) => Poll::Pending,
+        Ok(Async::Ready(t)) => Poll::Ready(Ok(t)),
+        Err(e) => Poll::Ready(Err(e)),
+    }
 }
 
 impl UdpSocket {
@@ -41,17 +50,20 @@ impl UdpSocket {
         })
     }
 
-    fn poll_recv_from(&self, buf: &mut [u8]) -> Poll<(usize, SocketAddr), std::io::Error> {
-        match self.socket.poll_read_ready(mio::Ready::readable()) {
+    fn poll_recv_from(
+        socket: &PollEvented2<MioUdpSocket>,
+        buf: &mut [u8],
+    ) -> Poll01<(usize, SocketAddr), std::io::Error> {
+        match socket.poll_read_ready(mio::Ready::readable()) {
             Ok(Async::NotReady) => return Ok(Async::NotReady),
             Ok(Async::Ready(_)) => (),
             Err(e) => return Err(e),
         }
 
-        match self.socket.get_ref().recv_from(buf) {
+        match socket.get_ref().recv_from(buf) {
             Ok(x) => Ok(x.into()),
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                self.socket.clear_read_ready(mio::Ready::readable())?;
+                socket.clear_read_ready(mio::Ready::readable())?;
                 Ok(Async::NotReady)
             }
             Err(e) => Err(e),
@@ -62,7 +74,7 @@ impl UdpSocket {
         socket: &PollEvented2<MioUdpSocket>,
         buf: &[u8],
         target: SocketAddr,
-    ) -> Poll<usize, std::io::Error> {
+    ) -> Poll01<usize, std::io::Error> {
         match socket.poll_write_ready() {
             Ok(Async::NotReady) => return Ok(Async::NotReady),
             Ok(Async::Ready(_)) => (),
@@ -85,7 +97,9 @@ impl UdpSocket {
         buf: &'a mut [u8],
     ) -> Result<(usize, SocketAddr), std::io::Error> {
         let _guard = await!(self.recv_lock.lock());
-        await!(future::poll_fn(move || self.poll_recv_from(buf)))
+        await!(futures::future::poll_fn(|_| {
+            convert_poll(UdpSocket::poll_recv_from(&self.socket, buf))
+        }))
     }
 
     /// Async sendto.
@@ -105,10 +119,8 @@ impl UdpSocket {
         }
         // If would block, use poll_send_to with lock.
         let _guard = await!(self.send_lock.lock());
-        await!(future::poll_fn(|| UdpSocket::poll_send_to(
-            &self.socket,
-            buf,
-            target
+        await!(futures::future::poll_fn(|_| convert_poll(
+            UdpSocket::poll_send_to(&self.socket, buf, target)
         )))
     }
 }

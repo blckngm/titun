@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::async_scope::AsyncScope;
+use crate::async_utils::{delay, tokio_spawn, yield_once, AsyncScope};
 use crate::either::FutureEitherExt;
 use crate::udp_socket::*;
 use crate::wireguard::re_exports::sodium_init;
@@ -33,6 +33,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
+use std::time::Duration;
 
 // Some Constants.
 
@@ -95,7 +96,7 @@ impl Drop for IdMapGuard {
                 return;
             }
             let id = self.id;
-            crate::tokio_spawn(
+            tokio_spawn(
                 async move {
                     wg.id_map.write().remove(&id);
                 },
@@ -462,7 +463,7 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
                 _ => (),
             }
         }
-        await!(crate::yield_once());
+        await!(yield_once());
     }
 }
 
@@ -569,7 +570,7 @@ async fn tun_packet_processing(wg: Arc<WgState>) {
                 do_handshake(&wg, &peer0);
             }
         }
-        await!(crate::yield_once());
+        await!(yield_once());
     }
 }
 
@@ -621,7 +622,7 @@ impl WgState {
             scope.spawn_async(
                 async move {
                     loop {
-                        sleep!(secs 120);
+                        await!(delay(Duration::from_secs(120)));
                         let mut cookie = wg.cookie_secret.write();
                         randombytes_into(&mut cookie[..]);
                     }
