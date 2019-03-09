@@ -18,6 +18,7 @@
 #![cfg(target_os = "linux")]
 
 use failure::Error;
+use futures::future::Future;
 use mio::event::Evented;
 use mio::unix::{EventedFd, UnixReady};
 use mio::{Poll, PollOpt, Ready, Token};
@@ -29,7 +30,7 @@ use std::ffi::{CStr, CString};
 use std::io::{self, Error as IOError, Read, Write};
 use std::mem;
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
-use tokio::prelude::{future, Async, Future};
+use tokio::prelude::Async;
 use tokio::reactor::PollEvented2;
 
 mod ioctl {
@@ -77,8 +78,14 @@ impl AsyncTun {
     pub fn read_async<'a>(
         &'a self,
         buf: &'a mut [u8],
-    ) -> impl Future<Item = usize, Error = IOError> + 'a {
-        future::poll_fn(move || self.poll_read(buf))
+    ) -> impl Future<Output = Result<usize, IOError>> + 'a + Unpin {
+        use std::task::Poll;
+
+        futures::future::poll_fn(move |_| match self.poll_read(buf) {
+            Ok(Async::NotReady) => Poll::Pending,
+            Ok(Async::Ready(x)) => Poll::Ready(Ok(x)),
+            Err(e) => Poll::Ready(Err(e)),
+        })
     }
 
     pub async fn write_async<'a>(&'a self, buf: &'a [u8]) -> Result<usize, IOError> {

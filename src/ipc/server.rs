@@ -71,7 +71,7 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
     loop {
         let wg = wg.clone();
         match await!(incoming.next()) {
-            Some(Ok(stream)) => crate::tokio_spawn(
+            Some(Ok(stream)) => tokio_spawn(
                 async move {
                     await!(serve(&wg, stream)).unwrap_or_else(|e| {
                         warn!("Error serving IPC connection: {:?}", e);

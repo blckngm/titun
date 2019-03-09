@@ -15,14 +15,13 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::async_utils::{delay, AsyncScope};
+use crate::async_utils::AsyncScope;
 use crate::ipc::ipc_server;
 use crate::systemd;
 use crate::wireguard::re_exports::{DH, X25519};
 use crate::wireguard::*;
 use failure::{Error, ResultExt};
 use futures::compat::Future01CompatExt;
-use std::time::Duration;
 use tokio::prelude::*;
 
 pub struct Config {
@@ -42,6 +41,9 @@ pub async fn run(c: Config) -> Result<(), Error> {
     #[cfg(windows)]
     crate::async_utils::tokio_spawn(
         async move {
+            use crate::async_utils::delay;
+            use std::time::Duration;
+
             await!(scope.cancelled());
             await!(delay(Duration::from_millis(100)));
             std::process::exit(0);
@@ -80,7 +82,7 @@ pub async fn run(c: Config) -> Result<(), Error> {
         async move {
             use tokio_signal::unix::{Signal, SIGTERM};
 
-            let mut term = await!(Signal::new(SIGTERM)).unwrap();
+            let mut term = await!(Signal::new(SIGTERM).compat()).unwrap();
             await!(term.next());
             info!("Received SIGTERM, shutting down.");
         },
