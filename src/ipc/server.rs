@@ -67,6 +67,8 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
     let _ = remove_file(path.as_path());
     let listener = UnixListener::bind(path.as_path()).context("Bind IPC socket.")?;
 
+    crate::systemd::notify_ready();
+
     let mut incoming = listener.incoming();
     loop {
         let wg = wg.clone();

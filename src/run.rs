@@ -17,7 +17,6 @@
 
 use crate::async_utils::AsyncScope;
 use crate::ipc::ipc_server;
-use crate::systemd;
 use crate::wireguard::re_exports::{DH, X25519};
 use crate::wireguard::*;
 use failure::{Error, ResultExt};
@@ -111,7 +110,6 @@ pub async fn run(c: Config) -> Result<(), Error> {
                 .unwrap_or_else(|e| error!("Failed to start IPC server: {}", e))
         },
     );
-    systemd::notify_ready();
 
     await!(scope0.cancelled());
     Ok(())
