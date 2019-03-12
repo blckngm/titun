@@ -1,4 +1,4 @@
-// Copyright 2017 Guanhao Yin <sopium@mysterious.site>
+// Copyright 2017,2019 Guanhao Yin <sopium@mysterious.site>
 
 // This file is part of TiTun.
 
@@ -15,11 +15,16 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use std::env::var_os;
-use std::process::Command;
+#![cfg(not(windows))]
 
-pub fn notify_ready() {
-    if var_os("NOTIFY_SOCKET").is_some() {
-        let _ = Command::new("systemd-notify").arg("--ready").status();
+pub fn notify_ready() -> Result<(), failure::Error> {
+    use std::env::var_os;
+    use std::os::unix::net::UnixDatagram;
+
+    if let Some(notify_socket) = var_os("NOTIFY_SOCKET") {
+        let socket = UnixDatagram::unbound()?;
+        socket.connect(notify_socket)?;
+        socket.send(b"READY=1")?;
     }
+    Ok(())
 }

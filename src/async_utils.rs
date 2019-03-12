@@ -140,6 +140,7 @@ pub fn tokio_spawn(fut: impl futures::Future<Output = ()> + Send + 'static) {
     tokio::spawn(fut.unit_error().boxed().compat());
 }
 
+#[cfg(windows)]
 pub fn blocking<T>(f: impl FnOnce() -> T) -> impl futures::Future<Output = T> + Unpin {
     use futures::compat::Future01CompatExt;
 
