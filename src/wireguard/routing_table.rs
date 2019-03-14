@@ -24,10 +24,10 @@
 use fnv::FnvHashMap;
 use std::hash::Hash;
 use std::net::{Ipv4Addr, Ipv6Addr};
-use vec_map::VecMap;
 
 pub struct IpLookupTable<A, T> {
-    tables: VecMap<FnvHashMap<A, T>>,
+    // Sorted vec of (prefix len, table).
+    vec: Vec<(u32, FnvHashMap<A, T>)>,
 }
 
 /// IPv4 or IPv6 addresses.
@@ -37,9 +37,7 @@ pub trait Address: Sized + Copy + Eq + Ord + Hash {
 
 impl<A, T> Default for IpLookupTable<A, T> {
     fn default() -> Self {
-        IpLookupTable {
-            tables: VecMap::new(),
-        }
+        IpLookupTable { vec: Vec::new() }
     }
 }
 
@@ -48,30 +46,27 @@ where
     A: Address,
 {
     pub fn new() -> Self {
-        IpLookupTable {
-            tables: VecMap::new(),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn get(&self, a: A, prefix: u32) -> Option<&T> {
-        let masked = a.mask_with_prefix(prefix);
-        self.tables
-            .get(prefix as usize)
-            .and_then(|t| t.get(&masked))
+        IpLookupTable { vec: Vec::new() }
     }
 
     pub fn insert(&mut self, a: A, prefix: u32, t: T) -> Option<T> {
         let masked = a.mask_with_prefix(prefix);
-        self.tables
-            .entry(prefix as usize)
-            .or_insert(Default::default())
-            .insert(masked, t)
+
+        // Hash table for prefix len `prefix`.
+        let table = match self.vec.binary_search_by_key(&prefix, |x| x.0) {
+            Ok(i) => &mut self.vec[i].1,
+            Err(i) => {
+                self.vec.insert(i, (prefix, Default::default()));
+                &mut self.vec[i].1
+            }
+        };
+
+        table.insert(masked, t)
     }
 
     pub fn longest_match(&self, a: A) -> Option<&T> {
-        for (prefix, table) in self.tables.iter().rev() {
-            let x = table.get(&a.mask_with_prefix(prefix as u32));
+        for (prefix, table) in self.vec.iter().rev() {
+            let x = table.get(&a.mask_with_prefix(*prefix));
             if x.is_some() {
                 return x;
             }
@@ -80,10 +75,18 @@ where
     }
 
     pub fn remove(&mut self, a: A, prefix: u32) -> Option<T> {
-        let masked = a.mask_with_prefix(prefix);
-        self.tables
-            .get_mut(prefix as usize)
-            .and_then(|t| t.remove(&masked))
+        match self.vec.binary_search_by_key(&prefix, |x| x.0) {
+            Ok(i) => {
+                let t = &mut self.vec[i].1;
+                let masked = a.mask_with_prefix(prefix);
+                let result = t.remove(&masked);
+                if t.is_empty() {
+                    self.vec.remove(i);
+                }
+                result
+            }
+            _ => None,
+        }
     }
 }
 
@@ -159,6 +162,20 @@ mod tests {
         t.insert(Ipv4Addr::new(10, 0, 77, 3), 8, 3);
 
         b.iter(|| t.longest_match(Ipv4Addr::new(8, 8, 8, 8)));
+    }
+
+    #[cfg(feature = "bench")]
+    #[bench]
+    fn bench_routing_table_8_levels_v6(b: &mut crate::test::Bencher) {
+        let mut t = IpLookupTable::new();
+
+        let a: Ipv6Addr = "2001:0db8:85a3:0000:0000:8a2e:0370:7334".parse().unwrap();
+        for i in (0..=128).step_by(16) {
+            t.insert(a, i, i);
+        }
+        let x: Ipv6Addr = "2004::1".parse().unwrap();
+
+        b.iter(|| t.longest_match(x));
     }
 
     #[cfg(feature = "bench")]

@@ -41,7 +41,6 @@ tai64 = {version = "0.2", default-features = false}
 tokio = { version = "0.1.15", features = ["async-await-preview"] }
 tokio-signal = "0.2"
 tokio-threadpool = "0.1.11"
-vec_map = "0.8.1"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["fileapi", "winbase", "ioapiset", "synchapi", "namedpipeapi"] }
