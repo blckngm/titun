@@ -132,8 +132,11 @@ where
                     None => bail!("Invalid allowed ip: {}", v),
                     Some(x) => x,
                 };
-                let ip = ip.parse()?;
-                let prefix_len = prefix_len.parse()?;
+                let ip: std::net::IpAddr = ip.parse()?;
+                let prefix_len: u32 = prefix_len.parse()?;
+                if prefix_len > if ip.is_ipv4() { 32 } else { 128 } {
+                    bail!("Invalid prefix length: {}", prefix_len);
+                }
                 peer.allowed_ips.push((ip, prefix_len));
             }
             _ => break,
