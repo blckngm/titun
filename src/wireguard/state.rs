@@ -30,7 +30,6 @@ use sodiumoxide::randombytes::randombytes_into;
 use std::collections::HashMap;
 use std::mem::uninitialized;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
-use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
@@ -71,7 +70,7 @@ pub struct WgState {
     // The secret used to calc cookie.
     pub(crate) cookie_secret: RwLock<[u8; 32]>,
 
-    pub(crate) socket: RwLock<UdpSocket>,
+    pub(crate) socket: Mutex<Arc<UdpSocket>>,
     pub(crate) socket_sender: Mutex<Option<Sender<UdpSocket>>>,
     pub(crate) tun: AsyncTun,
 }
@@ -425,19 +424,13 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
     loop {
         for _ in 0..1024 {
             let (len, addr) = {
-                let recv = futures::future::poll_fn(|lw| {
-                    let socket = wg.socket.read();
-
-                    let recv = socket.recv_from_async(&mut p);
-                    pin_mut!(recv);
-                    recv.poll(lw)
-                })
-                .fuse();
+                let socket = wg.socket.lock().clone();
+                let recv = socket.recv_from_async(&mut p).fuse();
                 pin_mut!(recv);
                 select! {
                     recv = recv => recv.unwrap(),
                     recv_socket = receiver.next() => {
-                        *wg.socket.write() = recv_socket.unwrap();
+                        *wg.socket.lock() = Arc::new(recv_socket.unwrap());
                         continue;
                     },
                 }
@@ -608,7 +601,7 @@ impl WgState {
             rt6: RwLock::new(IpLookupTable::new()),
             load_monitor: Mutex::new(LoadMonitor::new(HANDSHAKES_PER_SEC)),
             cookie_secret: RwLock::new(cookie),
-            socket: RwLock::new(socket),
+            socket: Mutex::new(Arc::new(socket)),
             socket_sender: Mutex::new(None),
             tun,
         });
@@ -660,14 +653,8 @@ impl WgState {
         target: impl Into<SocketAddr> + 'static,
     ) -> Result<usize, std::io::Error> {
         let target = target.into();
-        await!(futures::future::poll_fn(move |lw| {
-            use futures::Future;
-
-            let socket = self.socket.read();
-            let send = socket.send_to_async(buf, target);
-            pin_mut!(send);
-            send.poll(lw)
-        }))
+        let socket = self.socket.lock().clone();
+        await!(socket.send_to_async(buf, target))
     }
 
     /// Add a pper.
@@ -788,7 +775,10 @@ impl WgState {
         if info.fwmark == new_fwmark {
             return Ok(());
         }
-        set_fwmark(self.socket.read().deref().deref(), new_fwmark)?;
+        {
+            let socket: &UdpSocket = &self.socket.lock();
+            set_fwmark(socket, new_fwmark)?;
+        }
         info.fwmark = new_fwmark;
         Ok(())
     }
