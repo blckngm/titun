@@ -24,6 +24,7 @@ use failure::Error;
 use fnv::FnvHashMap;
 use futures::channel::mpsc::*;
 use futures::prelude::*;
+use ip_lookup_trie::IpLookupTable;
 use noise_protocol::U8Array;
 use parking_lot::{Mutex, RwLock};
 use sodiumoxide::randombytes::randombytes_into;

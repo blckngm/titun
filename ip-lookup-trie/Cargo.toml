@@ -1,0 +1,13 @@
+[package]
+name = "ip-lookup-trie"
+version = "0.1.0"
+authors = ["Guanhao Yin <sopium@mysterious.site>"]
+edition = "2018"
+
+[dependencies]
+num-traits = "0.2.6"
+
+[dev-dependencies]
+rand = "0.6"
+quickcheck = "0.8"
+quickcheck_macros = "0.8"

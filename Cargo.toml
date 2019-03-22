@@ -6,6 +6,9 @@ name = "titun"
 repository = "https://github.com/sopium/titun"
 version = "0.0.6-preview"
 
+[workspace]
+members = ["ip-lookup-trie"]
+
 [[bin]]
 doc = false
 name = "titun"
@@ -26,6 +29,7 @@ failure = "0.1"
 fnv = "1.0.6"
 futures-preview = { version = "0.3.0-alpha.13", features = ["compat"] }
 hex = "0.3"
+ip-lookup-trie = { path = "./ip-lookup-trie" }
 libsodium-sys = "0.2.0"
 log = "0.4.3"
 mio = "0.6"

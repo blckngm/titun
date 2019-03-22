@@ -29,7 +29,6 @@ mod ip;
 mod load_monitor;
 /// Peer state.
 mod peer_state;
-mod routing_table;
 /// The timer state machine, and actual IO stuff.
 mod state;
 mod timer;
@@ -54,7 +53,6 @@ use self::handshake::*;
 use self::ip::*;
 use self::load_monitor::*;
 use self::peer_state::*;
-use self::routing_table::*;
 use self::state::*;
 pub use self::state::{SetPeerCommand, WgState};
 use self::timer::*;
