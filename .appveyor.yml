@@ -45,12 +45,6 @@ environment:
         }
       }
 
-cache:
-  # Rust stuff.
-  - $(CARGO_HOME) -> .appveyor.yml
-  - $(RUSTUP_HOME) -> .appveyor.yml
-  - target
-
 init:
   # Load utility functions
   - ps: Invoke-Expression $env:PS_UTILS

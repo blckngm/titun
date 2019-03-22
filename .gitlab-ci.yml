@@ -11,10 +11,6 @@ before_script:
 test:
   variables:
     RUSTUP_TOOLCHAIN: nightly
-  cache:
-    paths:
-      - target/
-      - cargo/
   script:
   - cargo test --locked --all --verbose --jobs 1 -- --nocapture
   - cargo test --locked --all --verbose --jobs 1 --features=bench -- --nocapture
