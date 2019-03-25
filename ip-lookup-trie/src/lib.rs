@@ -51,11 +51,6 @@ extern crate quickcheck;
 #[macro_use(quickcheck)]
 extern crate quickcheck_macros;
 
-#[derive(Debug)]
-struct Trie<K: LowerHex, T> {
-    root: Option<Box<TrieNode<K, T>>>,
-}
-
 struct TrieNode<K, T> {
     k: K,
     len: u32,
@@ -64,79 +59,23 @@ struct TrieNode<K, T> {
     value: Option<T>,
 }
 
+struct HexDebug<'a, T: LowerHex>(&'a T);
+
+impl<'a, T: LowerHex> std::fmt::Debug for HexDebug<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        write!(f, "{:#x}", self.0)
+    }
+}
+
 impl<K: LowerHex, T: std::fmt::Debug> std::fmt::Debug for TrieNode<K, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         f.debug_struct("TrieNode")
-            .field("k", &format!("{:#x}", self.k))
+            .field("k", &HexDebug(&self.k))
             .field("len", &self.len)
             .field("left", &self.left)
             .field("right", &self.right)
             .field("value", &self.value)
             .finish()
-    }
-}
-
-impl<K, T> Default for Trie<K, T>
-where
-    K: Unsigned + PrimInt + LowerHex,
-{
-    fn default() -> Self {
-        Trie::new()
-    }
-}
-
-impl<K, T> Trie<K, T>
-where
-    K: Unsigned + PrimInt + LowerHex,
-{
-    pub fn new() -> Self {
-        Trie { root: None }
-    }
-
-    fn insert(&mut self, k: K, k_len: u32, v: T) -> Option<T> {
-        assert!(k_len <= bit_len::<K>());
-
-        let mask = to_mask(k_len);
-        let k = k & mask;
-        match self.root {
-            None => {
-                let n = TrieNode {
-                    k,
-                    len: k_len,
-                    left: None,
-                    right: None,
-                    value: Some(v),
-                };
-                self.root = Some(Box::new(n));
-                None
-            }
-            Some(ref mut n) => n.insert(k, k_len, v),
-        }
-    }
-
-    fn remove(&mut self, k: K, k_len: u32) -> Option<T> {
-        assert!(k_len <= bit_len::<K>());
-
-        if let Some(r) = self.root.take() {
-            let (result, new_root) = r.remove(k, k_len);
-            self.root = new_root;
-            result
-        } else {
-            None
-        }
-    }
-
-    #[cfg(test)]
-    fn self_check(&self) -> Result<(), String> {
-        if let Some(ref n) = self.root {
-            n.self_check()
-        } else {
-            Ok(())
-        }
-    }
-
-    fn longest_match(&self, k: K) -> Option<&T> {
-        self.root.as_ref().and_then(|n| n.longest_match(k))
     }
 }
 
@@ -386,6 +325,9 @@ pub trait Address {
 
     /// Convert to the integer type.
     fn into_integer(self) -> Self::U;
+
+    /// Convert from the integer type.
+    fn from_integer(x: Self::U) -> Self;
 }
 
 impl Address for Ipv4Addr {
@@ -393,6 +335,10 @@ impl Address for Ipv4Addr {
 
     fn into_integer(self) -> u32 {
         self.into()
+    }
+
+    fn from_integer(x: u32) -> Self {
+        x.into()
     }
 }
 
@@ -402,12 +348,16 @@ impl Address for Ipv6Addr {
     fn into_integer(self) -> u128 {
         self.into()
     }
+
+    fn from_integer(x: u128) -> Self {
+        x.into()
+    }
 }
 
 /// IP longest prefix lookup table.
 #[derive(Debug)]
 pub struct IpLookupTable<A: Address, T> {
-    trie: Trie<A::U, T>,
+    root: Option<Box<TrieNode<A::U, T>>>,
 }
 
 impl<A: Address, T> Default for IpLookupTable<A, T> {
@@ -419,7 +369,7 @@ impl<A: Address, T> Default for IpLookupTable<A, T> {
 impl<A: Address, T> IpLookupTable<A, T> {
     /// Create a new table.
     pub fn new() -> Self {
-        IpLookupTable { trie: Trie::new() }
+        IpLookupTable { root: None }
     }
 
     /// Insert an prefix with an associated value.
@@ -430,7 +380,26 @@ impl<A: Address, T> IpLookupTable<A, T> {
     ///
     /// If `prefix_len` is larger than the number of bits in `A`.
     pub fn insert(&mut self, prefix: A, prefix_len: u32, t: T) -> Option<T> {
-        self.trie.insert(prefix.into_integer(), prefix_len, t)
+        let k = prefix.into_integer();
+        let k_len = prefix_len;
+        assert!(k_len <= bit_len::<A::U>());
+
+        let mask = to_mask(k_len);
+        let k = k & mask;
+        match self.root {
+            None => {
+                let n = TrieNode {
+                    k,
+                    len: k_len,
+                    left: None,
+                    right: None,
+                    value: Some(t),
+                };
+                self.root = Some(Box::new(n));
+                None
+            }
+            Some(ref mut n) => n.insert(k, k_len, t),
+        }
     }
 
     /// Remove a prefix.
@@ -441,17 +410,124 @@ impl<A: Address, T> IpLookupTable<A, T> {
     ///
     /// If `prefix_len` is larger than the number of bits in `A`.
     pub fn remove(&mut self, prefix: A, prefix_len: u32) -> Option<T> {
-        self.trie.remove(prefix.into_integer(), prefix_len)
+        let k = prefix.into_integer();
+        let k_len = prefix_len;
+
+        assert!(k_len <= bit_len::<A::U>());
+
+        if let Some(r) = self.root.take() {
+            let (result, new_root) = r.remove(k, k_len);
+            self.root = new_root;
+            result
+        } else {
+            None
+        }
     }
 
     /// Find the longest match.
     pub fn longest_match(&self, addr: A) -> Option<&T> {
-        self.trie.longest_match(addr.into_integer())
+        self.root
+            .as_ref()
+            .and_then(|n| n.longest_match(addr.into_integer()))
+    }
+
+    /// Whether the table is empty.
+    pub fn is_empty(&self) -> bool {
+        self.root.is_none()
+    }
+
+    /// Get iterator.
+    pub fn iter<'a>(&'a self) -> Iter<'a, A, T> {
+        self.into_iter()
     }
 
     #[cfg(test)]
     pub fn self_check(&self) -> Result<(), String> {
-        self.trie.self_check()
+        if let Some(ref n) = self.root {
+            n.self_check()
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// Iterator.
+#[allow(missing_debug_implementations)]
+pub struct Iter<'a, A: Address, T> {
+    nodes: Vec<&'a Box<TrieNode<A::U, T>>>,
+}
+
+impl<'a, A: Address, T> Iterator for Iter<'a, A, T> {
+    type Item = (A, u32, &'a T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(n) = self.nodes.pop() {
+                self.nodes.extend(&n.right);
+                self.nodes.extend(&n.left);
+                if let Some(ref t) = n.value {
+                    return Some((A::from_integer(n.k), n.len, t));
+                }
+            } else {
+                return None;
+            }
+        }
+    }
+}
+
+impl<'a, A: Address, T> IntoIterator for &'a IpLookupTable<A, T> {
+    type IntoIter = Iter<'a, A, T>;
+    type Item = (A, u32, &'a T);
+
+    fn into_iter(self) -> Iter<'a, A, T> {
+        Iter {
+            nodes: self.root.iter().collect(),
+        }
+    }
+}
+
+/// Iterator.
+#[allow(missing_debug_implementations)]
+pub struct IntoIter<A: Address, T> {
+    nodes: Vec<Box<TrieNode<A::U, T>>>,
+}
+
+impl<A: Address, T> Iterator for IntoIter<A, T> {
+    type Item = (A, u32, T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(n) = self.nodes.pop() {
+                self.nodes.extend(n.right);
+                self.nodes.extend(n.left);
+                if let Some(t) = n.value {
+                    return Some((A::from_integer(n.k), n.len, t));
+                }
+            } else {
+                return None;
+            }
+        }
+    }
+}
+
+impl<A: Address, T> IntoIterator for IpLookupTable<A, T> {
+    type IntoIter = IntoIter<A, T>;
+    type Item = (A, u32, T);
+
+    fn into_iter(self) -> IntoIter<A, T> {
+        IntoIter {
+            nodes: self.root.into_iter().collect(),
+        }
+    }
+}
+
+impl<A: Address, T> std::iter::FromIterator<(A, u32, T)> for IpLookupTable<A, T> {
+    fn from_iter<I: IntoIterator<Item = (A, u32, T)>>(iter: I) -> Self {
+        let mut t = IpLookupTable::new();
+        for (a, l, v) in iter {
+            t.insert(a, l, v);
+        }
+        t
     }
 }
 
@@ -538,7 +614,7 @@ mod tests {
         }
         table.self_check().unwrap();
 
-        assert!(table.trie.root.is_none());
+        assert!(table.is_empty());
     }
 
     #[quickcheck]
