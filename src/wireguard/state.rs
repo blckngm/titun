@@ -29,7 +29,6 @@ use noise_protocol::U8Array;
 use parking_lot::{Mutex, RwLock};
 use sodiumoxide::randombytes::randombytes_into;
 use std::collections::HashMap;
-use std::mem::uninitialized;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
@@ -216,6 +215,7 @@ fn udp_process_handshake_resp<'a>(
     wg: &'a WgState,
     p: &'a [u8],
     addr: SocketAddrV6,
+    buffer: &'a mut [u8],
 ) -> impl Future<Output = ()> + Send + 'a {
     let no_action = async {}.left_future();
 
@@ -308,9 +308,8 @@ fn udp_process_handshake_resp<'a>(
             }
             peer.on_send_transport();
             return async move {
-                let mut buf: [u8; BUFSIZE] = unsafe { uninitialized() };
                 for p in queued_packets {
-                    let encrypted = &mut buf[..p.len() + 32];
+                    let encrypted = &mut buffer[..p.len() + 32];
                     t.encrypt(&p, encrypted).0.unwrap();
                     let _ = await!(wg.send_to_async(encrypted, addr));
                 }
@@ -344,7 +343,12 @@ fn udp_process_cookie_reply(wg: &WgState, p: &[u8]) {
     }
 }
 
-async fn udp_process_transport<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: SocketAddrV6) {
+async fn udp_process_transport<'a>(
+    wg: &'a Arc<WgState>,
+    p: &'a [u8],
+    addr: SocketAddrV6,
+    buffer: &'a mut [u8],
+) {
     if p.len() < 32 {
         return;
     }
@@ -359,8 +363,7 @@ async fn udp_process_transport<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: Sock
         }
     };
 
-    let mut buff: [u8; BUFSIZE] = unsafe { uninitialized() };
-    let decrypted = &mut buff[..p.len() - 32];
+    let decrypted = &mut buffer[..p.len() - 32];
     let mut should_write = false;
     let mut packet_len = 0;
 
@@ -422,6 +425,7 @@ async fn udp_process_transport<'a>(wg: &'a Arc<WgState>, p: &'a [u8], addr: Sock
 /// Receiving loop.
 async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
     let mut p = vec![0u8; BUFSIZE];
+    let mut buffer = vec![0u8; BUFSIZE];
     loop {
         for _ in 0..1024 {
             let (len, addr) = {
@@ -451,9 +455,9 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
 
             match type_ {
                 1 => await!(udp_process_handshake_init(&wg, p, addr)),
-                2 => await!(udp_process_handshake_resp(&wg, p, addr)),
+                2 => await!(udp_process_handshake_resp(&wg, p, addr, &mut buffer)),
                 3 => udp_process_cookie_reply(&wg, p),
-                4 => await!(udp_process_transport(&wg, p, addr)),
+                4 => await!(udp_process_transport(&wg, p, addr, &mut buffer)),
                 _ => (),
             }
         }
@@ -496,6 +500,7 @@ fn padding() {
 /// Sending thread loop.
 async fn tun_packet_processing(wg: Arc<WgState>) {
     let mut pkt = vec![0u8; BUFSIZE];
+    let mut encrypted = vec![0u8; BUFSIZE];
     loop {
         for _ in 0..1024 {
             let len = await!(wg.tun.read_async(&mut pkt)).unwrap();
@@ -527,7 +532,6 @@ async fn tun_packet_processing(wg: Arc<WgState>) {
                 }
             };
 
-            let mut encrypted: [u8; BUFSIZE] = unsafe { uninitialized() };
             let encrypted = &mut encrypted[..pkt.len() + 32];
             let endpoint;
             let mut should_send = false;
