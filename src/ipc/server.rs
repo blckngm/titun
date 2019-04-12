@@ -42,13 +42,11 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
     loop {
         let wg = wg.clone();
         let stream = await!(listener.accept_async())?;
-        tokio_spawn(
-            async move {
-                await!(serve(&wg, stream)).unwrap_or_else(|e| {
-                    warn!("Error serving IPC connection: {:?}", e);
-                });
-            },
-        );
+        tokio_spawn(async move {
+            await!(serve(&wg, stream)).unwrap_or_else(|e| {
+                warn!("Error serving IPC connection: {:?}", e);
+            });
+        });
     }
 }
 
@@ -73,13 +71,11 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
     loop {
         let wg = wg.clone();
         match await!(incoming.next()) {
-            Some(Ok(stream)) => tokio_spawn(
-                async move {
-                    await!(serve(&wg, stream)).unwrap_or_else(|e| {
-                        warn!("Error serving IPC connection: {:?}", e);
-                    });
-                },
-            ),
+            Some(Ok(stream)) => tokio_spawn(async move {
+                await!(serve(&wg, stream)).unwrap_or_else(|e| {
+                    warn!("Error serving IPC connection: {:?}", e);
+                });
+            }),
             Some(Err(e)) => return Err(e.into()),
             None => unreachable!(),
         }

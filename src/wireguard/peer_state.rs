@@ -365,22 +365,20 @@ pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
     {
         let wg = Arc::downgrade(wg);
         let peer = Arc::downgrade(peer0);
-        scope.spawn_async(
-            async move {
-                loop {
-                    if let (Some(wg), Some(peer)) = (wg.upgrade(), peer.upgrade()) {
-                        let endpoint = peer.read().info.endpoint;
-                        if let Some(e) = endpoint {
-                            debug!("{}: Handshake init.", peer.read().info.log_id());
-                            let _ = await!(wg.send_to_async(&init_msg, e));
-                            peer.read().count_send(init_msg.len());
-                        }
+        scope.spawn_async(async move {
+            loop {
+                if let (Some(wg), Some(peer)) = (wg.upgrade(), peer.upgrade()) {
+                    let endpoint = peer.read().info.endpoint;
+                    if let Some(e) = endpoint {
+                        debug!("{}: Handshake init.", peer.read().info.log_id());
+                        let _ = await!(wg.send_to_async(&init_msg, e));
+                        peer.read().count_send(init_msg.len());
                     }
-                    let delay_ms = thread_rng().gen_range(5_000, 5_300);
-                    await!(delay(Duration::from_millis(delay_ms)));
                 }
-            },
-        );
+                let delay_ms = thread_rng().gen_range(5_000, 5_300);
+                await!(delay(Duration::from_millis(delay_ms)));
+            }
+        });
     }
 
     peer.handshake = Some(Handshake {

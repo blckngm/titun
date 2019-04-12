@@ -38,54 +38,46 @@ pub async fn run(c: Config) -> Result<(), Error> {
     #[cfg(windows)]
     let scope = scope0.clone();
     #[cfg(windows)]
-    crate::async_utils::tokio_spawn(
-        async move {
-            use crate::async_utils::delay;
-            use std::time::Duration;
+    crate::async_utils::tokio_spawn(async move {
+        use crate::async_utils::delay;
+        use std::time::Duration;
 
-            await!(scope.cancelled());
-            await!(delay(Duration::from_millis(100)));
-            std::process::exit(0);
-        },
-    );
+        await!(scope.cancelled());
+        await!(delay(Duration::from_millis(100)));
+        std::process::exit(0);
+    });
 
-    scope0.spawn_canceller(
-        async move {
-            let mut ctrl_c = await!(tokio_signal::ctrl_c().compat()).unwrap();
-            await!(ctrl_c.next());
-            info!("Received SIGINT or Ctrl-C, shutting down.");
-        },
-    );
+    scope0.spawn_canceller(async move {
+        let mut ctrl_c = await!(tokio_signal::ctrl_c().compat()).unwrap();
+        await!(ctrl_c.next());
+        info!("Received SIGINT or Ctrl-C, shutting down.");
+    });
 
     if c.exit_stdin_eof {
-        scope0.spawn_canceller(
-            async move {
-                let mut stdin = tokio::io::stdin();
-                let mut buf = [0u8; 4096];
-                loop {
-                    match await!(stdin.read_async(&mut buf)) {
-                        Ok(0) => break,
-                        Err(e) => {
-                            warn!("Read from stdin error: {}", e);
-                            break;
-                        }
-                        _ => (),
+        scope0.spawn_canceller(async move {
+            let mut stdin = tokio::io::stdin();
+            let mut buf = [0u8; 4096];
+            loop {
+                match await!(stdin.read_async(&mut buf)) {
+                    Ok(0) => break,
+                    Err(e) => {
+                        warn!("Read from stdin error: {}", e);
+                        break;
                     }
+                    _ => (),
                 }
-                info!("Stdin EOF, shutting down.");
-            },
-        );
+            }
+            info!("Stdin EOF, shutting down.");
+        });
     }
     #[cfg(unix)]
-    scope0.spawn_canceller(
-        async move {
-            use tokio_signal::unix::{Signal, SIGTERM};
+    scope0.spawn_canceller(async move {
+        use tokio_signal::unix::{Signal, SIGTERM};
 
-            let mut term = await!(Signal::new(SIGTERM).compat()).unwrap();
-            await!(term.next());
-            info!("Received SIGTERM, shutting down.");
-        },
-    );
+        let mut term = await!(Signal::new(SIGTERM).compat()).unwrap();
+        await!(term.next());
+        info!("Received SIGTERM, shutting down.");
+    });
 
     #[cfg(windows)]
     let tun = Tun::open_async(&c.dev_name, c.network).context("Open tun device")?;
@@ -104,12 +96,10 @@ pub async fn run(c: Config) -> Result<(), Error> {
 
     scope0.spawn_canceller(WgState::run(wg));
 
-    scope0.spawn_canceller(
-        async move {
-            await!(ipc_server(weak, &c.dev_name))
-                .unwrap_or_else(|e| error!("Failed to start IPC server: {}", e))
-        },
-    );
+    scope0.spawn_canceller(async move {
+        await!(ipc_server(weak, &c.dev_name))
+            .unwrap_or_else(|e| error!("Failed to start IPC server: {}", e))
+    });
 
     await!(scope0.cancelled());
     Ok(())

@@ -22,7 +22,7 @@ use parking_lot::Mutex;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Poll, Waker};
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 /// Manage a group of tasks.
@@ -60,14 +60,12 @@ impl AsyncScope {
         F: Future<Output = ()> + Send + 'static,
     {
         let w = Arc::downgrade(self);
-        self.spawn_async(
-            async move {
-                await!(future);
-                if let Some(c) = w.upgrade() {
-                    c.cancel();
-                }
-            },
-        );
+        self.spawn_async(async move {
+            await!(future);
+            if let Some(c) = w.upgrade() {
+                c.cancel();
+            }
+        });
     }
 
     /// Spawn a future that is bound to this scope.
@@ -80,17 +78,15 @@ impl AsyncScope {
         T: Future<Output = ()> + Send + 'static,
     {
         let cancelled = self.receiver.clone();
-        tokio_spawn(
-            async move {
-                pin_mut!(cancelled);
-                let f = future.fuse();
-                pin_mut!(f);
-                select! {
-                    _ = cancelled => (),
-                    _ = f => (),
-                }
-            },
-        );
+        tokio_spawn(async move {
+            pin_mut!(cancelled);
+            let f = future.fuse();
+            pin_mut!(f);
+            select! {
+                _ = cancelled => (),
+                _ = f => (),
+            }
+        });
     }
 }
 
@@ -106,10 +102,10 @@ pub struct YieldOnce {
 impl Future for YieldOnce {
     type Output = ();
 
-    fn poll(mut self: Pin<&mut Self>, waker: &Waker) -> Poll<()> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
         if self.pending {
             self.pending = false;
-            waker.wake();
+            cx.waker().wake_by_ref();
             Poll::Pending
         } else {
             Poll::Ready(())
@@ -162,13 +158,11 @@ mod tests {
 
     #[test]
     fn cancellation() {
-        crate::tokio_block_on_all(
-            async {
-                let scope = AsyncScope::new();
-                scope.spawn_async(future::empty());
-                scope.spawn_async(future::empty());
-                drop(scope);
-            },
-        );
+        crate::tokio_block_on_all(async {
+            let scope = AsyncScope::new();
+            scope.spawn_async(future::empty());
+            scope.spawn_async(future::empty());
+            drop(scope);
+        });
     }
 }

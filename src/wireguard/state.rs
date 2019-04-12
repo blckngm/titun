@@ -95,11 +95,9 @@ impl Drop for IdMapGuard {
                 return;
             }
             let id = self.id;
-            tokio_spawn(
-                async move {
-                    wg.id_map.write().remove(&id);
-                },
-            );
+            tokio_spawn(async move {
+                wg.id_map.write().remove(&id);
+            });
         }
     }
 }
@@ -617,15 +615,13 @@ impl WgState {
         let scope = AsyncScope::new();
         {
             let wg = wg.clone();
-            scope.spawn_async(
-                async move {
-                    loop {
-                        await!(delay(Duration::from_secs(120)));
-                        let mut cookie = wg.cookie_secret.write();
-                        randombytes_into(&mut cookie[..]);
-                    }
-                },
-            );
+            scope.spawn_async(async move {
+                loop {
+                    await!(delay(Duration::from_secs(120)));
+                    let mut cookie = wg.cookie_secret.write();
+                    randombytes_into(&mut cookie[..]);
+                }
+            });
         }
         let (sender, receiver) = channel(0);
         *wg.socket_sender.lock() = Some(sender);

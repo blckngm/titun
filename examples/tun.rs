@@ -68,14 +68,12 @@ mod imp {
 
         let mut buf = [0u8; 2048];
 
-        tokio::run_async(
-            async move {
-                loop {
-                    let l = await!(t.read_async(&mut buf)).unwrap();
-                    println!("Got packet: {} bytes", l);
-                }
-            },
-        );
+        tokio::run_async(async move {
+            loop {
+                let l = await!(t.read_async(&mut buf)).unwrap();
+                println!("Got packet: {} bytes", l);
+            }
+        });
         Ok(())
     }
 }

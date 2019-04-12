@@ -24,10 +24,10 @@ blake2-rfc = { version = "0.2.18", features = ["simd_asm"]}
 byteorder = "1"
 bytes = "0.4"
 clap = "2.19.3"
-env_logger = "0.5.12"
+env_logger = "0.6"
 failure = "0.1"
 fnv = "1.0.6"
-futures-preview = { version = "0.3.0-alpha.13", features = ["compat"] }
+futures-preview = { version = "0.3.0-alpha.14", features = ["compat"] }
 hex = "0.3"
 ip-lookup-trie = { path = "./ip-lookup-trie" }
 libsodium-sys = "0.2.0"
@@ -42,7 +42,7 @@ pin-utils = "0.1.0-alpha.4"
 rand = "0.6"
 sodiumoxide = "0.2.0"
 tai64 = {version = "0.2", default-features = false}
-tokio = { version = "0.1.15", features = ["async-await-preview"] }
+tokio = { version = "0.1.17", features = ["async-await-preview"] }
 tokio-signal = "0.2"
 tokio-threadpool = "0.1.11"
 
