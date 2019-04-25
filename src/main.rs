@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-#![feature(async_await, await_macro, futures_api)]
+#![feature(async_await, await_macro)]
 
 #[macro_use]
 extern crate failure;
