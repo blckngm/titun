@@ -30,7 +30,7 @@ fnv = "1.0.6"
 futures-preview = { version = "0.3.0-alpha.14", features = ["compat"] }
 hex = "0.3"
 ip-lookup-trie = { path = "./ip-lookup-trie" }
-libsodium-sys = "0.2.0"
+libsodium-sys = { git = "https://github.com/sodiumoxide/sodiumoxide.git" }
 log = "0.4.3"
 mio = "0.6"
 net2 = "0.2.33"
@@ -40,7 +40,7 @@ num_cpus = "1.9.0"
 parking_lot = "0.7"
 pin-utils = "0.1.0-alpha.4"
 rand = "0.6"
-sodiumoxide = "0.2.0"
+sodiumoxide = { git = "https://github.com/sodiumoxide/sodiumoxide.git" }
 tai64 = {version = "0.2", default-features = false}
 tokio = { version = "0.1.17", features = ["async-await-preview"] }
 tokio-signal = "0.2"

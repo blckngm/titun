@@ -19,17 +19,9 @@ use byteorder::{ByteOrder, LittleEndian};
 use libsodium_sys::*;
 use noise_protocol::*;
 use sodiumoxide::crypto::scalarmult::curve25519;
-use sodiumoxide::init as sodium_init;
 use sodiumoxide::randombytes::randombytes_into;
 use sodiumoxide::utils::memzero;
 use std::ptr::{null, null_mut};
-
-/// Sodiumoxide init.
-///
-/// This will make some operations potentially faster, and make `genkey` thread safe.
-pub fn init() -> Result<(), ()> {
-    sodium_init()
-}
 
 #[derive(Eq, PartialEq)]
 pub struct X25519Key {
@@ -229,8 +221,6 @@ mod benches {
 
     #[bench]
     fn chacha20poly1305(b: &mut crate::test::Bencher) {
-        init().unwrap();
-
         const MSG_LEN: usize = 1400;
         let mut key = [0u8; 32];
         randombytes_into(&mut key);

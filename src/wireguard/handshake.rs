@@ -237,8 +237,6 @@ pub fn verify_mac1(wg: &WgInfo, msg: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "bench")]
-    use crate::wireguard::re_exports::sodium_init;
     use sodiumoxide::randombytes::randombytes_into;
 
     #[test]
@@ -330,8 +328,6 @@ mod tests {
     #[cfg(feature = "bench")]
     #[bench]
     fn bench_handshake_init(b: &mut crate::test::Bencher) {
-        sodium_init().unwrap();
-
         let k = X25519::genkey();
         let init = WgInfo {
             key: k,
@@ -364,8 +360,6 @@ mod tests {
     #[cfg(feature = "bench")]
     #[bench]
     fn bench_handshake_resp(b: &mut crate::test::Bencher) {
-        sodium_init().unwrap();
-
         let k = X25519::genkey();
         let init = WgInfo {
             key: k,
@@ -403,8 +397,6 @@ mod tests {
     #[cfg(feature = "bench")]
     #[bench]
     fn bench_handshake_process_resp(b: &mut crate::test::Bencher) {
-        sodium_init().unwrap();
-
         let k = X25519::genkey();
         let init = WgInfo {
             key: k,
@@ -446,8 +438,6 @@ mod tests {
     #[cfg(feature = "bench")]
     #[bench]
     fn bench_verify_mac1(b: &mut crate::test::Bencher) {
-        sodium_init().unwrap();
-
         let k = X25519::genkey();
         let init = WgInfo {
             key: k,

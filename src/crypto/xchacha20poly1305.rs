@@ -92,7 +92,6 @@ mod tests {
 #[cfg(all(feature = "bench", test))]
 mod benches {
     use super::*;
-    use crate::wireguard::re_exports::sodium_init;
 
     #[bench]
     fn bench_encrypt(b: &mut crate::test::Bencher) {
@@ -101,8 +100,6 @@ mod benches {
         let ad = [2u8; 16];
         let data = [3u8; 16];
         let mut out = [0u8; 32];
-
-        sodium_init().unwrap();
 
         b.iter(|| {
             encrypt(&k, &n, &ad, &data, &mut out);

@@ -18,7 +18,6 @@
 use crate::async_utils::{delay, tokio_spawn, yield_once, AsyncScope};
 use crate::either::FutureEitherExt;
 use crate::udp_socket::*;
-use crate::wireguard::re_exports::sodium_init;
 use crate::wireguard::*;
 use failure::Error;
 use fnv::FnvHashMap;
@@ -589,8 +588,6 @@ pub struct SetPeerCommand {
 impl WgState {
     /// Create a new `WgState`, start worker threads.
     pub fn new(mut info: WgInfo, tun: AsyncTun) -> Result<Arc<WgState>, Error> {
-        sodium_init().map_err(|_| format_err!("Failed to init libsodium"))?;
-
         let mut cookie = [0u8; 32];
         randombytes_into(&mut cookie);
 
