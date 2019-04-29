@@ -27,7 +27,7 @@ clap = "2.19.3"
 env_logger = "0.6"
 failure = "0.1"
 fnv = "1.0.6"
-futures-preview = { version = "0.3.0-alpha.14", features = ["compat"] }
+futures-preview = { version = "0.3.0-alpha.14", features = ["compat", "nightly", "async-await"] }
 hex = "0.3"
 ip-lookup-trie = { path = "./ip-lookup-trie" }
 libsodium-sys = { git = "https://github.com/sodiumoxide/sodiumoxide.git" }

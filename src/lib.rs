@@ -35,7 +35,6 @@ extern crate pin_utils;
 
 mod async_utils;
 mod crypto;
-mod either;
 mod ipc;
 mod udp_socket;
 

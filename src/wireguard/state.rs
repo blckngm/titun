@@ -16,7 +16,6 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::async_utils::{delay, tokio_spawn, yield_once, AsyncScope};
-use crate::either::FutureEitherExt;
 use crate::udp_socket::*;
 use crate::wireguard::*;
 use failure::Error;
