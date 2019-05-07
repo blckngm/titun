@@ -15,66 +15,41 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use packed_simd::{shuffle, u32x4, u8x16, IntoBits};
+use super::simd::u32x4;
 use ring::aead::*;
 use std::convert::TryInto;
-
-#[inline(always)]
-fn rotate_left_16(use_byte_shuffle: bool, x: u32x4) -> u32x4 {
-    if use_byte_shuffle {
-        let x: u8x16 = x.into_bits();
-        let x: u8x16 = shuffle!(x, [2, 3, 0, 1, 6, 7, 4, 5, 10, 11, 8, 9, 14, 15, 12, 13]);
-        x.into_bits()
-    } else {
-        use packed_simd::u16x8;
-        let x: u16x8 = x.into_bits();
-        let x: u16x8 = shuffle!(x, [1, 0, 3, 2, 5, 4, 7, 6]);
-        x.into_bits()
-    }
-}
-
-#[inline(always)]
-fn rotate_left_8(use_byte_shuffle: bool, x: u32x4) -> u32x4 {
-    if use_byte_shuffle {
-        let x: u8x16 = x.into_bits();
-        let x: u8x16 = shuffle!(x, [3, 0, 1, 2, 7, 4, 5, 6, 11, 8, 9, 10, 15, 12, 13, 14]);
-        x.into_bits()
-    } else {
-        x.rotate_left(u32x4::splat(8))
-    }
-}
 
 #[inline(always)]
 fn round(use_byte_shuffle: bool, state: &mut [u32x4; 4]) {
     state[0] += state[1];
     state[3] ^= state[0];
-    state[3] = rotate_left_16(use_byte_shuffle, state[3]);
+    state[3] = state[3].rotate_left_16();
 
     state[2] += state[3];
     state[1] ^= state[2];
-    state[1] = state[1].rotate_left(u32x4::splat(12));
+    state[1] = state[1].rotate_left_12();
 
     state[0] += state[1];
     state[3] ^= state[0];
-    state[3] = rotate_left_8(use_byte_shuffle, state[3]);
+    state[3] = state[3].rotate_left_8(use_byte_shuffle);
 
     state[2] += state[3];
     state[1] ^= state[2];
-    state[1] = state[1].rotate_left(u32x4::splat(7));
+    state[1] = state[1].rotate_left_7();
 }
 
 #[inline(always)]
 fn shuffle(state: &mut [u32x4; 4]) {
-    state[0] = shuffle!(state[0], [1, 2, 3, 0]);
-    state[1] = shuffle!(state[1], [2, 3, 0, 1]);
-    state[2] = shuffle!(state[2], [3, 0, 1, 2]);
+    state[0] = state[0].shuffle_1230();
+    state[1] = state[1].shuffle_2301();
+    state[2] = state[2].shuffle_3012();
 }
 
 #[inline(always)]
 fn unshuffle(state: &mut [u32x4; 4]) {
-    state[0] = shuffle!(state[0], [3, 0, 1, 2]);
-    state[1] = shuffle!(state[1], [2, 3, 0, 1]);
-    state[2] = shuffle!(state[2], [1, 2, 3, 0]);
+    state[0] = state[0].shuffle_3012();
+    state[1] = state[1].shuffle_2301();
+    state[2] = state[2].shuffle_1230();
 }
 
 #[inline(always)]
@@ -89,9 +64,9 @@ fn round_pair(use_byte_shuffle: bool, state: &mut [u32x4; 4]) {
 fn hchacha_real(use_byte_shuffle: bool, key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
     let mut state: [u32x4; 4] = [
         u32x4::new(0x61707865, 0x3320646e, 0x79622d32, 0x6b206574),
-        u32x4::from_le(u8x16::from_slice_unaligned(&key[..16]).into_bits()),
-        u32x4::from_le(u8x16::from_slice_unaligned(&key[16..]).into_bits()),
-        u32x4::from_le(u8x16::from_slice_unaligned(&nonce[..]).into_bits()),
+        u32x4::load(key[..16].try_into().unwrap()),
+        u32x4::load(key[16..].try_into().unwrap()),
+        u32x4::load(nonce),
     ];
 
     for _ in 0..10 {
@@ -99,10 +74,8 @@ fn hchacha_real(use_byte_shuffle: bool, key: &[u8; 32], nonce: &[u8; 16]) -> [u8
     }
 
     let mut out = [0u8; 32];
-    let s0: u8x16 = state[0].to_le().into_bits();
-    s0.write_to_slice_unaligned(&mut out[..16]);
-    let s3: u8x16 = state[3].to_le().into_bits();
-    s3.write_to_slice_unaligned(&mut out[16..]);
+    state[0].store((&mut out[..16]).try_into().unwrap());
+    state[3].store((&mut out[16..]).try_into().unwrap());
     out
 }
 
@@ -112,12 +85,12 @@ fn hchacha(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
         static ref HCHACHA_IMPL: unsafe fn (key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] = {
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             {
-                if is_x86_feature_detected!("sse3") {
-                    #[target_feature(enable = "sse3")]
-                    unsafe fn hchacha_sse3(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
+                if is_x86_feature_detected!("ssse3") {
+                    #[target_feature(enable = "ssse3")]
+                    unsafe fn hchacha_ssse3(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
                         hchacha_real(true, key, nonce)
                     }
-                    return hchacha_sse3;
+                    return hchacha_ssse3;
                 }
             }
             // TODO: ARM/AArch64 NOEN.

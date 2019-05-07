@@ -37,7 +37,6 @@ net2 = "0.2.33"
 nix = "0.13"
 noise-protocol = "0.0.5"
 num_cpus = "1.9.0"
-packed_simd = { version = "0.3", features = ["into_bits"] }
 parking_lot = "0.7"
 pin-utils = "0.1.0-alpha.4"
 rand = "0.6"

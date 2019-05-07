@@ -16,4 +16,5 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 pub mod noise_crypto_impls;
+mod simd;
 pub mod xchacha20poly1305;
