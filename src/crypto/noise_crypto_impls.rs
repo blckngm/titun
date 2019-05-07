@@ -16,16 +16,15 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use byteorder::{ByteOrder, LittleEndian};
-use libsodium_sys::*;
 use noise_protocol::*;
-use sodiumoxide::crypto::scalarmult::curve25519;
-use sodiumoxide::randombytes::randombytes_into;
-use sodiumoxide::utils::memzero;
-use std::ptr::{null, null_mut};
+use rand::prelude::*;
+use rand::rngs::OsRng;
+use ring::aead::*;
+use ring::agreement::*;
 
 #[derive(Eq, PartialEq)]
 pub struct X25519Key {
-    key: curve25519::Scalar,
+    key: Sensitive<[u8; 32]>,
     public_key: [u8; 32],
 }
 
@@ -51,8 +50,9 @@ impl U8Array for X25519Key {
     }
 
     fn from_slice(s: &[u8]) -> Self {
-        let s = curve25519::Scalar::from_slice(s).unwrap();
-        let pk = curve25519::scalarmult_base(&s).0;
+        let s = Sensitive::from_slice(s);
+        let e = EphemeralPrivateKey::actually_static(&X25519, s.as_slice()).unwrap();
+        let pk = U8Array::from_slice(e.compute_public_key().unwrap().as_ref());
         X25519Key {
             key: s,
             public_key: pk,
@@ -79,6 +79,7 @@ impl U8Array for X25519Key {
     }
 }
 
+#[derive(PartialEq, Eq)]
 pub struct Sensitive<A: U8Array>(A);
 
 impl<A> Drop for Sensitive<A>
@@ -86,7 +87,10 @@ where
     A: U8Array,
 {
     fn drop(&mut self) {
-        memzero(self.0.as_mut())
+        // TODO: Make sure this is not optimized out.
+        for b in self.as_mut() {
+            *b = 0;
+        }
     }
 }
 
@@ -134,7 +138,7 @@ impl DH for X25519 {
 
     fn genkey() -> Self::Key {
         let mut k = [0u8; 32];
-        randombytes_into(&mut k);
+        OsRng::new().unwrap().fill_bytes(&mut k);
         k[0] &= 248;
         k[31] &= 127;
         k[31] |= 64;
@@ -147,8 +151,9 @@ impl DH for X25519 {
 
     /// Returns `Err(())` if DH output is all-zero.
     fn dh(k: &Self::Key, pk: &Self::Pubkey) -> Result<Self::Output, ()> {
-        let pk = curve25519::GroupElement(*pk);
-        curve25519::scalarmult(&k.key, &pk).map(|x| Sensitive(x.0))
+        let e = EphemeralPrivateKey::actually_static(&X25519, k.as_slice()).unwrap();
+        let mut out = Sensitive([0u8; 32]);
+        agree(e, pk, out.as_mut()).map(|_| out).map_err(|_| ())
     }
 }
 
@@ -165,19 +170,11 @@ impl Cipher for ChaCha20Poly1305 {
         let mut n = [0u8; 12];
         LittleEndian::write_u64(&mut n[4..], nonce);
 
-        unsafe {
-            crypto_aead_chacha20poly1305_ietf_encrypt(
-                out.as_mut_ptr(),
-                null_mut(),
-                plaintext.as_ptr(),
-                plaintext.len() as u64,
-                ad.as_ptr(),
-                ad.len() as u64,
-                null(),
-                n.as_ptr(),
-                k.0.as_ptr(),
-            );
-        }
+        let k = SealingKey::new(&CHACHA20_POLY1305, k.as_slice()).unwrap();
+        let aad = Aad::from(ad);
+        let n = Nonce::assume_unique_for_key(n);
+
+        seal(&k, n, aad, plaintext, out).unwrap();
     }
 
     fn decrypt(
@@ -192,41 +189,28 @@ impl Cipher for ChaCha20Poly1305 {
         let mut n = [0u8; 12];
         LittleEndian::write_u64(&mut n[4..], nonce);
 
-        let ret = unsafe {
-            crypto_aead_chacha20poly1305_ietf_decrypt(
-                out.as_mut_ptr(),
-                null_mut(),
-                null_mut(),
-                ciphertext.as_ptr(),
-                ciphertext.len() as u64,
-                ad.as_ptr(),
-                ad.len() as u64,
-                n.as_ptr(),
-                k.0.as_ptr(),
-            )
-        };
+        let k = OpeningKey::new(&CHACHA20_POLY1305, k.as_slice()).unwrap();
+        let aad = Aad::from(ad);
+        let n = Nonce::assume_unique_for_key(n);
 
-        if ret == 0 {
-            Ok(())
-        } else {
-            Err(())
-        }
+        open(&k, n, aad, ciphertext, out).map_err(|_| ())
     }
 }
 
 #[cfg(all(test, feature = "bench"))]
 mod benches {
     use super::*;
-    use sodiumoxide::randombytes::randombytes_into;
 
     #[bench]
     fn chacha20poly1305(b: &mut crate::test::Bencher) {
+        let mut rng = OsRng::new().unwrap();
+
         const MSG_LEN: usize = 1400;
         let mut key = [0u8; 32];
-        randombytes_into(&mut key);
+        rng.fill_bytes(&mut key);
         let key = Sensitive(key);
         let mut data = [0u8; MSG_LEN];
-        randombytes_into(&mut data);
+        rng.fill_bytes(&mut data);
         let mut nonce = 0;
         let mut out = [0u8; MSG_LEN + 16];
 

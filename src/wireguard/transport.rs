@@ -16,7 +16,7 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::async_utils::{delay, AsyncScope};
-use crate::crypto::noise_rust_sodium::ChaCha20Poly1305;
+use crate::crypto::noise_crypto_impls::ChaCha20Poly1305;
 use crate::wireguard::*;
 use byteorder::{ByteOrder, LittleEndian};
 use noise_protocol::Cipher;

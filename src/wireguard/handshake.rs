@@ -15,12 +15,12 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::crypto::noise_rust_sodium::{ChaCha20Poly1305, X25519};
+use crate::crypto::noise_crypto_impls::{ChaCha20Poly1305, X25519};
 use crate::wireguard::*;
 use blake2_rfc::blake2s::Blake2s;
 use noise_protocol::patterns::noise_ik_psk2;
 use noise_protocol::*;
-use sodiumoxide::utils::memcmp;
+use ring::constant_time::verify_slices_are_equal;
 use tai64::TAI64N;
 
 const PROLOGUE: &[u8] = b"WireGuard v1 zx2c4 Jason@zx2c4.com";
@@ -231,13 +231,16 @@ pub fn verify_mac1(wg: &WgInfo, msg: &[u8]) -> bool {
 
     let key = hash(&[LABEL_MAC1, wg.pubkey()]);
     let expected_mac1 = mac(&key, &[m]);
-    memcmp(&expected_mac1, mac1)
+    verify_slices_are_equal(&expected_mac1, mac1)
+        .map(|_| true)
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sodiumoxide::randombytes::randombytes_into;
+    use rand::prelude::*;
+    use rand::rngs::OsRng;
 
     #[test]
     fn wg_handshake_init_responde() {
@@ -284,7 +287,7 @@ mod tests {
     #[test]
     fn wg_handshake_init_responde_with_psk() {
         let mut psk = [0u8; 32];
-        randombytes_into(&mut psk);
+        OsRng::new().unwrap().fill_bytes(&mut psk);
 
         let k = X25519::genkey();
         let init = WgInfo {

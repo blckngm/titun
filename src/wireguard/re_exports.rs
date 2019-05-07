@@ -15,5 +15,5 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-pub use crate::crypto::noise_rust_sodium::{ChaCha20Poly1305, Sensitive, X25519};
+pub use crate::crypto::noise_crypto_impls::{ChaCha20Poly1305, Sensitive, X25519};
 pub use noise_protocol::{Cipher, Hash, U8Array, DH};

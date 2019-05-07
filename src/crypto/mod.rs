@@ -15,5 +15,5 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-pub mod noise_rust_sodium;
+pub mod noise_crypto_impls;
 pub mod xchacha20poly1305;

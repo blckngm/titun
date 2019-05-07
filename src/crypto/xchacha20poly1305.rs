@@ -15,12 +15,9 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use libsodium_sys::{
-    crypto_aead_chacha20poly1305_ietf_decrypt, crypto_aead_chacha20poly1305_ietf_encrypt,
-};
 use packed_simd::{shuffle, u32x4, u8x16, IntoBits};
+use ring::aead::*;
 use std::convert::TryInto;
-use std::ptr::{null, null_mut};
 
 #[inline(always)]
 fn rotate_left_16(use_byte_shuffle: bool, x: u32x4) -> u32x4 {
@@ -130,9 +127,7 @@ fn hchacha(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
             hchacha_fallback
         };
     }
-    unsafe {
-        HCHACHA_IMPL(key, nonce)
-    }
+    unsafe { HCHACHA_IMPL(key, nonce) }
 }
 
 pub fn encrypt(key: &[u8], nonce: &[u8], ad: &[u8], p: &[u8], out: &mut [u8]) {
@@ -145,21 +140,11 @@ pub fn encrypt(key: &[u8], nonce: &[u8], ad: &[u8], p: &[u8], out: &mut [u8]) {
     let mut real_nonce = [0u8; 12];
     real_nonce[4..].copy_from_slice(chacha_nonce);
 
-    let mut out_len = out.len() as u64;
+    let key = SealingKey::new(&CHACHA20_POLY1305, &real_key).unwrap();
+    let aad = Aad::from(ad);
+    let nonce = Nonce::assume_unique_for_key(real_nonce);
 
-    unsafe {
-        crypto_aead_chacha20poly1305_ietf_encrypt(
-            out.as_mut_ptr(),
-            &mut out_len,
-            p.as_ptr(),
-            p.len() as u64,
-            ad.as_ptr(),
-            ad.len() as u64,
-            null(),
-            real_nonce.as_ptr(),
-            real_key.as_ptr(),
-        );
-    }
+    seal(&key, nonce, aad, p, out).unwrap();
 }
 
 pub fn decrypt(key: &[u8], nonce: &[u8], ad: &[u8], c: &[u8], out: &mut [u8]) -> Result<(), ()> {
@@ -172,26 +157,11 @@ pub fn decrypt(key: &[u8], nonce: &[u8], ad: &[u8], c: &[u8], out: &mut [u8]) ->
     let mut real_nonce = [0u8; 12];
     real_nonce[4..].copy_from_slice(chacha_nonce);
 
-    let mut out_len = out.len() as u64;
+    let key = OpeningKey::new(&CHACHA20_POLY1305, &real_key).unwrap();
+    let aad = Aad::from(ad);
+    let nonce = Nonce::assume_unique_for_key(real_nonce);
 
-    let r = unsafe {
-        crypto_aead_chacha20poly1305_ietf_decrypt(
-            out.as_mut_ptr(),
-            &mut out_len,
-            null_mut(),
-            c.as_ptr(),
-            c.len() as u64,
-            ad.as_ptr(),
-            ad.len() as u64,
-            real_nonce.as_ptr(),
-            real_key.as_ptr(),
-        )
-    };
-    if r != 0 {
-        Err(())
-    } else {
-        Ok(())
-    }
+    open(&key, nonce, aad, c, out).map_err(|_| ())
 }
 
 #[cfg(test)]

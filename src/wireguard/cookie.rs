@@ -18,8 +18,9 @@
 use crate::crypto::xchacha20poly1305::{decrypt, encrypt};
 use crate::wireguard::{Id, X25519Pubkey};
 use blake2_rfc::blake2s::{blake2s, Blake2s};
-use sodiumoxide::randombytes::randombytes_into;
-use sodiumoxide::utils::memcmp;
+use rand::prelude::*;
+use rand::rngs::OsRng;
+use ring::constant_time::verify_slices_are_equal;
 
 pub type Cookie = [u8; 16];
 
@@ -51,9 +52,7 @@ pub fn cookie_reply(
 
     {
         let (nonce, encrypted_cookie) = out[8..64].split_at_mut(24);
-        // Per my profiling, this takes about half the time of the `cookie_reply` bench.
-        // Any thoughts?
-        randombytes_into(nonce);
+        OsRng::new().unwrap().fill_bytes(nonce);
 
         // Calc encryption key.
         let temp = {
@@ -130,7 +129,9 @@ pub fn cookie_verify(m: &[u8], cookie: &Cookie) -> bool {
     }
     let (m, mac2) = m.split_at(m.len() - 16);
     let mac2_ = blake2s(16, cookie, m);
-    memcmp(mac2_.as_bytes(), mac2)
+    verify_slices_are_equal(mac2_.as_bytes(), mac2)
+        .map(|_| true)
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -139,14 +140,15 @@ mod tests {
 
     #[test]
     fn cookie() {
+        let mut rng = OsRng::new().unwrap();
         let mut pk = [0u8; 32];
-        randombytes_into(&mut pk);
+        rng.fill_bytes(&mut pk);
 
         let mut mac1 = [0u8; 16];
-        randombytes_into(&mut mac1);
+        rng.fill_bytes(&mut mac1);
 
         let mut secret = [0u8; 32];
-        randombytes_into(&mut secret);
+        rng.fill_bytes(&mut secret);
 
         let cookie = calc_cookie(&secret, b"1.2.3.4");
 
@@ -160,14 +162,16 @@ mod tests {
     #[cfg(feature = "bench")]
     #[bench]
     fn bench_cookie_reply(b: &mut crate::test::Bencher) {
+        let mut rng = OsRng::new().unwrap();
+
         let mut pk = [0u8; 32];
-        randombytes_into(&mut pk);
+        rng.fill_bytes(&mut pk);
 
         let mut mac1 = [0u8; 16];
-        randombytes_into(&mut mac1);
+        rng.fill_bytes(&mut mac1);
 
         let mut secret = [0u8; 32];
-        randombytes_into(&mut secret);
+        rng.fill_bytes(&mut secret);
 
         b.iter(|| {
             let cookie = calc_cookie(&secret, b"1.2.3.4");

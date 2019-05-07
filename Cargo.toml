@@ -31,7 +31,6 @@ futures-preview = { version = "0.3.0-alpha.14", features = ["compat", "nightly",
 hex = "0.3"
 ip-lookup-trie = { path = "./ip-lookup-trie" }
 lazy_static = "1.3.0"
-libsodium-sys = { git = "https://github.com/sodiumoxide/sodiumoxide.git" }
 log = "0.4.3"
 mio = "0.6"
 net2 = "0.2.33"
@@ -42,7 +41,7 @@ packed_simd = { version = "0.3", features = ["into_bits"] }
 parking_lot = "0.7"
 pin-utils = "0.1.0-alpha.4"
 rand = "0.6"
-sodiumoxide = { git = "https://github.com/sodiumoxide/sodiumoxide.git" }
+ring = { git = "https://gitlab.com/sopium/ring.git" }
 tai64 = {version = "0.2", default-features = false}
 tokio = { version = "0.1.17", features = ["async-await-preview"] }
 tokio-signal = "0.2"

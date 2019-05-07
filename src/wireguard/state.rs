@@ -25,7 +25,8 @@ use futures::prelude::*;
 use ip_lookup_trie::IpLookupTable;
 use noise_protocol::U8Array;
 use parking_lot::{Mutex, RwLock};
-use sodiumoxide::randombytes::randombytes_into;
+use rand::prelude::*;
+use rand::rngs::OsRng;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::sync::atomic::Ordering;
@@ -588,7 +589,7 @@ impl WgState {
     /// Create a new `WgState`, start worker threads.
     pub fn new(mut info: WgInfo, tun: AsyncTun) -> Result<Arc<WgState>, Error> {
         let mut cookie = [0u8; 32];
-        randombytes_into(&mut cookie);
+        OsRng::new().unwrap().fill_bytes(&mut cookie);
 
         let socket = WgState::prepare_socket(&mut info.port, info.fwmark)?;
 
@@ -615,7 +616,7 @@ impl WgState {
                 loop {
                     await!(delay(Duration::from_secs(120)));
                     let mut cookie = wg.cookie_secret.write();
-                    randombytes_into(&mut cookie[..]);
+                    OsRng::new().unwrap().fill_bytes(&mut cookie[..]);
                 }
             });
         }

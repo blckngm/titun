@@ -15,9 +15,10 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::crypto::noise_rust_sodium::X25519;
+use crate::crypto::noise_crypto_impls::X25519;
 use noise_protocol::DH;
-use sodiumoxide::randombytes::randombytes_into;
+use rand::prelude::*;
+use rand::rngs::OsRng;
 use std::net::{IpAddr, SocketAddr, SocketAddrV6};
 use std::ops::Deref;
 use std::time::SystemTime;
@@ -103,7 +104,7 @@ impl Id {
     /// Generate a new random ID.
     pub fn gen() -> Id {
         let mut id = [0u8; 4];
-        randombytes_into(&mut id);
+        OsRng::new().unwrap().fill_bytes(&mut id);
         Id(id)
     }
 
