@@ -68,7 +68,7 @@ impl U8Array for X25519Key {
     }
 
     fn as_mut(&mut self) -> &mut [u8] {
-        &mut (self.key).0
+        unimplemented!()
     }
 
     fn clone(&self) -> Self {
@@ -82,14 +82,15 @@ impl U8Array for X25519Key {
 #[derive(PartialEq, Eq)]
 pub struct Sensitive<A: U8Array>(A);
 
+// Best effort zeroing out after use.
 impl<A> Drop for Sensitive<A>
 where
     A: U8Array,
 {
     fn drop(&mut self) {
-        // TODO: Make sure this is not optimized out.
-        for b in self.as_mut() {
-            *b = 0;
+        let s = self.0.as_mut();
+        unsafe {
+            core::intrinsics::volatile_set_memory(s.as_mut_ptr(), 0, s.len());
         }
     }
 }
