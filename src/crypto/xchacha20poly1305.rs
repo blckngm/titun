@@ -1,4 +1,4 @@
-// Copyright 2017 Guanhao Yin <sopium@mysterious.site>
+// Copyright 2017, 2019 Guanhao Yin <sopium@mysterious.site>
 
 // This file is part of TiTun.
 
@@ -19,37 +19,48 @@ use super::simd::u32x4;
 use ring::aead::*;
 use std::convert::TryInto;
 
+// Adapted from chacha20-poly1305-aead[1], which is licensed as:
+//
+// Copyright 2016 chacha20-poly1305-aead Developers
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+//
+// 1. https://github.com/cesarb/chacha20-poly1305-aead/blob/master/src/chacha20.rs
+
 #[inline(always)]
 fn round(use_byte_shuffle: bool, state: &mut [u32x4; 4]) {
     state[0] += state[1];
     state[3] ^= state[0];
-    state[3] = state[3].rotate_left_16();
+    state[3] = state[3].rotate_left_const(16, use_byte_shuffle);
 
     state[2] += state[3];
     state[1] ^= state[2];
-    state[1] = state[1].rotate_left_12();
+    state[1] = state[1].rotate_left_const(12, use_byte_shuffle);
 
     state[0] += state[1];
     state[3] ^= state[0];
-    state[3] = state[3].rotate_left_8(use_byte_shuffle);
+    state[3] = state[3].rotate_left_const(8, use_byte_shuffle);
 
     state[2] += state[3];
     state[1] ^= state[2];
-    state[1] = state[1].rotate_left_7();
+    state[1] = state[1].rotate_left_const(7, use_byte_shuffle);
 }
 
 #[inline(always)]
 fn shuffle(state: &mut [u32x4; 4]) {
-    state[0] = state[0].shuffle_1230();
-    state[1] = state[1].shuffle_2301();
-    state[2] = state[2].shuffle_3012();
+    state[0] = state[0].shuffle_left(1);
+    state[1] = state[1].shuffle_left(2);
+    state[2] = state[2].shuffle_left(3);
 }
 
 #[inline(always)]
 fn unshuffle(state: &mut [u32x4; 4]) {
-    state[0] = state[0].shuffle_3012();
-    state[1] = state[1].shuffle_2301();
-    state[2] = state[2].shuffle_1230();
+    state[0] = state[0].shuffle_right(1);
+    state[1] = state[1].shuffle_right(2);
+    state[2] = state[2].shuffle_right(3);
 }
 
 #[inline(always)]
@@ -60,13 +71,15 @@ fn round_pair(use_byte_shuffle: bool, state: &mut [u32x4; 4]) {
     unshuffle(state);
 }
 
+// After inlining it becomes two versions, one that uses byte shuffling (PSHUFB) and
+// targets SSSE3+, and one that does not.
 #[inline(always)]
 fn hchacha_real(use_byte_shuffle: bool, key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
     let mut state: [u32x4; 4] = [
         u32x4::new(0x61707865, 0x3320646e, 0x79622d32, 0x6b206574),
-        u32x4::load(key[..16].try_into().unwrap()),
-        u32x4::load(key[16..].try_into().unwrap()),
-        u32x4::load(nonce),
+        u32x4::load_le(key[..16].try_into().unwrap()),
+        u32x4::load_le(key[16..].try_into().unwrap()),
+        u32x4::load_le(nonce),
     ];
 
     for _ in 0..10 {
@@ -74,33 +87,28 @@ fn hchacha_real(use_byte_shuffle: bool, key: &[u8; 32], nonce: &[u8; 16]) -> [u8
     }
 
     let mut out = [0u8; 32];
-    state[0].store((&mut out[..16]).try_into().unwrap());
-    state[3].store((&mut out[16..]).try_into().unwrap());
+    state[0].store_le((&mut out[..16]).try_into().unwrap());
+    state[3].store_le((&mut out[16..]).try_into().unwrap());
     out
 }
 
 fn hchacha(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
-    use lazy_static::lazy_static;
-    lazy_static! {
-        static ref HCHACHA_IMPL: unsafe fn (key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] = {
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-            {
-                if is_x86_feature_detected!("ssse3") {
-                    #[target_feature(enable = "ssse3")]
-                    unsafe fn hchacha_ssse3(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
-                        hchacha_real(true, key, nonce)
-                    }
-                    return hchacha_ssse3;
-                }
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        if is_x86_feature_detected!("ssse3") {
+            #[target_feature(enable = "ssse3")]
+            unsafe fn hchacha_ssse3(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
+                hchacha_real(true, key, nonce)
             }
-            // TODO: ARM/AArch64 NOEN.
-            fn hchacha_fallback(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
-                hchacha_real(false, key, nonce)
+            unsafe {
+                return hchacha_ssse3(key, nonce);
             }
-            hchacha_fallback
-        };
+        }
     }
-    unsafe { HCHACHA_IMPL(key, nonce) }
+    fn hchacha_fallback(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
+        hchacha_real(false, key, nonce)
+    }
+    hchacha_fallback(key, nonce)
 }
 
 pub fn encrypt(key: &[u8], nonce: &[u8], ad: &[u8], p: &[u8], out: &mut [u8]) {
@@ -148,9 +156,15 @@ mod tests {
         let nonce = hex::decode("000000090000004a0000000031415927").unwrap();
         let key = &key[..].try_into().unwrap();
         let nonce = &nonce[..].try_into().unwrap();
-        let result = hchacha(key, nonce);
+        let result = hchacha_real(true, key, nonce);
+        let result1 = hchacha_real(false, key, nonce);
         assert_eq!(
             result,
+            &hex::decode("82413b4227b27bfed30e42508a877d73a0f9e4d58a74a853c12ec41326d3ecdc")
+                .unwrap()[..]
+        );
+        assert_eq!(
+            result1,
             &hex::decode("82413b4227b27bfed30e42508a877d73a0f9e4d58a74a853c12ec41326d3ecdc")
                 .unwrap()[..]
         );

@@ -15,9 +15,9 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
+use crate::crypto::blake2s::{blake2s, Blake2s};
 use crate::crypto::xchacha20poly1305::{decrypt, encrypt};
 use crate::wireguard::{Id, X25519Pubkey};
-use blake2_rfc::blake2s::{blake2s, Blake2s};
 use rand::prelude::*;
 use rand::rngs::OsRng;
 use ring::constant_time::verify_slices_are_equal;
@@ -55,12 +55,10 @@ pub fn cookie_reply(
         OsRng::new().unwrap().fill_bytes(nonce);
 
         // Calc encryption key.
-        let temp = {
-            let mut hasher = Blake2s::new(32);
-            hasher.update(LABEL_COOKIE);
-            hasher.update(pubkey);
-            hasher.finalize()
-        };
+        let temp = Blake2s::new(32)
+            .update(LABEL_COOKIE)
+            .update(pubkey)
+            .finalize();
 
         // Encrypt cookie.
         encrypt(temp.as_bytes(), nonce, mac1, cookie, encrypted_cookie);
@@ -89,12 +87,10 @@ pub fn process_cookie_reply(
     let ciphertext = &msg[32..64];
 
     // Calc encryption key.
-    let temp = {
-        let mut hasher = Blake2s::new(32);
-        hasher.update(LABEL_COOKIE);
-        hasher.update(peer_pubkey);
-        hasher.finalize()
-    };
+    let temp = Blake2s::new(32)
+        .update(LABEL_COOKIE)
+        .update(peer_pubkey)
+        .finalize();
 
     let mut cookie = [0u8; 16];
     decrypt(temp.as_bytes(), nonce, mac1, ciphertext, &mut cookie)?;

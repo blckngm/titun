@@ -15,9 +15,9 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
+use crate::crypto::blake2s::Blake2s;
 use crate::crypto::noise_crypto_impls::{ChaCha20Poly1305, X25519};
 use crate::wireguard::*;
-use blake2_rfc::blake2s::Blake2s;
 use noise_protocol::patterns::noise_ik_psk2;
 use noise_protocol::*;
 use ring::constant_time::verify_slices_are_equal;
@@ -69,14 +69,10 @@ fn mac(key: &[u8], data: &[&[u8]]) -> [u8; 16] {
 }
 
 // WireGuard `HASH` function, aka. blake2s with 32-byte output.
-fn hash(data: &[&[u8]]) -> [u8; 32] {
-    let mut output = [0u8; 32];
-    let mut blake2s = Blake2s::new(32);
-    for d in data {
-        blake2s.update(d);
-    }
-    output.copy_from_slice(blake2s.finalize().as_bytes());
-    output
+macro_rules! hash {
+    ($x1:expr, $x2:expr) => {{
+        Blake2s::new(32).update($x1).update($x2).finalize()
+    }};
 }
 
 /// Generate handshake initiation message.
@@ -113,8 +109,8 @@ pub fn initiate(
         .map_err(|_| ())?;
 
     // Mac1.
-    let mac1_key = hash(&[LABEL_MAC1, &peer.peer_pubkey]);
-    let mac1 = mac(&mac1_key, &[&msg[..116]]);
+    let mac1_key = hash!(LABEL_MAC1, &peer.peer_pubkey);
+    let mac1 = mac(mac1_key.as_ref(), &[&msg[..116]]);
     msg[116..132].copy_from_slice(&mac1);
 
     Ok((msg, hs))
@@ -185,8 +181,8 @@ pub fn responde(
     hs.write_message(&[], &mut response[12..60])
         .map_err(|_| ())?;
 
-    let key = hash(&[LABEL_MAC1, hs.get_rs().as_ref().unwrap()]);
-    let mac1 = mac(&key, &[&response[..60]]);
+    let key = hash!(LABEL_MAC1, hs.get_rs().as_ref().unwrap());
+    let mac1 = mac(key.as_ref(), &[&response[..60]]);
     response[60..76].copy_from_slice(&mac1);
 
     Ok(response)
@@ -229,8 +225,8 @@ pub fn verify_mac1(wg: &WgInfo, msg: &[u8]) -> bool {
     let (m, macs) = msg.split_at(mac1_pos);
     let mac1 = &macs[..16];
 
-    let key = hash(&[LABEL_MAC1, wg.pubkey()]);
-    let expected_mac1 = mac(&key, &[m]);
+    let key = hash!(LABEL_MAC1, wg.pubkey());
+    let expected_mac1 = mac(key.as_ref(), &[m]);
     verify_slices_are_equal(&expected_mac1, mac1)
         .map(|_| true)
         .unwrap_or(false)
