@@ -31,9 +31,6 @@
 // ...
 #![feature(async_await, await_macro)]
 
-#[macro_use]
-extern crate tokio;
-
 use failure::Error;
 
 fn main() -> Result<(), Error> {

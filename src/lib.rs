@@ -24,14 +24,7 @@ extern crate test;
 #[macro_use]
 extern crate failure;
 #[macro_use]
-extern crate futures;
-#[macro_use]
 extern crate log;
-#[cfg(not(windows))]
-#[macro_use]
-extern crate nix;
-#[macro_use]
-extern crate pin_utils;
 
 mod async_utils;
 mod crypto;

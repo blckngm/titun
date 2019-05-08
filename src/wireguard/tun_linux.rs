@@ -35,6 +35,7 @@ use tokio::reactor::PollEvented2;
 
 mod ioctl {
     use super::*;
+    use nix::*;
 
     ioctl_write_int!(tunsetiff, b'T', 202);
 

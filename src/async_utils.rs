@@ -18,7 +18,9 @@
 use futures::channel::oneshot::*;
 use futures::future::Shared;
 use futures::prelude::*;
+use futures::select;
 use parking_lot::Mutex;
+use pin_utils::pin_mut;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
