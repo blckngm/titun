@@ -214,6 +214,7 @@ impl Blake2s {
         self.compress_real(f0, f1, false);
     }
 
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[target_feature(enable = "ssse3")]
     unsafe fn compress_ssse3(&mut self, f0: u32, f1: u32) {
         self.compress_real(f0, f1, true);

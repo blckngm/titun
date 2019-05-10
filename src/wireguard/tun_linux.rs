@@ -141,7 +141,7 @@ impl Tun {
 
         ifr.name[..name.len()].copy_from_slice(name);
 
-        unsafe { ioctl::tunsetiff(fd, &mut ifr as *mut _ as u64) }?;
+        unsafe { ioctl::tunsetiff(fd, &mut ifr as *mut _ as _) }?;
 
         let namelen = ifr.name.iter().position(|x| *x == 0).unwrap() + 1;
 
