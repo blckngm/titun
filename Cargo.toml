@@ -49,6 +49,9 @@ tokio-threadpool = "0.1.11"
 winapi = { version = "0.3", features = ["fileapi", "winbase", "ioapiset", "synchapi", "namedpipeapi"] }
 winreg = "0.6"
 
+[target.'cfg(not(any(target_arch = "x86", target_arch = "x86_64")))'.dependencies]
+packed_simd = { version = "0.3", features = ["into_bits"] }
+
 [patch.crates-io]
 tokio-async-await = { path = "patched/tokio-async-await-0.1.7" }
 tokio = { path = "patched/tokio-0.1.19" }

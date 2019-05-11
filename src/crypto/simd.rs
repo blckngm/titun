@@ -351,8 +351,6 @@ mod simd_x86 {
 
 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
 mod simd_fallback {
-    use std::convert::TryInto;
-
     pub trait Machine: Copy {}
 
     #[derive(Copy, Clone)]
@@ -366,14 +364,16 @@ mod simd_fallback {
 
     impl Machine for BaselineMachine {}
 
-    #[repr(align(16))]
+    #[repr(transparent)]
     #[allow(non_camel_case_types)]
     #[derive(Copy, Clone)]
-    pub struct u32x4(u32, u32, u32, u32);
+    pub struct u32x4(packed_simd::u32x4);
 
     impl std::fmt::Debug for u32x4 {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-            let u32x4(a, b, c, d) = *self;
+            let mut arr = [0u32; 4];
+            self.0.write_to_slice_unaligned(&mut arr);
+            let [a, b, c, d] = arr;
             write!(f, "(0x{:08x}, 0x{:08x}, 0x{:08x}, 0x{:08x})", a, b, c, d)?;
             Ok(())
         }
@@ -382,66 +382,61 @@ mod simd_fallback {
     impl u32x4 {
         #[inline(always)]
         pub fn new(a: u32, b: u32, c: u32, d: u32) -> Self {
-            Self(a, b, c, d)
+            u32x4(packed_simd::u32x4::new(a, b, c, d))
         }
 
         #[inline(always)]
         pub fn load_le(addr: &[u8; 16]) -> Self {
-            u32x4(
-                u32::from_le_bytes(addr[0..4].try_into().unwrap()),
-                u32::from_le_bytes((&addr[4..8]).try_into().unwrap()),
-                u32::from_le_bytes((&addr[8..12]).try_into().unwrap()),
-                u32::from_le_bytes((&addr[12..16]).try_into().unwrap()),
-            )
+            use packed_simd::IntoBits;
+            let v = packed_simd::u8x16::from_slice_unaligned(addr).into_bits();
+            u32x4(packed_simd::u32x4::from_le(v))
         }
 
         #[inline(always)]
         pub fn store_le(self, addr: &mut [u8; 16]) {
-            addr[0..4].copy_from_slice(&self.0.to_le_bytes());
-            addr[4..8].copy_from_slice(&self.1.to_le_bytes());
-            addr[8..12].copy_from_slice(&self.2.to_le_bytes());
-            addr[12..16].copy_from_slice(&self.3.to_le_bytes());
+            use packed_simd::IntoBits;
+
+            let v: packed_simd::u8x16 = self.0.to_le().into_bits();
+            v.write_to_slice_unaligned(addr);
         }
 
         #[inline(always)]
-        pub fn gather(src: &[u32], i0: usize, i1: usize, i2: usize, i3: usize) -> Self {
-            u32x4::new(src[i0], src[i1], src[i2], src[i3])
+        pub fn gather<M>(
+            src: &[u32x4; 4],
+            i0: usize,
+            i1: usize,
+            i2: usize,
+            i3: usize,
+            _: M,
+        ) -> Self {
+            unsafe {
+                let src: &[u32; 16] = std::mem::transmute(src);
+                u32x4::new(src[i0], src[i1], src[i2], src[i3])
+            }
         }
 
         #[inline(always)]
         pub fn from_le(self) -> Self {
-            let u32x4(a, b, c, d) = self;
-            u32x4(
-                u32::from_le(a),
-                u32::from_le(b),
-                u32::from_le(c),
-                u32::from_le(d),
-            )
+            u32x4(packed_simd::u32x4::from_le(self.0))
         }
 
         #[inline(always)]
-        pub fn rotate_left_const(self, amt: u32, _: bool) -> Self {
-            let u32x4(a, b, c, d) = self;
-            u32x4(
-                a.rotate_left(amt),
-                b.rotate_left(amt),
-                c.rotate_left(amt),
-                d.rotate_left(amt),
-            )
+        pub fn rotate_left_const<M>(self, amt: u32, _: M) -> Self {
+            u32x4(self.0.rotate_left(packed_simd::u32x4::splat(amt)))
         }
 
         #[inline(always)]
-        pub fn rotate_right_const(self, amt: u32, bs: bool) -> Self {
-            self.rotate_left_const(32 - amt, bs)
+        pub fn rotate_right_const<M>(self, amt: u32, _: M) -> Self {
+            u32x4(self.0.rotate_right(packed_simd::u32x4::splat(amt)))
         }
 
         #[inline(always)]
         pub fn shuffle_left(self, amt: u32) -> Self {
-            let u32x4(a, b, c, d) = self;
+            use packed_simd::shuffle;
             match amt {
-                1 => u32x4(b, c, d, a),
-                2 => u32x4(c, d, a, b),
-                3 => u32x4(d, a, b, c),
+                1 => u32x4(shuffle!(self.0, [1, 2, 3, 0])),
+                2 => u32x4(shuffle!(self.0, [2, 3, 0, 1])),
+                3 => u32x4(shuffle!(self.0, [3, 0, 1, 2])),
                 _ => unreachable!(),
             }
         }
@@ -457,12 +452,7 @@ mod simd_fallback {
 
         #[inline(always)]
         fn add(self, other: u32x4) -> u32x4 {
-            u32x4(
-                self.0.wrapping_add(other.0),
-                self.1.wrapping_add(other.1),
-                self.2.wrapping_add(other.2),
-                self.3.wrapping_add(other.3),
-            )
+            u32x4(self.0 + other.0)
         }
     }
 
@@ -477,12 +467,7 @@ mod simd_fallback {
         type Output = u32x4;
         #[inline(always)]
         fn bitxor(self, other: u32x4) -> u32x4 {
-            u32x4(
-                self.0 ^ other.0,
-                self.1 ^ other.1,
-                self.2 ^ other.2,
-                self.3 ^ other.3,
-            )
+            u32x4(self.0 ^ other.0)
         }
     }
 
@@ -497,12 +482,7 @@ mod simd_fallback {
         type Output = u32x4;
         #[inline(always)]
         fn bitor(self, other: u32x4) -> u32x4 {
-            u32x4(
-                self.0 | other.0,
-                self.1 | other.1,
-                self.2 | other.2,
-                self.3 | other.3,
-            )
+            u32x4(self.0 | other.0)
         }
     }
 }
