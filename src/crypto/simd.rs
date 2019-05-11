@@ -33,6 +33,62 @@ mod simd_x86 {
     #[derive(Copy, Clone)]
     pub struct u32x4(__m128i);
 
+    pub trait Machine: Copy {
+        fn has_ssse3(&self) -> bool {
+            false
+        }
+        fn has_sse41(&self) -> bool {
+            false
+        }
+    }
+
+    pub type BaselineMachine = SSE2Machine;
+
+    #[derive(Copy, Clone)]
+    pub struct SSE2Machine;
+
+    impl SSE2Machine {
+        pub fn new() -> Self {
+            Self
+        }
+    }
+
+    impl Machine for SSE2Machine {}
+
+    #[derive(Copy, Clone)]
+    pub struct SSSE3Machine;
+
+    impl SSSE3Machine {
+        pub unsafe fn new() -> Self {
+            Self
+        }
+    }
+
+    impl Machine for SSSE3Machine {
+        fn has_ssse3(&self) -> bool {
+            true
+        }
+    }
+
+    #[derive(Copy, Clone)]
+    pub struct SSE41Machine;
+
+    impl SSE41Machine {
+        pub unsafe fn new() -> Self {
+            Self
+        }
+    }
+
+    impl Machine for SSE41Machine {
+        fn has_ssse3(&self) -> bool {
+            true
+        }
+
+        fn has_sse41(&self) -> bool {
+            true
+        }
+    }
+
     impl std::fmt::Debug for u32x4 {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
             let mut x = [0u32; 4];
@@ -85,8 +141,37 @@ mod simd_x86 {
         }
 
         #[inline(always)]
-        pub fn gather(src: &[u32], i0: usize, i1: usize, i2: usize, i3: usize) -> Self {
-            u32x4::new(src[i0], src[i1], src[i2], src[i3])
+        pub fn gather<M: Machine>(
+            src: &[u32x4; 4],
+            i0: usize,
+            i1: usize,
+            i2: usize,
+            i3: usize,
+            m: M,
+        ) -> Self {
+            if m.has_sse41() {
+                // Make LLVM generate efficient loads and shuffles.
+                macro_rules! get {
+                    ($i:expr) => {{
+                        let a = $i / 4;
+                        let b = $i % 4;
+                        let r = match b {
+                            0 => _mm_extract_epi32(src[a].0, 0),
+                            1 => _mm_extract_epi32(src[a].0, 1),
+                            2 => _mm_extract_epi32(src[a].0, 2),
+                            3 => _mm_extract_epi32(src[a].0, 3),
+                            _ => unreachable!(),
+                        };
+                        r as u32
+                    }};
+                }
+                unsafe { u32x4::new(get!(i0), get!(i1), get!(i2), get!(i3)) }
+            } else {
+                unsafe {
+                    let src: &[u32; 16] = std::mem::transmute(src);
+                    u32x4::new(src[i0], src[i1], src[i2], src[i3])
+                }
+            }
         }
 
         #[inline(always)]
@@ -98,24 +183,24 @@ mod simd_x86 {
         ///
         /// `use_byte_shuffle` should be set only when PSHUFB is available. (SSSE3+).
         #[inline(always)]
-        pub fn rotate_left_const(self, amt: u32, use_byte_shuffle: bool) -> Self {
+        pub fn rotate_left_const<M: Machine>(self, amt: u32, m: M) -> Self {
             match amt {
-                16 => self.rotate_left_16(use_byte_shuffle),
-                8 => self.rotate_left_8(use_byte_shuffle),
-                24 => self.rotate_left_24(use_byte_shuffle),
+                16 => self.rotate_left_16(m),
+                8 => self.rotate_left_8(m),
+                24 => self.rotate_left_24(m),
                 x => self.rotate_left_any(x),
             }
         }
 
         #[inline(always)]
-        pub fn rotate_right_const(self, amt: u32, use_byte_shuffle: bool) -> Self {
-            self.rotate_left_const(32 - amt, use_byte_shuffle)
+        pub fn rotate_right_const<M: Machine>(self, amt: u32, m: M) -> Self {
+            self.rotate_left_const(32 - amt, m)
         }
 
         #[inline(always)]
-        fn rotate_left_16(self, use_byte_shuffle: bool) -> Self {
+        fn rotate_left_16<M: Machine>(self, m: M) -> Self {
             unsafe {
-                if use_byte_shuffle {
+                if m.has_ssse3() {
                     Self(shuffle16!(
                         self.0,
                         [2, 3, 0, 1, 6, 7, 4, 5, 10, 11, 8, 9, 14, 15, 12, 13]
@@ -179,9 +264,9 @@ mod simd_x86 {
         }
 
         #[inline(always)]
-        fn rotate_left_8(self, use_byte_shuffle: bool) -> Self {
+        fn rotate_left_8<M: Machine>(self, m: M) -> Self {
             unsafe {
-                if use_byte_shuffle {
+                if m.has_ssse3() {
                     Self(shuffle16!(
                         self.0,
                         [3, 0, 1, 2, 7, 4, 5, 6, 11, 8, 9, 10, 15, 12, 13, 14]
@@ -193,9 +278,9 @@ mod simd_x86 {
         }
 
         #[inline(always)]
-        fn rotate_left_24(self, use_byte_shuffle: bool) -> Self {
+        fn rotate_left_24<M: Machine>(self, m: M) -> Self {
             unsafe {
-                if use_byte_shuffle {
+                if m.has_ssse3() {
                     Self(shuffle16!(
                         self.0,
                         [1, 2, 3, 0, 5, 6, 7, 4, 9, 10, 11, 8, 13, 14, 15, 12]
@@ -268,6 +353,20 @@ mod simd_x86 {
 mod simd_fallback {
     use std::convert::TryInto;
 
+    pub trait Machine: Copy {}
+
+    #[derive(Copy, Clone)]
+    pub struct BaselineMachine;
+
+    impl BaselineMachine {
+        pub fn new() -> Self {
+            Self
+        }
+    }
+
+    impl Machine for BaselineMachine {}
+
+    #[repr(align(16))]
     #[allow(non_camel_case_types)]
     #[derive(Copy, Clone)]
     pub struct u32x4(u32, u32, u32, u32);

@@ -24,7 +24,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use super::simd::u32x4;
+use super::simd::{u32x4, BaselineMachine, Machine};
 use std::convert::TryInto;
 
 pub const SIGMA: [[usize; 16]; 10] = [
@@ -70,9 +70,29 @@ impl AsRef<[u8]> for Blake2sResult {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
+union Blake2sM {
+    u32x4x4: [u32x4; 4],
+    u8x64: [u8; 64],
+}
+
+impl Blake2sM {
+    fn new() -> Blake2sM {
+        Blake2sM { u8x64: [0; 64] }
+    }
+
+    fn as_u32x4x4(&self) -> &[u32x4; 4] {
+        unsafe { &self.u32x4x4 }
+    }
+
+    fn as_bytes_mut(&mut self) -> &mut [u8; 64] {
+        unsafe { &mut self.u8x64 }
+    }
+}
+
+#[derive(Copy, Clone)]
 pub struct Blake2s {
-    m: [u32; 16],
+    m: Blake2sM,
     h: [u32x4; 2],
     t: u64,
     nn: usize,
@@ -89,11 +109,11 @@ fn iv1() -> u32x4 {
 }
 
 #[inline(always)]
-fn quarter_round(v: &mut [u32x4; 4], rd: u32, rb: u32, m: u32x4, bs: bool) {
+fn quarter_round<M: Machine>(v: &mut [u32x4; 4], rd: u32, rb: u32, m: u32x4, machine: M) {
     v[0] = v[0] + v[1] + m.from_le();
-    v[3] = (v[3] ^ v[0]).rotate_right_const(rd, bs);
+    v[3] = (v[3] ^ v[0]).rotate_right_const(rd, machine);
     v[2] = v[2] + v[3];
-    v[1] = (v[1] ^ v[2]).rotate_right_const(rb, bs);
+    v[1] = (v[1] ^ v[2]).rotate_right_const(rb, machine);
 }
 
 #[inline(always)]
@@ -111,12 +131,36 @@ fn unshuffle(v: &mut [u32x4; 4]) {
 }
 
 #[inline(always)]
-fn round(v: &mut [u32x4; 4], m: &[u32; 16], s: &[usize; 16], bs: bool) {
-    quarter_round(v, 16, 12, u32x4::gather(m, s[0], s[2], s[4], s[6]), bs);
-    quarter_round(v, 8, 7, u32x4::gather(m, s[1], s[3], s[5], s[7]), bs);
+fn round<M: Machine>(v: &mut [u32x4; 4], m: &[u32x4; 4], s: &[usize; 16], machine: M) {
+    quarter_round(
+        v,
+        16,
+        12,
+        u32x4::gather(m, s[0], s[2], s[4], s[6], machine),
+        machine,
+    );
+    quarter_round(
+        v,
+        8,
+        7,
+        u32x4::gather(m, s[1], s[3], s[5], s[7], machine),
+        machine,
+    );
     shuffle(v);
-    quarter_round(v, 16, 12, u32x4::gather(m, s[8], s[10], s[12], s[14]), bs);
-    quarter_round(v, 8, 7, u32x4::gather(m, s[9], s[11], s[13], s[15]), bs);
+    quarter_round(
+        v,
+        16,
+        12,
+        u32x4::gather(m, s[8], s[10], s[12], s[14], machine),
+        machine,
+    );
+    quarter_round(
+        v,
+        8,
+        7,
+        u32x4::gather(m, s[9], s[11], s[13], s[15], machine),
+        machine,
+    );
     unshuffle(v);
 }
 
@@ -130,31 +174,27 @@ impl Blake2s {
         Self::with_key(nn, &[])
     }
 
+    #[inline]
     pub fn with_key(nn: usize, k: &[u8]) -> Self {
         let kk = k.len();
         assert!(nn >= 1 && nn <= 32 && kk <= 32);
 
         let p0 = 0x01010000 ^ ((kk as u32) << 8) ^ (nn as u32);
         let mut state = Self {
-            m: [0; 16],
+            m: Blake2sM::new(),
             h: [iv0() ^ u32x4::new(p0, 0, 0, 0), iv1()],
             t: 0,
             nn: nn,
         };
 
         if kk > 0 {
-            state.m_as_mut_bytes()[..k.len()].copy_from_slice(k);
+            state.m.as_bytes_mut()[..k.len()].copy_from_slice(k);
             state.t = 32 * 2;
         }
         state
     }
 
-    #[inline(always)]
-    fn m_as_mut_bytes(&mut self) -> &mut [u8] {
-        let m_as_u8: &mut [u8; 64] = unsafe { std::mem::transmute(&mut self.m) };
-        m_as_u8
-    }
-
+    #[inline]
     pub fn update(&mut self, data: &[u8]) -> &mut Self {
         let mut rest = data;
 
@@ -165,7 +205,7 @@ impl Blake2s {
             let part = &rest[..len];
             rest = &rest[part.len()..];
 
-            self.m_as_mut_bytes()[off..(off + part.len())].copy_from_slice(part);
+            self.m.as_bytes_mut()[off..(off + part.len())].copy_from_slice(part);
             self.t = self
                 .t
                 .checked_add(part.len() as u64)
@@ -178,7 +218,7 @@ impl Blake2s {
             let part = &rest[..(32 * 2)];
             rest = &rest[part.len()..];
 
-            self.m_as_mut_bytes()[..part.len()].copy_from_slice(part);
+            self.m.as_bytes_mut()[..part.len()].copy_from_slice(part);
             self.t = self
                 .t
                 .checked_add(part.len() as u64)
@@ -188,7 +228,7 @@ impl Blake2s {
         if rest.len() > 0 {
             self.compress(0, 0);
 
-            self.m_as_mut_bytes()[..rest.len()].copy_from_slice(rest);
+            self.m.as_bytes_mut()[..rest.len()].copy_from_slice(rest);
             self.t = self
                 .t
                 .checked_add(rest.len() as u64)
@@ -201,28 +241,30 @@ impl Blake2s {
     fn compress(&mut self, f0: u32, f1: u32) {
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         {
-            if is_x86_feature_detected!("ssse3") {
+            if is_x86_feature_detected!("sse4.1") {
                 unsafe {
-                    return self.compress_ssse3(f0, f1);
+                    return self.compress_sse41(f0, f1);
                 }
             }
         }
         self.compress_fallback(f0, f1);
     }
 
+    #[inline(never)]
     fn compress_fallback(&mut self, f0: u32, f1: u32) {
-        self.compress_real(f0, f1, false);
+        self.compress_real(f0, f1, BaselineMachine::new());
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    #[target_feature(enable = "ssse3")]
-    unsafe fn compress_ssse3(&mut self, f0: u32, f1: u32) {
-        self.compress_real(f0, f1, true);
+    #[target_feature(enable = "sse4.1")]
+    unsafe fn compress_sse41(&mut self, f0: u32, f1: u32) {
+        use super::simd::SSE41Machine;
+        self.compress_real(f0, f1, SSE41Machine::new());
     }
 
     #[inline(always)]
-    fn compress_real(&mut self, f0: u32, f1: u32, use_byte_shuffle: bool) {
-        let m = &self.m;
+    fn compress_real<M: Machine>(&mut self, f0: u32, f1: u32, machine: M) {
+        let m = self.m.as_u32x4x4();
         let h = &mut self.h;
 
         let t0 = self.t as u32;
@@ -230,31 +272,33 @@ impl Blake2s {
 
         let mut v = [h[0], h[1], iv0(), iv1() ^ u32x4::new(t0, t1, f0, f1)];
 
-        round(&mut v, m, &SIGMA[0], use_byte_shuffle);
-        round(&mut v, m, &SIGMA[1], use_byte_shuffle);
-        round(&mut v, m, &SIGMA[2], use_byte_shuffle);
-        round(&mut v, m, &SIGMA[3], use_byte_shuffle);
-        round(&mut v, m, &SIGMA[4], use_byte_shuffle);
-        round(&mut v, m, &SIGMA[5], use_byte_shuffle);
-        round(&mut v, m, &SIGMA[6], use_byte_shuffle);
-        round(&mut v, m, &SIGMA[7], use_byte_shuffle);
-        round(&mut v, m, &SIGMA[8], use_byte_shuffle);
-        round(&mut v, m, &SIGMA[9], use_byte_shuffle);
+        round(&mut v, m, &SIGMA[0], machine);
+        round(&mut v, m, &SIGMA[1], machine);
+        round(&mut v, m, &SIGMA[2], machine);
+        round(&mut v, m, &SIGMA[3], machine);
+        round(&mut v, m, &SIGMA[4], machine);
+        round(&mut v, m, &SIGMA[5], machine);
+        round(&mut v, m, &SIGMA[6], machine);
+        round(&mut v, m, &SIGMA[7], machine);
+        round(&mut v, m, &SIGMA[8], machine);
+        round(&mut v, m, &SIGMA[9], machine);
 
         h[0] = h[0] ^ (v[0] ^ v[2]);
         h[1] = h[1] ^ (v[1] ^ v[3]);
     }
 
+    #[inline]
     fn finalize_with_flag(&mut self, flag: u32) {
         let off = (self.t % 64) as usize;
         if off != 0 {
-            for b in &mut self.m_as_mut_bytes()[off..] {
+            for b in &mut self.m.as_bytes_mut()[off..] {
                 *b = 0;
             }
         }
         self.compress(!0, flag);
     }
 
+    #[inline]
     fn get_result(&self) -> Blake2sResult {
         Blake2sResult::from_vecs(&self.h, self.nn)
     }
