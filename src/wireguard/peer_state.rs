@@ -272,7 +272,7 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
                 let ps = ps.clone();
                 async move {
                     if let (Some(wg), Some(ps)) = (wg.upgrade(), ps.upgrade()) {
-                        await!($action(wg, ps));
+                        $action(wg, ps).await;
                     }
                 }
             })
@@ -290,14 +290,14 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
         });
         psw.keep_alive = timer!(async move |wg: Arc<WgState>, ps: SharedPeerState| {
             debug!("{}: timer: keep alive.", ps.read().info.log_id());
-            let should_handshake = await!(do_keep_alive1(&ps, &wg));
+            let should_handshake = do_keep_alive1(&ps, &wg).await;
             if should_handshake {
                 do_handshake(&wg, &ps);
             }
         });
         psw.persistent_keep_alive = timer!(async move |wg: Arc<WgState>, ps: SharedPeerState| {
             debug!("{}: timer: persistent_keep_alive.", ps.read().info.log_id());
-            let should_handshake = await!(do_keep_alive1(&ps, &wg));
+            let should_handshake = do_keep_alive1(&ps, &wg).await;
             if should_handshake {
                 do_handshake(&wg, &ps);
             }
@@ -371,12 +371,12 @@ pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
                     let endpoint = peer.read().info.endpoint;
                     if let Some(e) = endpoint {
                         debug!("{}: Handshake init.", peer.read().info.log_id());
-                        let _ = await!(wg.send_to_async(&init_msg, e));
+                        let _ = wg.send_to_async(&init_msg, e).await;
                         peer.read().count_send(init_msg.len());
                     }
                 }
                 let delay_ms = thread_rng().gen_range(5_000, 5_300);
-                await!(delay(Duration::from_millis(delay_ms)));
+                delay(Duration::from_millis(delay_ms)).await;
             }
         });
     }
@@ -422,6 +422,6 @@ pub async fn do_keep_alive1<'a>(peer0: &'a SharedPeerState, wg: &'a WgState) -> 
         peer.on_send_keepalive();
         should_handshake
     };
-    let _ = await!(wg.send_to_async(&out, endpoint));
+    let _ = wg.send_to_async(&out, endpoint).await;
     should_handshake
 }

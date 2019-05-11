@@ -41,9 +41,9 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
     let mut listener = PipeListener::bind(path).context("Bind IPC socket")?;
     loop {
         let wg = wg.clone();
-        let stream = await!(listener.accept_async())?;
+        let stream = listener.accept_async().await?;
         tokio_spawn(async move {
-            await!(serve(&wg, stream)).unwrap_or_else(|e| {
+            serve(&wg, stream).await.unwrap_or_else(|e| {
                 warn!("Error serving IPC connection: {:?}", e);
             });
         });
@@ -70,9 +70,9 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
     let mut incoming = listener.incoming();
     loop {
         let wg = wg.clone();
-        match await!(incoming.next()) {
+        match incoming.next().await {
             Some(Ok(stream)) => tokio_spawn(async move {
-                await!(serve(&wg, stream)).unwrap_or_else(|e| {
+                serve(&wg, stream).await.unwrap_or_else(|e| {
                     warn!("Error serving IPC connection: {:?}", e);
                 });
             }),
@@ -85,13 +85,13 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
 macro_rules! writeln {
     ($dst:expr, $fmt:expr, $($arg:tt)*) => {{
         let it = format!(concat!($fmt, "\n"), $($arg)*);
-        await!($dst.write_all_async(it.as_bytes()))
+        $dst.write_all_async(it.as_bytes()).await
     }};
     ($dst:expr, $fmt:expr) => {
-        await!($dst.write_all_async(concat!($fmt, "\n").as_bytes()))
+        $dst.write_all_async(concat!($fmt, "\n").as_bytes()).await
     };
     ($dst:expr) => {
-        await!($dst.write_all_async("\n".as_bytes()))
+        $dst.write_all_async("\n".as_bytes()).await
     };
 }
 
@@ -132,7 +132,7 @@ async fn write_wg_state(
     }
     writeln!(w, "errno=0")?;
     writeln!(w)?;
-    await!(w.flush_async())
+    w.flush_async().await
 }
 
 async fn write_error(
@@ -141,7 +141,7 @@ async fn write_error(
 ) -> Result<(), ::std::io::Error> {
     writeln!(stream, "errno={}", errno)?;
     writeln!(stream)?;
-    await!(stream.flush_async())
+    stream.flush_async().await
 }
 
 async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
@@ -149,7 +149,7 @@ async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
         wg.set_key(key);
     }
     if let Some(p) = command.listen_port {
-        await!(wg.set_port(p)).unwrap_or_else(|e| {
+        wg.set_port(p).await.unwrap_or_else(|e| {
             warn!("Failed to set port: {}", e);
         });
     }
@@ -189,7 +189,7 @@ where
 
     let stream_w = std::io::BufWriter::with_capacity(4096, stream_w);
 
-    let c = match await!(parse_command_io(stream_r.take(1024 * 1024))) {
+    let c = match parse_command_io(stream_r.take(1024 * 1024)).await {
         Ok(Some(c)) => c,
         Ok(None) => return Ok(()),
         Err(e) => {
@@ -199,7 +199,7 @@ where
     };
     let wg = match wg.upgrade() {
         None => {
-            await!(write_error(stream_w, /* ENXIO */ 6))?;
+            write_error(stream_w, /* ENXIO */ 6).await?;
             bail!("WgState no longer available");
         }
         Some(wg) => wg,
@@ -207,12 +207,12 @@ where
     match c {
         WgIpcCommand::Get => {
             let state = wg.get_state();
-            await!(write_wg_state(stream_w, &state))?;
+            write_wg_state(stream_w, &state).await?;
         }
         WgIpcCommand::Set(sc) => {
             // FnMut hack.
-            await!(process_wg_set(&wg, sc));
-            await!(write_error(stream_w, 0))?;
+            process_wg_set(&wg, sc).await;
+            write_error(stream_w, 0).await?;
         }
     }
     Ok(())

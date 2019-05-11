@@ -96,10 +96,9 @@ impl UdpSocket {
         &'a self,
         buf: &'a mut [u8],
     ) -> Result<(usize, SocketAddr), std::io::Error> {
-        let _guard = await!(self.recv_lock.lock());
-        await!(futures::future::poll_fn(|_| {
-            convert_poll(UdpSocket::poll_recv_from(&self.socket, buf))
-        }))
+        let _guard = self.recv_lock.lock().await;
+        futures::future::poll_fn(|_| convert_poll(UdpSocket::poll_recv_from(&self.socket, buf)))
+            .await
     }
 
     /// Async sendto.
@@ -118,10 +117,11 @@ impl UdpSocket {
             }
         }
         // If would block, use poll_send_to with lock.
-        let _guard = await!(self.send_lock.lock());
-        await!(futures::future::poll_fn(|_| convert_poll(
-            UdpSocket::poll_send_to(&self.socket, buf, target)
-        )))
+        let _guard = self.send_lock.lock().await;
+        futures::future::poll_fn(|_| {
+            convert_poll(UdpSocket::poll_send_to(&self.socket, buf, target))
+        })
+        .await
     }
 }
 

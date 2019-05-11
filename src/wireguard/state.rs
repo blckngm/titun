@@ -134,7 +134,7 @@ fn udp_process_handshake_init<'a>(
             let mac1 = get_mac1(p);
             let reply = cookie_reply(info.pubkey(), &cookie, peer_id, &mac1);
             return async move {
-                let _ = await!(wg.send_to_async(&reply[..], addr));
+                let _ = wg.send_to_async(&reply[..], addr).await;
             }
                 .left_future()
                 .left_future();
@@ -197,7 +197,7 @@ fn udp_process_handshake_init<'a>(
             wg.id_map.write().insert(self_id, peer0.clone());
             debug!("{}: Handshake successful as responder.", peer.info.log_id());
             return async move {
-                let _ = await!(wg.send_to_async(&response[..], addr));
+                let _ = wg.send_to_async(&response[..], addr).await;
             }
                 .right_future()
                 .left_future();
@@ -236,7 +236,7 @@ fn udp_process_handshake_resp<'a>(
             let mac1 = get_mac1(p);
             let reply = cookie_reply(info.pubkey(), &cookie, peer_id, &mac1);
             return async move {
-                let _ = await!(wg.send_to_async(&reply, addr));
+                let _ = wg.send_to_async(&reply, addr).await;
             }
                 .left_future()
                 .right_future();
@@ -310,7 +310,7 @@ fn udp_process_handshake_resp<'a>(
                 for p in queued_packets {
                     let encrypted = &mut buffer[..p.len() + 32];
                     t.encrypt(&p, encrypted).0.unwrap();
-                    let _ = await!(wg.send_to_async(encrypted, addr));
+                    let _ = wg.send_to_async(encrypted, addr).await;
                 }
             }
                 .right_future()
@@ -410,7 +410,7 @@ async fn udp_process_transport<'a>(
         // Release peer.
     };
     if should_write {
-        let _ = await!(wg.tun.write_async(&decrypted[..packet_len]));
+        let _ = wg.tun.write_async(&decrypted[..packet_len]).await;
     }
     if should_set_endpoint {
         // Lock peer.
@@ -453,14 +453,14 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
             let p = &p[..len];
 
             match type_ {
-                1 => await!(udp_process_handshake_init(&wg, p, addr)),
-                2 => await!(udp_process_handshake_resp(&wg, p, addr, &mut buffer)),
+                1 => udp_process_handshake_init(&wg, p, addr).await,
+                2 => udp_process_handshake_resp(&wg, p, addr, &mut buffer).await,
                 3 => udp_process_cookie_reply(&wg, p),
-                4 => await!(udp_process_transport(&wg, p, addr, &mut buffer)),
+                4 => udp_process_transport(&wg, p, addr, &mut buffer).await,
                 _ => (),
             }
         }
-        await!(yield_once());
+        yield_once().await;
     }
 }
 
@@ -502,7 +502,7 @@ async fn tun_packet_processing(wg: Arc<WgState>) {
     let mut encrypted = vec![0u8; BUFSIZE];
     loop {
         for _ in 0..1024 {
-            let len = await!(wg.tun.read_async(&mut pkt)).unwrap();
+            let len = wg.tun.read_async(&mut pkt).await.unwrap();
 
             let padded_len = pad_len(len);
             // Do not leak other packets' data!
@@ -560,14 +560,14 @@ async fn tun_packet_processing(wg: Arc<WgState>) {
             };
 
             if should_send {
-                let _ = await!(wg.send_to_async(encrypted, endpoint));
+                let _ = wg.send_to_async(encrypted, endpoint).await;
             }
 
             if should_handshake {
                 do_handshake(&wg, &peer0);
             }
         }
-        await!(yield_once());
+        yield_once().await;
     }
 }
 
@@ -616,7 +616,7 @@ impl WgState {
             let wg = wg.clone();
             scope.spawn_async(async move {
                 loop {
-                    await!(delay(Duration::from_secs(120)));
+                    delay(Duration::from_secs(120)).await;
                     let mut cookie = wg.cookie_secret.write();
                     OsRng::new().unwrap().fill_bytes(&mut cookie[..]);
                 }
@@ -626,7 +626,7 @@ impl WgState {
         *wg.socket_sender.lock() = Some(sender);
         scope.spawn_async(udp_processing(wg.clone(), receiver));
         scope.spawn_async(tun_packet_processing(wg));
-        await!(scope.cancelled());
+        scope.cancelled().await;
     }
 
     // Create a new socket, set IPv6 only to false, set fwmark, and bind.
@@ -654,7 +654,7 @@ impl WgState {
     ) -> Result<usize, std::io::Error> {
         let target = target.into();
         let socket = self.socket.lock().clone();
-        await!(socket.send_to_async(buf, target))
+        socket.send_to_async(buf, target).await
     }
 
     /// Add a pper.
@@ -764,7 +764,7 @@ impl WgState {
     pub async fn set_port(&self, mut new_port: u16) -> Result<(), Error> {
         let new_socket = WgState::prepare_socket(&mut new_port, self.info.read().fwmark)?;
         let mut sender = self.socket_sender.lock().as_ref().unwrap().clone();
-        await!(sender.send(new_socket)).unwrap();
+        sender.send(new_socket).await.unwrap();
         self.info.write().port = new_port;
         Ok(())
     }

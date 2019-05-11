@@ -63,7 +63,7 @@ impl AsyncScope {
     {
         let w = Arc::downgrade(self);
         self.spawn_async(async move {
-            await!(future);
+            future.await;
             if let Some(c) = w.upgrade() {
                 c.cancel();
             }
@@ -120,7 +120,7 @@ pub async fn delay(duration: Duration) {
     use tokio::clock::now;
     use tokio::timer::Delay;
 
-    await!(Delay::new(now() + duration).compat()).unwrap();
+    Delay::new(now() + duration).compat().await.unwrap();
 }
 
 pub fn tokio_block_on_all<T, Fut>(fut: Fut) -> T

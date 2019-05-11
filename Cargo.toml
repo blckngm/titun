@@ -26,7 +26,7 @@ clap = "2.19.3"
 env_logger = "0.6"
 failure = "0.1"
 fnv = "1.0.6"
-futures-preview = { version = "0.3.0-alpha.14", features = ["compat", "nightly", "async-await"] }
+futures-preview = { version = "0.3.0-alpha.16", features = ["compat", "nightly", "async-await"] }
 hex = "0.3"
 ip-lookup-trie = { path = "./ip-lookup-trie" }
 log = "0.4.3"
@@ -47,6 +47,10 @@ tokio-threadpool = "0.1.11"
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["fileapi", "winbase", "ioapiset", "synchapi", "namedpipeapi"] }
 winreg = "0.6"
+
+[patch.crates-io]
+tokio-async-await = { path = "patched/tokio-async-await-0.1.7" }
+tokio = { path = "patched/tokio-0.1.19" }
 
 [profile.release]
 lto = true

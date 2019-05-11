@@ -42,14 +42,14 @@ pub async fn run(c: Config) -> Result<(), Error> {
         use crate::async_utils::delay;
         use std::time::Duration;
 
-        await!(scope.cancelled());
-        await!(delay(Duration::from_millis(100)));
+        scope.cancelled().await;
+        delay(Duration::from_millis(100)).await;
         std::process::exit(0);
     });
 
     scope0.spawn_canceller(async move {
-        let mut ctrl_c = await!(tokio_signal::ctrl_c().compat()).unwrap();
-        await!(ctrl_c.next());
+        let mut ctrl_c = tokio_signal::ctrl_c().compat().await.unwrap();
+        ctrl_c.next().await;
         info!("Received SIGINT or Ctrl-C, shutting down.");
     });
 
@@ -58,7 +58,7 @@ pub async fn run(c: Config) -> Result<(), Error> {
             let mut stdin = tokio::io::stdin();
             let mut buf = [0u8; 4096];
             loop {
-                match await!(stdin.read_async(&mut buf)) {
+                match stdin.read_async(&mut buf).await {
                     Ok(0) => break,
                     Err(e) => {
                         warn!("Read from stdin error: {}", e);
@@ -74,8 +74,8 @@ pub async fn run(c: Config) -> Result<(), Error> {
     scope0.spawn_canceller(async move {
         use tokio_signal::unix::{Signal, SIGTERM};
 
-        let mut term = await!(Signal::new(SIGTERM).compat()).unwrap();
-        await!(term.next());
+        let mut term = Signal::new(SIGTERM).compat().await.unwrap();
+        term.next().await;
         info!("Received SIGTERM, shutting down.");
     });
 
@@ -97,10 +97,11 @@ pub async fn run(c: Config) -> Result<(), Error> {
     scope0.spawn_canceller(WgState::run(wg));
 
     scope0.spawn_canceller(async move {
-        await!(ipc_server(weak, &c.dev_name))
+        ipc_server(weak, &c.dev_name)
+            .await
             .unwrap_or_else(|e| error!("Failed to start IPC server: {}", e))
     });
 
-    await!(scope0.cancelled());
+    scope0.cancelled().await;
     Ok(())
 }

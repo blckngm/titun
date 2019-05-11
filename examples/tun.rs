@@ -29,7 +29,7 @@
 // Got packet: 84 bytes
 // Got packet: 84 bytes
 // ...
-#![feature(async_await, await_macro)]
+#![feature(async_await)]
 
 use failure::Error;
 
@@ -67,7 +67,7 @@ mod imp {
 
         tokio::run_async(async move {
             loop {
-                let l = await!(t.read_async(&mut buf)).unwrap();
+                let l = t.read_async(&mut buf).await.unwrap();
                 println!("Got packet: {} bytes", l);
             }
         });

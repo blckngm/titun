@@ -53,7 +53,7 @@ where
     let options = options0.clone();
     crate::async_utils::tokio_spawn(async move {
         loop {
-            let wait_result = await!(future::poll_fn(|| {
+            let wait_result = future::poll_fn(|| {
                 match rx.poll() {
                     Ok(Async::NotReady) => (),
                     _ => return Err(()),
@@ -77,11 +77,12 @@ where
                     Err(e) => panic!(e),
                 }
             })
-            .compat());
+            .compat()
+            .await;
             if wait_result.is_err() {
                 break;
             }
-            await!(action());
+            action().await;
         }
     });
     TimerHandle {
@@ -133,7 +134,7 @@ mod tests {
             };
 
             t.adjust_and_activate(Duration::from_millis(10));
-            await!(delay(Duration::from_millis(30)));
+            delay(Duration::from_millis(30)).await;
             assert!(run.load(SeqCst));
         });
     }
@@ -153,22 +154,22 @@ mod tests {
             t.adjust_and_activate(Duration::from_millis(10));
             t.adjust_and_activate(Duration::from_millis(100));
 
-            await!(delay(Duration::from_millis(20)));
+            delay(Duration::from_millis(20)).await;
             assert!(!run.load(SeqCst));
-            await!(delay(Duration::from_millis(120)));
+            delay(Duration::from_millis(120)).await;
             assert!(run.load(SeqCst));
 
             run.store(false, SeqCst);
 
             t.adjust_and_activate(Duration::from_millis(10));
             t.de_activate();
-            await!(delay(Duration::from_millis(20)));
+            delay(Duration::from_millis(20)).await;
             assert!(!run.load(SeqCst));
 
             t.adjust_and_activate(Duration::from_millis(10));
             t.de_activate();
             t.adjust_and_activate(Duration::from_millis(15));
-            await!(delay(Duration::from_millis(30)));
+            delay(Duration::from_millis(30)).await;
             assert!(run.load(SeqCst));
         });
     }

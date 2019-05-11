@@ -90,7 +90,7 @@ impl Transport {
 
         let weak = Arc::downgrade(&transport);
         transport.scope.spawn_async(async move {
-            await!(delay(Duration::from_secs(handshake_after)));
+            delay(Duration::from_secs(handshake_after)).await;
             if let Some(t) = weak.upgrade() {
                 t.should_handshake.store(true, Ordering::Relaxed);
             }
@@ -98,7 +98,7 @@ impl Transport {
 
         let weak = Arc::downgrade(&transport);
         transport.scope.spawn_async(async move {
-            await!(delay(Duration::from_secs(REJECT_AFTER_TIME)));
+            delay(Duration::from_secs(REJECT_AFTER_TIME)).await;
             if let Some(t) = weak.upgrade() {
                 t.not_too_old.store(false, Ordering::Relaxed);
             }

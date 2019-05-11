@@ -10,7 +10,7 @@ before_script:
 
 test:
   variables:
-    RUSTUP_TOOLCHAIN: nightly-2019-05-08
+    RUSTUP_TOOLCHAIN: nightly
   script:
   - cargo test --locked --all --verbose --jobs 1 -- --nocapture
   - cargo test --locked --all --verbose --jobs 1 --features=bench -- --nocapture
@@ -18,7 +18,7 @@ test:
 fmt:
   allow_failure: true
   variables:
-    RUSTUP_TOOLCHAIN: nightly-2019-05-08
+    RUSTUP_TOOLCHAIN: nightly
   script:
   - rustup component add rustfmt
   - cargo fmt -- --check

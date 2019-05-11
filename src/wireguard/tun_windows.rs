@@ -66,11 +66,11 @@ impl AsyncTun {
     }
 
     pub async fn read_async<'a>(&'a self, buf: &'a mut [u8]) -> Result<usize> {
-        await!(blocking(|| self.tun.read(buf)))
+        blocking(|| self.tun.read(buf)).await
     }
 
     pub async fn write_async<'a>(&'a self, buf: &'a [u8]) -> Result<usize> {
-        await!(blocking(|| self.tun.write(buf)))
+        blocking(|| self.tun.write(buf)).await
     }
 }
 

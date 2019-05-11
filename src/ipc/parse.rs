@@ -53,7 +53,7 @@ impl<S: Stream + Unpin> Peekable<S> {
         if self.peeked.is_some() {
             return Ok(self.peeked.as_ref());
         }
-        match await!(self.stream.next()) {
+        match self.stream.next().await {
             Some(Ok(item)) => {
                 self.peeked = Some(item);
                 Ok(self.peeked.as_ref())
@@ -68,7 +68,7 @@ async fn parse_peer<S>(stream: &mut Peekable<S>) -> Result<WgSetPeerCommand, Err
 where
     S: Stream<Item = String, Error = std::io::Error> + Unpin,
 {
-    let public_key_line = match await!(stream.next()) {
+    let public_key_line = match stream.next().await {
         None => bail!("Unexpected end of input stream"),
         Some(line_or_err) => line_or_err?,
     };
@@ -98,7 +98,7 @@ where
     };
 
     loop {
-        let line = match await!(stream.peek())? {
+        let line = match stream.peek().await? {
             None => bail!("Unexpected end of input stream"),
             Some(line) => line,
         };
@@ -141,7 +141,7 @@ where
             }
             _ => break,
         }
-        await!(stream.next());
+        stream.next().await;
     }
 
     Ok(peer)
@@ -159,18 +159,18 @@ where
         peers: vec![],
     };
     'outer: loop {
-        let line = match await!(stream.peek())? {
+        let line = match stream.peek().await? {
             None => bail!("Unexpected end of input stream"),
             Some(line) => line,
         };
         if line.is_empty() {
-            await!(stream.next());
+            stream.next().await;
             break;
         } else if line.starts_with("public_key") {
             loop {
-                let peer = await!(parse_peer(stream))?;
+                let peer = parse_peer(stream).await?;
                 command.peers.push(peer);
-                let line = match await!(stream.peek())? {
+                let line = match stream.peek().await? {
                     None => bail!("Unexpected end of input stream"),
                     Some(line) => line,
                 };
@@ -179,7 +179,7 @@ where
                 }
             }
         } else {
-            let line = await!(stream.next()).unwrap().unwrap();
+            let line = stream.next().await.unwrap().unwrap();
             let mut kv = line.splitn(2, '=');
             let key = kv.next().unwrap();
             let value = match kv.next() {
@@ -210,13 +210,13 @@ where
 {
     let mut stream = Peekable::new(stream);
 
-    let first_line = match await!(stream.next()) {
+    let first_line = match stream.next().await {
         None => return Ok(None),
         Some(line_or_err) => line_or_err?,
     };
     match first_line.as_ref() {
         "get=1" => {
-            let empty_line = match await!(stream.next()) {
+            let empty_line = match stream.next().await {
                 None => bail!("Unexpected end of input stream"),
                 Some(line_or_err) => line_or_err?,
             };
@@ -225,9 +225,9 @@ where
             }
             Ok(Some(WgIpcCommand::Get))
         }
-        "set=1" => Ok(Some(WgIpcCommand::Set(await!(parse_set_command(
-            &mut stream
-        ))?))),
+        "set=1" => Ok(Some(WgIpcCommand::Set(
+            parse_set_command(&mut stream).await?,
+        ))),
         _ => bail!("Unexpected command {}", first_line),
     }
 }
@@ -238,7 +238,7 @@ where
 {
     let lines_codec = tokio::codec::LinesCodec::new_with_max_length(128);
     let lines_stream = tokio::codec::FramedRead::new(stream, lines_codec);
-    await!(parse_command(lines_stream))
+    parse_command(lines_stream).await
 }
 
 #[cfg(test)]
@@ -249,11 +249,11 @@ mod tests {
     fn test_parsing() {
         futures::executor::block_on(async {
             let stream = stream::iter_ok(vec!["get=1".into(), "".into()]);
-            let result = await!(parse_command(stream));
+            let result = parse_command(stream).await;
             assert_eq!(result.unwrap(), Some(WgIpcCommand::Get));
 
             let stream = stream::iter_ok(include_str!("example.txt").lines().map(|x| x.into()));
-            let result = await!(parse_command(stream));
+            let result = parse_command(stream).await;
             assert!(result.is_ok());
         });
     }

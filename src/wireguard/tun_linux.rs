@@ -94,7 +94,7 @@ impl AsyncTun {
 
         let mut io = &self.io;
 
-        await!(io.write_async(buf))
+        io.write_async(buf).await
     }
 }
 
