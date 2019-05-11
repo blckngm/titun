@@ -8,6 +8,7 @@ version = "0.0.6-preview"
 
 [workspace]
 members = ["ip-lookup-trie"]
+exclude = ["patched"]
 
 [[bin]]
 doc = false
@@ -38,7 +39,7 @@ num_cpus = "1.9.0"
 parking_lot = "0.7"
 pin-utils = "0.1.0-alpha.4"
 rand = "0.6"
-ring = { git = "https://gitlab.com/sopium/ring.git" }
+ring = { path = "patched/ring" }
 tai64 = {version = "0.2", default-features = false}
 tokio = { version = "0.1.17", features = ["async-await-preview"] }
 tokio-signal = "0.2"

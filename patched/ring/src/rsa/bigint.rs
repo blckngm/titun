@@ -113,7 +113,6 @@ impl<M> BoxedLimbs<M> {
 
     fn minimal_width_from_unpadded(limbs: &[Limb]) -> Self {
         debug_assert_ne!(limbs.last(), Some(&0));
-        use std::borrow::ToOwned;
         Self {
             limbs: limbs.to_owned().into_boxed_slice(),
             m: PhantomData,
@@ -135,7 +134,6 @@ impl<M> BoxedLimbs<M> {
     fn is_zero(&self) -> bool { limb::limbs_are_zero_constant_time(&self.limbs) == LimbMask::True }
 
     fn zero(width: Width<M>) -> Self {
-        use std::borrow::ToOwned;
         Self {
             limbs: vec![0; width.num_limbs].to_owned().into_boxed_slice(),
             m: PhantomData,

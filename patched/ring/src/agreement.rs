@@ -114,6 +114,16 @@ impl<'a> EphemeralPrivateKey {
         Ok(Self { private_key, alg })
     }
 
+    /// Load a static key.
+    pub fn actually_static(
+        alg: &'static Algorithm, bytes: &[u8],
+    ) -> Result<Self, error::Unspecified> {
+        let cpu_features = cpu::features();
+        let input = untrusted::Input::from(bytes);
+        let  private_key = ec::Seed::from_bytes(&alg.curve, input, cpu_features)?;
+        Ok(Self { private_key, alg })
+    }
+
     /// Computes the public key from the private key.
     #[inline(always)]
     pub fn compute_public_key(&self) -> Result<PublicKey, error::Unspecified> {
@@ -205,4 +215,18 @@ where
     // Again, we have a pretty liberal interpretation of the NIST's spec's
     // "Destroy" that doesn't meet the NSA requirement to "zeroize."
     kdf(shared_key)
+}
+
+/// Just do a ECDH.
+pub fn agree(
+    my_private_key: EphemeralPrivateKey,
+    peer_public_key: &[u8; 32],
+    shared_key: &mut [u8],
+) -> Result<(), error::Unspecified> {
+    let alg = &my_private_key.alg;
+
+    let pk = untrusted::Input::from(peer_public_key);
+    (alg.ecdh)(shared_key, &my_private_key.private_key, pk)?;
+
+    Ok(())
 }
