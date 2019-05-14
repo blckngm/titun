@@ -15,7 +15,6 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use byteorder::{ByteOrder, LittleEndian};
 use noise_protocol::*;
 use rand::prelude::*;
 use rand::rngs::OsRng;
@@ -169,7 +168,7 @@ impl Cipher for ChaCha20Poly1305 {
         assert_eq!(out.len(), plaintext.len() + 16);
 
         let mut n = [0u8; 12];
-        LittleEndian::write_u64(&mut n[4..], nonce);
+        n[4..].copy_from_slice(&nonce.to_le_bytes());
 
         let k = SealingKey::new(&CHACHA20_POLY1305, k.as_slice()).unwrap();
         let aad = Aad::from(ad);
@@ -188,7 +187,7 @@ impl Cipher for ChaCha20Poly1305 {
         assert_eq!(out.len() + 16, ciphertext.len());
 
         let mut n = [0u8; 12];
-        LittleEndian::write_u64(&mut n[4..], nonce);
+        n[4..].copy_from_slice(&nonce.to_le_bytes());
 
         let k = OpeningKey::new(&CHACHA20_POLY1305, k.as_slice()).unwrap();
         let aad = Aad::from(ad);

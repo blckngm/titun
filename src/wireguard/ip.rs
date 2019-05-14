@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use byteorder::{BigEndian, ByteOrder};
+use std::convert::TryInto;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
 
 /// Parse an IPv4/v6 packet, returns total length, source, destination.
@@ -28,7 +28,7 @@ pub fn parse_ip_packet(packet: &[u8]) -> Result<(u16, IpAddr, IpAddr), ()> {
 
     if v == 4 {
         // IPv4.
-        let len = BigEndian::read_u16(&packet[2..4]);
+        let len = u16::from_be_bytes(packet[2..4].try_into().unwrap());
         let mut addr = [0u8; 4];
         addr.copy_from_slice(&packet[12..16]);
         let src = Ipv4Addr::from(addr);
@@ -40,7 +40,7 @@ pub fn parse_ip_packet(packet: &[u8]) -> Result<(u16, IpAddr, IpAddr), ()> {
         if packet.len() < 40 {
             return Err(());
         }
-        let len = BigEndian::read_u16(&packet[4..6]) + 40;
+        let len = u16::from_be_bytes(packet[4..6].try_into().unwrap());
         if packet.len() < len as usize {
             return Err(());
         }

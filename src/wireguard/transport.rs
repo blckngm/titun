@@ -18,9 +18,9 @@
 use crate::async_utils::{delay, AsyncScope};
 use crate::crypto::noise_crypto_impls::ChaCha20Poly1305;
 use crate::wireguard::*;
-use byteorder::{ByteOrder, LittleEndian};
 use noise_protocol::Cipher;
 use parking_lot::Mutex;
+use std::convert::TryInto;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -135,7 +135,7 @@ impl Transport {
 
         out[0..4].copy_from_slice(&[4, 0, 0, 0]);
         out[4..8].copy_from_slice(self.peer_id.as_slice());
-        LittleEndian::write_u64(&mut out[8..16], c);
+        out[8..16].copy_from_slice(&c.to_le_bytes());
 
         <ChaCha20Poly1305 as Cipher>::encrypt(&self.send_key, c, &[], msg, &mut out[16..]);
 
@@ -159,7 +159,7 @@ impl Transport {
             return Err(());
         }
 
-        let counter = LittleEndian::read_u64(&msg[8..16]);
+        let counter = u64::from_le_bytes(msg[8..16].try_into().unwrap());
 
         if counter >= REJECT_AFTER_MESSAGES {
             return Err(());
