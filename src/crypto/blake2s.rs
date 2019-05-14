@@ -24,6 +24,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+#![allow(clippy::unreadable_literal)]
+#![allow(clippy::assign_op_pattern)]
+
 use super::simd::{u32x4, BaselineMachine, Machine};
 use std::convert::TryInto;
 
@@ -110,7 +113,7 @@ fn iv1() -> u32x4 {
 
 #[inline(always)]
 fn quarter_round<M: Machine>(v: &mut [u32x4; 4], rd: u32, rb: u32, m: u32x4, machine: M) {
-    v[0] = v[0] + v[1] + m.from_le();
+    v[0] = v[0] + v[1] + u32x4::from_le(m);
     v[3] = (v[3] ^ v[0]).rotate_right_const(rd, machine);
     v[2] = v[2] + v[3];
     v[1] = (v[1] ^ v[2]).rotate_right_const(rb, machine);
@@ -184,7 +187,7 @@ impl Blake2s {
             m: Blake2sM::new(),
             h: [iv0() ^ u32x4::new(p0, 0, 0, 0), iv1()],
             t: 0,
-            nn: nn,
+            nn,
         };
 
         if kk > 0 {
@@ -225,7 +228,7 @@ impl Blake2s {
                 .expect("hash data length overflow");
         }
 
-        if rest.len() > 0 {
+        if !rest.is_empty() {
             self.compress(0, 0);
 
             self.m.as_bytes_mut()[..rest.len()].copy_from_slice(rest);
@@ -304,7 +307,7 @@ impl Blake2s {
     }
 
     #[inline]
-    pub fn finalize(&mut self) -> Blake2sResult {
+    pub fn finalize(mut self) -> Blake2sResult {
         self.finalize_with_flag(0);
         self.get_result()
     }

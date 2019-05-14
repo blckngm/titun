@@ -75,6 +75,7 @@ fn round_pair<M: Machine>(state: &mut [u32x4; 4], m: M) {
 // targets SSSE3+, and one that does not.
 #[inline(always)]
 fn hchacha_real<M: Machine>(key: &[u8; 32], nonce: &[u8; 16], m: M) -> [u8; 32] {
+    #[allow(clippy::unreadable_literal)]
     let mut state: [u32x4; 4] = [
         u32x4::new(0x61707865, 0x3320646e, 0x79622d32, 0x6b206574),
         u32x4::load_le(key[..16].try_into().unwrap()),

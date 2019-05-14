@@ -90,9 +90,12 @@ mod simd_x86 {
     }
 
     impl std::fmt::Debug for u32x4 {
+        #[allow(clippy::many_single_char_names)]
         fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
             let mut x = [0u32; 4];
             unsafe {
+                // Clippy: This is unaligned store, so casting to more aligned pointer is fine.
+                #[allow(clippy::cast_ptr_alignment)]
                 _mm_storeu_si128(&mut x as *mut _ as *mut _, self.0);
             }
             let [a, b, c, d] = x;
@@ -130,11 +133,17 @@ mod simd_x86 {
 
         #[inline(always)]
         pub fn load_le(addr: &[u8; 16]) -> Self {
-            unsafe { Self(_mm_loadu_si128(addr as *const u8 as *const _)) }
+            // Clippy: This is unaligned load, so casting to more aligned pointer is fine.
+            #[allow(clippy::cast_ptr_alignment)]
+            unsafe {
+                Self(_mm_loadu_si128(addr as *const u8 as *const _))
+            }
         }
 
         #[inline(always)]
         pub fn store_le(self, addr: &mut [u8; 16]) {
+            // Clippy: This is unaligned store, so casting to more aligned pointer is fine.
+            #[allow(clippy::cast_ptr_alignment)]
             unsafe {
                 _mm_storeu_si128(addr as *mut _ as *mut _, self.0);
             }
@@ -168,15 +177,15 @@ mod simd_x86 {
                 unsafe { u32x4::new(get!(i0), get!(i1), get!(i2), get!(i3)) }
             } else {
                 unsafe {
-                    let src: &[u32; 16] = std::mem::transmute(src);
+                    let src: &[u32; 16] = &*(src as *const _ as *const [u32; 16]);
                     u32x4::new(src[i0], src[i1], src[i2], src[i3])
                 }
             }
         }
 
         #[inline(always)]
-        pub fn from_le(self) -> Self {
-            self
+        pub fn from_le(x: Self) -> Self {
+            x
         }
 
         /// # Safety
@@ -370,6 +379,7 @@ mod simd_fallback {
     pub struct u32x4(packed_simd::u32x4);
 
     impl std::fmt::Debug for u32x4 {
+        #[allow(clippy::many_single_char_names)]
         fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
             let mut arr = [0u32; 4];
             self.0.write_to_slice_unaligned(&mut arr);
@@ -416,8 +426,8 @@ mod simd_fallback {
         }
 
         #[inline(always)]
-        pub fn from_le(self) -> Self {
-            u32x4(packed_simd::u32x4::from_le(self.0))
+        pub fn from_le(x: Self) -> Self {
+            u32x4(packed_simd::u32x4::from_le(x.0))
         }
 
         #[inline(always)]

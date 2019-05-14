@@ -49,6 +49,8 @@ impl<S: Stream + Unpin> Peekable<S> {
         }
     }
 
+    // Clippy issue: https://github.com/rust-lang/rust-clippy/issues/3988
+    #[allow(clippy::needless_lifetimes)]
     pub async fn peek(&mut self) -> Result<Option<&S::Item>, S::Error> {
         if self.peeked.is_some() {
             return Ok(self.peeked.as_ref());

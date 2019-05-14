@@ -761,6 +761,8 @@ impl WgState {
     }
 
     /// Change listen port.
+    // Clippy issue: https://github.com/rust-lang/rust-clippy/issues/3988
+    #[allow(clippy::needless_lifetimes)]
     pub async fn set_port(&self, mut new_port: u16) -> Result<(), Error> {
         let new_socket = WgState::prepare_socket(&mut new_port, self.info.read().fwmark)?;
         let mut sender = self.socket_sender.lock().as_ref().unwrap().clone();

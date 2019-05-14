@@ -53,7 +53,7 @@ impl Hash for NoiseBlake2s {
     }
 
     fn result(&mut self) -> Self::Output {
-        Self::Output::from_slice(self.0.clone().finalize().as_bytes())
+        Self::Output::from_slice(self.0.finalize().as_bytes())
     }
 }
 

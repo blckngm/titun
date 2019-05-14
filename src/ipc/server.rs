@@ -95,6 +95,8 @@ macro_rules! writeln {
     };
 }
 
+// Clippy issue: https://github.com/rust-lang/rust-clippy/issues/3988
+#[allow(clippy::needless_lifetimes)]
 async fn write_wg_state(
     mut w: impl AsyncWrite + Unpin + 'static,
     state: &WgStateOut,
