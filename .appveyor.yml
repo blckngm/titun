@@ -94,7 +94,7 @@ build_script:
   - msbuild titun-windows-gui\titun-windows-gui.sln /p:Configuration=Release
   - ps: |-
       if ($env:RUST_HOST.StartsWith("i686")) {
-        Copy-Item target\release\titun.exe -Destination titun-windows-gui\titun-32.exe
+        Copy-Item target\release\titun.exe -Destination titun-windows-gui\titun.exe
         Exec -NoNewLines { & 'C:\Program Files (x86)\Inno Setup 5\iscc.exe' titun-windows-gui\installer\titun-32.iss }
       } else {
         Copy-Item target\release\titun.exe -Destination titun-windows-gui\titun.exe
