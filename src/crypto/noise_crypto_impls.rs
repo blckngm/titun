@@ -86,10 +86,11 @@ impl<A> Drop for Sensitive<A>
 where
     A: U8Array,
 {
+    #[inline(never)]
     fn drop(&mut self) {
         let s = self.0.as_mut();
-        unsafe {
-            core::intrinsics::volatile_set_memory(s.as_mut_ptr(), 0, s.len());
+        for b in s {
+            *b = 0;
         }
     }
 }

@@ -47,14 +47,14 @@ pub async fn run(c: Config) -> Result<(), Error> {
         std::process::exit(0);
     });
 
-    scope0.spawn_canceller(async move {
+    scope0.clone().spawn_canceller(async move {
         let mut ctrl_c = tokio_signal::ctrl_c().compat().await.unwrap();
         ctrl_c.next().await;
         info!("Received SIGINT or Ctrl-C, shutting down.");
     });
 
     if c.exit_stdin_eof {
-        scope0.spawn_canceller(async move {
+        scope0.clone().spawn_canceller(async move {
             let mut stdin = tokio::io::stdin();
             let mut buf = [0u8; 4096];
             loop {
@@ -71,7 +71,7 @@ pub async fn run(c: Config) -> Result<(), Error> {
         });
     }
     #[cfg(unix)]
-    scope0.spawn_canceller(async move {
+    scope0.clone().spawn_canceller(async move {
         use tokio_signal::unix::{Signal, SIGTERM};
 
         let mut term = Signal::new(SIGTERM).compat().await.unwrap();
@@ -94,9 +94,9 @@ pub async fn run(c: Config) -> Result<(), Error> {
 
     let weak = ::std::sync::Arc::downgrade(&wg);
 
-    scope0.spawn_canceller(WgState::run(wg));
+    scope0.clone().spawn_canceller(WgState::run(wg));
 
-    scope0.spawn_canceller(async move {
+    scope0.clone().spawn_canceller(async move {
         ipc_server(weak, &c.dev_name)
             .await
             .unwrap_or_else(|e| error!("Failed to start IPC server: {}", e))

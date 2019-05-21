@@ -169,7 +169,7 @@ async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
             continue;
         }
         if !wg.peer_exists(&p.public_key) {
-            wg.add_peer(&p.public_key).unwrap();
+            wg.clone().add_peer(&p.public_key).unwrap();
         }
         wg.set_peer(SetPeerCommand {
             public_key: p.public_key,

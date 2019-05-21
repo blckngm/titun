@@ -57,11 +57,12 @@ impl AsyncScope {
     /// When this scope is dropped or cancelled, the future is cancelled.
     ///
     /// When the future completes, this scope is cancelled.
-    pub fn spawn_canceller<F>(self: &Arc<Self>, future: F)
+    // XXX: change to `self: &Arc<Self>` once it's allowed in stable.
+    pub fn spawn_canceller<F>(self: Arc<Self>, future: F)
     where
         F: Future<Output = ()> + Send + 'static,
     {
-        let w = Arc::downgrade(self);
+        let w = Arc::downgrade(&self);
         self.spawn_async(async move {
             future.await;
             if let Some(c) = w.upgrade() {
