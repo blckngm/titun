@@ -31,11 +31,12 @@ use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
 use tokio::prelude::Async;
 use tokio::reactor::PollEvented2;
 
-#[cfg(target_os = "linux")]
+#[allow(unused)]
 mod ioctl {
     use nix::libc::c_short;
     use nix::*;
 
+    // Linux.
     ioctl_write_int!(tunsetiff, b'T', 202);
 
     pub const IFF_TUN: c_short = 0x0001;
@@ -46,6 +47,9 @@ mod ioctl {
         pub name: [u8; 16], // Use u8 becuase that's what CString and CStr wants.
         pub flags: c_short,
     }
+
+    // FreeBSD.
+    ioctl_write_ptr!(tunsifhead, b't', 96, i32);
 }
 
 #[derive(Debug)]
@@ -176,7 +180,16 @@ impl Tun {
             OFlag::O_CLOEXEC | OFlag::O_RDWR | extra_flags,
             Mode::empty(),
         )?;
-        Ok(Tun { fd, name })
+        let tun = Tun { fd, name };
+
+        if cfg!(target_os = "freebsd") {
+            unsafe {
+                // Call TUNSIFHEAD, without this, IPv6 in tunnel won't work.
+                ioctl::tunsifhead(fd, &mut 1)?;
+            }
+        }
+
+        Ok(tun)
     }
 
     pub fn create_async(name: Option<&str>) -> Result<AsyncTun, Error> {
@@ -219,12 +232,52 @@ impl IntoRawFd for Tun {
 impl Tun {
     /// Read a packet from the tun device.
     pub fn read(&self, buf: &mut [u8]) -> Result<usize, IOError> {
-        read(self.fd, buf).map_err(|_| IOError::last_os_error())
+        if cfg!(target_os = "freebsd") {
+            use nix::sys::uio::{readv, IoVec};
+
+            let mut af_head = [0u8; 4];
+            readv(
+                self.fd,
+                &mut [
+                    IoVec::from_mut_slice(&mut af_head),
+                    IoVec::from_mut_slice(buf),
+                ],
+            )
+            .map(|len| len - 4)
+            .map_err(|_| IOError::last_os_error())
+        } else {
+            read(self.fd, buf).map_err(|_| IOError::last_os_error())
+        }
     }
 
     /// Write a packet to tun device.
     pub fn write(&self, buf: &[u8]) -> Result<usize, IOError> {
-        write(self.fd, buf).map_err(|_| IOError::last_os_error())
+        if cfg!(target_os = "freebsd") {
+            use nix::libc::{AF_INET, AF_INET6};
+            use nix::sys::uio::{writev, IoVec};
+
+            let ip_version = buf[0] >> 4;
+            let af: i32 = match ip_version {
+                // IPv4 => AF_INET
+                4 => AF_INET,
+                // IPv6 => AF_INET6
+                6 => AF_INET6,
+                // Impossible.
+                _ => {
+                    debug_assert!(false);
+                    AF_INET
+                }
+            };
+            let af_header = af.to_be_bytes();
+            writev(
+                self.fd,
+                &[IoVec::from_slice(&af_header), IoVec::from_slice(buf)],
+            )
+            .map(|len| len - 4)
+            .map_err(|_| IOError::last_os_error())
+        } else {
+            write(self.fd, buf).map_err(|_| IOError::last_os_error())
+        }
     }
 }
 
