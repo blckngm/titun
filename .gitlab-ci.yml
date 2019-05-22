@@ -25,6 +25,13 @@ aarch64:
   - apt-get install -yqq gcc-aarch64-linux-gnu qemu-user-static
   - cargo test --target aarch64-unknown-linux-gnu --locked --all --jobs 1
 
+freebsd:
+  variables:
+    RUSTUP_TOOLCHAIN: nightly
+  script:
+  - rustup target add x86_64-unknown-freebsd
+  - cargo check --target x86_64-unknown-freebsd --locked --all --tests --jobs 1
+
 fmt:
   allow_failure: true
   variables:

@@ -1,4 +1,4 @@
-// Copyright 2017, 2018 Guanhao Yin <sopium@mysterious.site>
+// Copyright 2017, 2018, 2019 Guanhao Yin <sopium@mysterious.site>
 
 // This file is part of TiTun.
 
@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-#![cfg(target_os = "linux")]
+#![cfg(unix)]
 
 use failure::Error;
 use futures::future::Future;
@@ -23,18 +23,17 @@ use mio::event::Evented;
 use mio::unix::{EventedFd, UnixReady};
 use mio::{Poll, PollOpt, Ready, Token};
 use nix::fcntl::{fcntl, open, FcntlArg, OFlag};
-use nix::libc::c_short;
 use nix::sys::stat::Mode;
 use nix::unistd::{close, read, write};
-use std::ffi::{CStr, CString};
 use std::io::{self, Error as IOError, Read, Write};
 use std::mem;
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
 use tokio::prelude::Async;
 use tokio::reactor::PollEvented2;
 
+#[cfg(target_os = "linux")]
 mod ioctl {
-    use super::*;
+    use nix::libc::c_short;
     use nix::*;
 
     ioctl_write_int!(tunsetiff, b'T', 202);
@@ -117,7 +116,10 @@ impl Tun {
     /// Create a tun device.
 
     /// O_CLOEXEC, IFF_NO_PI.
-    pub fn create(name: Option<&str>) -> Result<Tun, Error> {
+    #[cfg(target_os = "linux")]
+    pub fn create(name: Option<&str>, extra_flags: OFlag) -> Result<Tun, Error> {
+        use std::ffi::{CStr, CString};
+
         if let Some(n) = name {
             // IFNAMESIZ is 16.
             if n.len() > 15 {
@@ -130,9 +132,16 @@ impl Tun {
 
         let fd = open(
             "/dev/net/tun",
-            OFlag::O_RDWR | OFlag::O_CLOEXEC,
+            OFlag::O_RDWR | OFlag::O_CLOEXEC | extra_flags,
             Mode::empty(),
         )?;
+
+        // Make the `fd` owned by a `Tun`, so that if any
+        // error occurs below, the `fd` is `close`d.
+        let mut tun = Tun {
+            fd,
+            name: "".to_string(),
+        };
 
         let mut ifr = ioctl::ifreq {
             name: [0; 16],
@@ -150,12 +159,28 @@ impl Tun {
             .to_str()
             .unwrap()
             .to_string();
+        tun.name = name;
+        Ok(tun)
+    }
+
+    // BSD systems.
+    #[cfg(not(target_os = "linux"))]
+    pub fn create(name: Option<&str>, extra_flags: OFlag) -> Result<Tun, Error> {
+        use std::path::PathBuf;
+
+        let name = name.unwrap().to_string();
+        let mut dev_path = PathBuf::from("/dev");
+        dev_path.push(&name);
+        let fd = open(
+            &dev_path,
+            OFlag::O_CLOEXEC | OFlag::O_RDWR | extra_flags,
+            Mode::empty(),
+        )?;
         Ok(Tun { fd, name })
     }
 
     pub fn create_async(name: Option<&str>) -> Result<AsyncTun, Error> {
-        let tun = Tun::create(name)?;
-        tun.set_nonblocking(true)?;
+        let tun = Tun::create(name, OFlag::O_NONBLOCK)?;
         Ok(AsyncTun {
             io: PollEvented2::new(tun),
         })

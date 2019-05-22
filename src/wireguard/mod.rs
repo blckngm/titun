@@ -1,4 +1,4 @@
-// Copyright 2017 Guanhao Yin <sopium@mysterious.site>
+// Copyright 2017, 2019 Guanhao Yin <sopium@mysterious.site>
 
 // This file is part of TiTun.
 
@@ -37,10 +37,11 @@ mod transport;
 /// Common types.
 mod types;
 
-mod tun_linux;
+/// Tun device support on linux and BSDs.
+mod tun_unix;
 mod tun_windows;
-#[cfg(target_os = "linux")]
-pub use self::tun_linux::*;
+#[cfg(unix)]
+pub use self::tun_unix::*;
 #[cfg(windows)]
 pub use self::tun_windows::*;
 

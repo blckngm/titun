@@ -1,4 +1,4 @@
-// Copyright 2017 Guanhao Yin <sopium@mysterious.site>
+// Copyright 2017, 2019 Guanhao Yin <sopium@mysterious.site>
 
 // This file is part of TiTun.
 
@@ -20,8 +20,6 @@
 
 // Need to run with root.
 
-// Expected output:
-
 // PING 192.0.2.7 (192.0.2.7) 56(84) bytes of data.
 // Got packet: 84 bytes
 // Got packet: 84 bytes
@@ -37,20 +35,26 @@ fn main() -> Result<(), Error> {
     imp::main()
 }
 
-#[cfg(not(windows))]
+#[cfg(unix)]
 mod imp {
     use failure::Error;
     use std::process::{Child, Command};
     use titun::wireguard::Tun;
 
     fn up_and_ping(name: &str) -> Result<Child, Error> {
-        Command::new("ip")
-            .args(&["link", "set", name, "up"])
-            .output()?;
+        Command::new("ifconfig").args(&[name, "up"]).output()?;
         // The network 192.0.2.0/24 is TEST-NET, suitable for use in
         // documentation and examples.
+
+        // Linux.
+        #[cfg(target_os = "linux")]
         Command::new("ip")
             .args(&["addr", "add", "192.0.2.8", "peer", "192.0.2.7", "dev", name])
+            .output()?;
+        // BSD.
+        #[cfg(not(target_os = "linux"))]
+        Command::new("ifconfig")
+            .args(&[name, "192.0.2.8", "192.0.2.7"])
             .output()?;
         Command::new("ping")
             .arg("192.0.2.7")
@@ -59,7 +63,7 @@ mod imp {
     }
 
     pub fn main() -> Result<(), Error> {
-        let t = Tun::create_async(Some("tun-test-0"))?;
+        let t = Tun::create_async(Some("tun7"))?;
 
         up_and_ping(t.get_name())?;
 

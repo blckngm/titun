@@ -58,8 +58,8 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
     use tokio::prelude::StreamAsyncExt;
 
     umask(Mode::from_bits(0o077).unwrap());
-    let dir = Path::new(r#"/run/wireguard"#);
-    create_dir_all(&dir).context("Create directory /run/wireguard")?;
+    let dir = Path::new(r#"/var/run/wireguard"#);
+    create_dir_all(&dir).context("Create directory /var/run/wireguard")?;
     let mut path = dir.join(dev_name);
     path.set_extension("sock");
     let _ = remove_file(path.as_path());

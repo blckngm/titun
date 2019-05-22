@@ -1,4 +1,4 @@
-// Copyright 2017 Guanhao Yin <sopium@mysterious.site>
+// Copyright 2017, 2019 Guanhao Yin <sopium@mysterious.site>
 
 // This file is part of TiTun.
 
@@ -81,7 +81,7 @@ pub async fn run(c: Config) -> Result<(), Error> {
 
     #[cfg(windows)]
     let tun = Tun::open_async(&c.dev_name, c.network).context("Open tun device")?;
-    #[cfg(target_os = "linux")]
+    #[cfg(unix)]
     let tun = Tun::create_async(Some(&c.dev_name)).context("Open tun device")?;
     let wg = WgState::new(
         WgInfo {

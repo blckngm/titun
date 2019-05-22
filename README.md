@@ -24,7 +24,9 @@ $ ./build-deb.sh
 
 ## Platforms
 
-Linux and Windows (with the tap-windows driver) for now.
+Linux and Windows (with the tap-windows driver) are supported.
+
+FreeBSD kind of works. Other BSD systems might work, but are untested.
 
 ## Usage
 
