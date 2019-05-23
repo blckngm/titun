@@ -52,7 +52,10 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
 
 #[cfg(not(windows))]
 pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> {
+    use futures::prelude::*;
+    use futures::select;
     use nix::sys::stat::{umask, Mode};
+    use pin_utils::pin_mut;
     use std::fs::{create_dir_all, remove_file};
     use tokio::net::unix::UnixListener;
     use tokio::prelude::StreamAsyncExt;
@@ -67,10 +70,22 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
 
     crate::systemd::notify_ready().unwrap_or_else(|e| warn!("Failed to notify systemd: {}", e));
 
+    let deleted = super::wait_delete::wait_delete(&path).fuse();
+    pin_mut!(deleted);
+
     let mut incoming = listener.incoming();
     loop {
+        let mut accept = incoming.next().fuse();
         let wg = wg.clone();
-        match incoming.next().await {
+        let stream_or_err = select! {
+            stream_or_err = accept => stream_or_err,
+            deleted = deleted => {
+                deleted?;
+                info!("IPC socket deleted. Shutting down.");
+                return Ok(());
+            },
+        };
+        match stream_or_err {
             Some(Ok(stream)) => tokio_spawn(async move {
                 serve(&wg, stream).await.unwrap_or_else(|e| {
                     warn!("Error serving IPC connection: {:?}", e);

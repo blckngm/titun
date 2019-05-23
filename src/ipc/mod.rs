@@ -18,6 +18,7 @@
 pub mod commands;
 mod parse;
 mod server;
+mod wait_delete;
 mod windows_named_pipe;
 
 pub use self::server::*;

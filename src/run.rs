@@ -99,7 +99,7 @@ pub async fn run(c: Config) -> Result<(), Error> {
     scope0.clone().spawn_canceller(async move {
         ipc_server(weak, &c.dev_name)
             .await
-            .unwrap_or_else(|e| error!("Failed to start IPC server: {}", e))
+            .unwrap_or_else(|e| error!("IPC server error: {}", e))
     });
 
     scope0.cancelled().await;
