@@ -40,6 +40,7 @@
     missing_debug_implementations,
     non_camel_case_types,
     non_snake_case,
+    bare_trait_objects,
     unsafe_code
 )]
 // `#[derive(...)]` uses `trivial_numeric_casts` and `unused_qualifications`

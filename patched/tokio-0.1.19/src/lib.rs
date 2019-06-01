@@ -1,4 +1,5 @@
 #![doc(html_root_url = "https://docs.rs/tokio/0.1.19")]
+#![allow(bare_trait_objects)]
 #![deny(missing_docs, warnings, missing_debug_implementations)]
 #![cfg_attr(feature = "async-await-preview", feature(async_await))]
 
