@@ -61,6 +61,7 @@ pub struct PeerState {
     pub cookie: Option<(Cookie, Instant)>,
     pub last_mac1: Option<[u8; 16]>,
     pub handshake: Option<Handshake>,
+    pub handshake_resend_scope: Option<Arc<AsyncScope>>,
 
     pub rx_bytes: AtomicU64,
     pub tx_bytes: AtomicU64,
@@ -84,7 +85,6 @@ pub struct PeerState {
 pub struct Handshake {
     pub self_id: IdMapGuard,
     pub hs: HS,
-    pub resend: Arc<AsyncScope>,
 }
 
 impl PeerState {
@@ -114,6 +114,7 @@ impl PeerState {
 
     pub fn clear(&mut self) {
         self.handshake = None;
+        self.handshake_resend_scope = None;
         self.transports.clear();
 
         self.queue.lock().clear();
@@ -251,6 +252,7 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
         last_mac1: None,
         cookie: None,
         handshake: None,
+        handshake_resend_scope: None,
         rx_bytes: AtomicU64::new(0),
         tx_bytes: AtomicU64::new(0),
         queue: Mutex::new(VecDeque::with_capacity(QUEUE_SIZE)),
@@ -309,6 +311,7 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
         });
         psw.stop_handshake = timer!(async move |_, ps: SharedPeerState| {
             debug!("{}: timer: stop handshake.", ps.read().info.log_id());
+            ps.write().handshake_resend_scope = None;
             ps.write().handshake = None;
         });
         psw.clear = timer!(async move |_, ps: SharedPeerState| {
@@ -324,17 +327,13 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
 
 /// Start handshake.
 ///
-/// Better not hold any locks when calling this.
+/// This function takes a write lock on `peer0`.
 //
 /// Nothing happens if there is already an ongoing handshake for this peer.
 /// Nothing happens if we don't know peer endpoint.
 pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
     let scope = AsyncScope::new();
 
-    // Lock info.
-    let info = wg.info.read();
-
-    // Lock peer.
     let mut peer = peer0.write();
     if peer.handshake.is_some() {
         return;
@@ -343,58 +342,69 @@ pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
         return;
     }
 
-    let id = Id::gen();
-    // Lock id_map.
-    wg.id_map.write().insert(id, peer0.clone());
-    let handle = IdMapGuard::new(Arc::downgrade(&wg), id);
-
-    let (mut init_msg, hs) = match initiate(&info, &peer.info, id) {
-        Err(_) => {
-            error!(
-                "{}: failed to generate handshake initiation message.",
-                peer.info.log_id()
-            );
-            return;
-        }
-        Ok(x) => x,
-    };
-    cookie_sign(&mut init_msg, peer.get_cookie());
-
-    peer.last_mac1 = Some(get_mac1(&init_msg));
-
-    {
-        let wg = Arc::downgrade(wg);
-        let peer = Arc::downgrade(peer0);
-        scope.spawn_async(async move {
-            loop {
-                if let (Some(wg), Some(peer)) = (wg.upgrade(), peer.upgrade()) {
-                    let endpoint = peer.read().info.endpoint;
-                    if let Some(e) = endpoint {
-                        debug!("{}: Handshake init.", peer.read().info.log_id());
-                        let _ = wg.send_to_async(&init_msg, e).await;
-                        peer.read().count_send(init_msg.len());
-                    }
-                }
-                let delay_ms = thread_rng().gen_range(5_000, 5_300);
-                delay(Duration::from_millis(delay_ms)).await;
-            }
-        });
-    }
-
-    peer.handshake = Some(Handshake {
-        self_id: handle,
-        hs,
-        resend: scope,
-    });
-
+    peer.handshake_resend_scope = Some(scope.clone());
     peer.stop_handshake
         .adjust_and_activate_if_not_activated(REKEY_ATTEMPT_TIME);
-
     peer.clear
         .adjust_and_activate_if_not_activated(3 * REJECT_AFTER_TIME);
+
+    let wg = Arc::downgrade(wg);
+    let peer = Arc::downgrade(peer0);
+    scope.spawn_async(async move {
+        loop {
+            // This loop is only to be breaked out when the handshake initiation fails or completes.
+            // Replace with label block when `label_break_value` is stable.
+            'inner: loop {
+                if let (Some(wg), Some(peer0)) = (wg.upgrade(), peer.upgrade()) {
+                    let (init_msg, endpoint) = {
+                        // Lock info.
+                        let info = wg.info.read();
+
+                        // Lock peer.
+                        let mut peer = peer0.write();
+                        if peer.info.endpoint.is_none() {
+                            break 'inner;
+                        }
+                        debug!("{}: Handshake init.", peer.info.log_id());
+
+                        let id = Id::gen();
+                        // Lock id_map.
+                        wg.id_map.write().insert(id, peer0.clone());
+                        let handle = IdMapGuard::new(Arc::downgrade(&wg), id);
+
+                        let (mut init_msg, hs) = match initiate(&info, &peer.info, id) {
+                            Err(_) => {
+                                error!(
+                                    "{}: failed to generate handshake initiation message.",
+                                    peer.info.log_id()
+                                );
+                                break 'inner;
+                            }
+                            Ok(x) => x,
+                        };
+                        cookie_sign(&mut init_msg, peer.get_cookie());
+
+                        peer.last_mac1 = Some(get_mac1(&init_msg));
+
+                        peer.handshake = Some(Handshake {
+                            self_id: handle,
+                            hs,
+                        });
+
+                        peer.count_send(init_msg.len());
+
+                        (init_msg, peer.info.endpoint.unwrap())
+                    };
+                    let _ = wg.send_to_async(&init_msg, endpoint).await;
+                }
+                break 'inner;
+            }
+            let delay_ms = thread_rng().gen_range(5_000, 5_300);
+            delay(Duration::from_millis(delay_ms)).await;
+        }
+    });
 }
 
-#[must_use]
 pub async fn do_keep_alive1<'a>(peer0: &'a SharedPeerState, wg: &'a WgState) -> bool {
     let endpoint;
     let mut out = [0u8; 32];

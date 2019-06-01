@@ -192,6 +192,7 @@ fn udp_process_handshake_init<'a>(
             // Now that handshake is successful as responder, no need to do
             // handshake as initiator.
             peer.handshake = None;
+            peer.handshake_resend_scope = None;
 
             // Lock id_map.
             wg.id_map.write().insert(self_id, peer0.clone());
@@ -288,6 +289,7 @@ fn udp_process_handshake_resp<'a>(
         // Release id_map.
         // Lock peer.
         let mut peer = peer0.write();
+        peer.handshake_resend_scope = None;
         let handle = peer.handshake.take().unwrap().self_id;
         let t = Transport::new_from_hs(handle, peer_id, &hs);
         peer.push_transport(t.clone());
