@@ -175,7 +175,7 @@ impl PeerState {
     }
 
     pub fn really_should_handshake(&self) -> bool {
-        self.handshake.is_none() && !self.have_fresh_unconfirmed_transport()
+        self.handshake_resend_scope.is_none() && !self.have_fresh_unconfirmed_transport()
     }
 
     /// Do we have a transport where we are responder, that is very young and
@@ -331,11 +331,11 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
 //
 /// Nothing happens if there is already an ongoing handshake for this peer.
 /// Nothing happens if we don't know peer endpoint.
-pub fn do_handshake<'a>(wg: &'a Arc<WgState>, peer0: &'a SharedPeerState) {
+pub fn do_handshake(wg: &Arc<WgState>, peer0: &SharedPeerState) {
     let scope = AsyncScope::new();
 
     let mut peer = peer0.write();
-    if peer.handshake.is_some() {
+    if peer.handshake_resend_scope.is_some() {
         return;
     }
     if peer.get_endpoint().is_none() {
