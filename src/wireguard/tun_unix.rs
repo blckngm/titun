@@ -170,13 +170,19 @@ impl Tun {
     // BSD systems.
     #[cfg(not(target_os = "linux"))]
     pub fn create(name: Option<&str>, extra_flags: OFlag) -> Result<Tun, Error> {
-        use std::path::PathBuf;
+        use std::path::Path;
 
-        let name = name.unwrap().to_string();
-        let mut dev_path = PathBuf::from("/dev");
-        dev_path.push(&name);
+        let name = name
+            .ok_or_else(|| format_err!("Tun device name must be specified"))?
+            .to_string();
+        if !name.starts_with("tun") || name[3..].parse::<u32>().is_err() {
+            bail!(
+                "Invalid tun device name {}: must be tunN where N is an integer.",
+                name
+            );
+        }
         let fd = open(
-            &dev_path,
+            &Path::new("/dev").join(&name),
             OFlag::O_CLOEXEC | OFlag::O_RDWR | extra_flags,
             Mode::empty(),
         )?;
