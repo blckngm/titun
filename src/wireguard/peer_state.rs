@@ -286,43 +286,53 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
     {
         // Lock peer.
         let mut psw = ps.write();
-        psw.rekey_no_recv = timer!(async move |wg, ps: SharedPeerState| {
-            debug!("{}: timer: rekey_no_recv.", ps.read().info.log_id());
-            do_handshake(&wg, &ps);
-        });
-        psw.keep_alive = timer!(async move |wg: Arc<WgState>, ps: SharedPeerState| {
-            debug!("{}: timer: keep alive.", ps.read().info.log_id());
-            let should_handshake = do_keep_alive1(&ps, &wg).await;
-            if should_handshake {
-                do_handshake(&wg, &ps);
-            }
-        });
-        psw.persistent_keep_alive = timer!(async move |wg: Arc<WgState>, ps: SharedPeerState| {
-            debug!("{}: timer: persistent_keep_alive.", ps.read().info.log_id());
-            let should_handshake = do_keep_alive1(&ps, &wg).await;
-            if should_handshake {
-                do_handshake(&wg, &ps);
-            }
-            let p = ps.read();
-            if let Some(i) = p.info.keep_alive_interval {
-                p.persistent_keep_alive
-                    .adjust_and_activate_secs(u64::from(i));
-            }
-        });
-        psw.stop_handshake = timer!(async move |_, ps: SharedPeerState| {
-            debug!("{}: timer: stop handshake.", ps.read().info.log_id());
-            ps.write().handshake_resend_scope = None;
-            ps.write().handshake = None;
-        });
-        psw.clear = timer!(async move |_, ps: SharedPeerState| {
-            debug!("{}: timer: clear.", ps.read().info.log_id());
-            ps.write().clear();
-        });
+        psw.rekey_no_recv = timer!(rekey_no_recv);
+        psw.keep_alive = timer!(keep_alive);
+        psw.persistent_keep_alive = timer!(persistent_keep_alive);
+        psw.stop_handshake = timer!(stop_handshake);
+        psw.clear = timer!(clear);
     }
 
     pubkey_map.insert(*public_key, ps);
 
     Ok(())
+}
+
+async fn rekey_no_recv(wg: Arc<WgState>, ps: SharedPeerState) {
+    debug!("{}: timer: rekey_no_recv.", ps.read().info.log_id());
+    do_handshake(&wg, &ps);
+}
+
+async fn keep_alive(wg: Arc<WgState>, ps: SharedPeerState) {
+    debug!("{}: timer: keep alive.", ps.read().info.log_id());
+    let should_handshake = do_keep_alive1(&ps, &wg).await;
+    if should_handshake {
+        do_handshake(&wg, &ps);
+    }
+}
+
+async fn persistent_keep_alive(wg: Arc<WgState>, ps: SharedPeerState) {
+    debug!("{}: timer: persistent_keep_alive.", ps.read().info.log_id());
+    let should_handshake = do_keep_alive1(&ps, &wg).await;
+    if should_handshake {
+        do_handshake(&wg, &ps);
+    }
+    let p = ps.read();
+    if let Some(i) = p.info.keep_alive_interval {
+        p.persistent_keep_alive
+            .adjust_and_activate_secs(u64::from(i));
+    }
+}
+
+async fn stop_handshake(_: Arc<WgState>, ps: SharedPeerState) {
+    debug!("{}: timer: stop handshake.", ps.read().info.log_id());
+    ps.write().handshake_resend_scope = None;
+    ps.write().handshake = None;
+}
+
+async fn clear(_: Arc<WgState>, ps: SharedPeerState) {
+    debug!("{}: timer: clear.", ps.read().info.log_id());
+    ps.write().clear();
 }
 
 /// Start handshake.
