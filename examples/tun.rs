@@ -31,8 +31,9 @@
 
 use failure::Error;
 
-fn main() -> Result<(), Error> {
-    imp::main()
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    imp::main().await
 }
 
 #[cfg(unix)]
@@ -62,20 +63,17 @@ mod imp {
             .map_err(From::from)
     }
 
-    pub fn main() -> Result<(), Error> {
+    pub async fn main() -> Result<(), Error> {
         let t = Tun::create_async(Some("tun7"))?;
 
         up_and_ping(t.get_name())?;
 
         let mut buf = [0u8; 2048];
 
-        tokio::run_async(async move {
-            loop {
-                let l = t.read_async(&mut buf).await.unwrap();
-                println!("Got packet: {} bytes", l);
-            }
-        });
-        Ok(())
+        loop {
+            let l = t.read(&mut buf).await?;
+            println!("Got packet: {} bytes", l);
+        }
     }
 }
 

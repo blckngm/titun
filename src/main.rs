@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-#![feature(async_await, await_macro)]
+#![feature(async_await)]
 
 #[macro_use]
 extern crate failure;
@@ -25,7 +25,6 @@ extern crate log;
 use base64::{decode, encode};
 use clap::{App, AppSettings, Arg, SubCommand};
 use failure::{Error, ResultExt};
-use futures::{FutureExt, TryFutureExt};
 use std::io::{stdin, Read};
 use titun::run::*;
 use titun::wireguard::re_exports::{U8Array, DH, X25519};
@@ -128,21 +127,13 @@ fn main() -> Result<(), Error> {
                 std::cmp::min(2, num_cpus::get())
             };
             info!("Will spawn {} worker threads", threads);
-            let rt = tokio::runtime::Builder::new()
-                .core_threads(threads)
-                .build()?;
-            rt.block_on_all(
-                async move {
-                    if let Err(err) = await!(run(config)) {
-                        error!("Error: {}", err);
-                        std::process::exit(1);
-                    }
+            // TODO: actually set number of worker threads.
+            tokio::run(async move {
+                if let Err(err) = run(config).await {
+                    error!("Error: {}", err);
+                    std::process::exit(1);
                 }
-                    .unit_error()
-                    .boxed()
-                    .compat(),
-            )
-            .unwrap();
+            });
         }
         _ => {
             unreachable!();

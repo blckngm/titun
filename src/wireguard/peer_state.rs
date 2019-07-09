@@ -364,6 +364,7 @@ pub fn do_handshake(wg: &Arc<WgState>, peer0: &SharedPeerState) {
         loop {
             // This loop is only to be breaked out when the handshake initiation fails or completes.
             // Replace with label block when `label_break_value` is stable.
+            #[allow(clippy::never_loop)]
             'inner: loop {
                 if let (Some(wg), Some(peer0)) = (wg.upgrade(), peer.upgrade()) {
                     let (init_msg, endpoint) = {
@@ -405,7 +406,7 @@ pub fn do_handshake(wg: &Arc<WgState>, peer0: &SharedPeerState) {
 
                         (init_msg, peer.info.endpoint.unwrap())
                     };
-                    let _ = wg.send_to_async(&init_msg, endpoint).await;
+                    let _ = wg.send_to(&init_msg, endpoint).await;
                 }
                 break 'inner;
             }
@@ -442,6 +443,6 @@ pub async fn do_keep_alive1<'a>(peer0: &'a SharedPeerState, wg: &'a WgState) -> 
         peer.on_send_keepalive();
         should_handshake
     };
-    let _ = wg.send_to_async(&out, endpoint).await;
+    let _ = wg.send_to(&out, endpoint).await;
     should_handshake
 }

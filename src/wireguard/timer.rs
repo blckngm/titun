@@ -19,14 +19,16 @@
 //!
 //! Use tokio-timer under the hood.
 
-use futures::compat::Future01CompatExt;
+use futures::future::poll_fn;
+use futures::prelude::*;
+use futures::ready;
 use parking_lot::Mutex;
-use std::future::Future as Future03;
+use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering::*};
 use std::sync::Arc;
+use std::task::Poll;
 use std::time::Duration;
 use tokio::clock::now;
-use tokio::prelude::*;
 use tokio::sync::oneshot::{channel, Sender};
 use tokio::timer::Delay;
 
@@ -43,7 +45,7 @@ pub struct TimerHandle {
 pub fn create_timer_async<F, Fut>(action: F) -> TimerHandle
 where
     F: Fn() -> Fut + Send + 'static,
-    Fut: Future03<Output = ()> + Send,
+    Fut: Future<Output = ()> + Send,
 {
     let (tx, mut rx) = channel();
     let options0 = Arc::new(TimerOptions {
@@ -51,33 +53,27 @@ where
         delay: Mutex::new(Delay::new(now())),
     });
     let options = options0.clone();
-    crate::async_utils::tokio_spawn(async move {
+    tokio::spawn(async move {
         loop {
-            let wait_result = future::poll_fn(|| {
-                match rx.poll() {
-                    Ok(Async::NotReady) => (),
-                    _ => return Err(()),
+            let wait_result = poll_fn(|cx| {
+                // First check whether the handle is dropped.
+                if rx.poll_unpin(cx).is_ready() {
+                    return Poll::Ready(Err(()));
                 }
                 let mut delay = options.delay.lock();
-                match delay.poll() {
-                    Ok(Async::Ready(_)) => {
-                        // Reset delay to get notified again.
-                        delay.reset(now() + Duration::from_secs(600));
-                        match delay.poll() {
-                            Ok(Async::NotReady) => (),
-                            _ => unreachable!(),
-                        }
-                        if options.activated.swap(false, SeqCst) {
-                            Ok(Async::Ready(()))
-                        } else {
-                            Ok(Async::NotReady)
-                        }
-                    }
-                    Ok(Async::NotReady) => Ok(Async::NotReady),
-                    Err(e) => panic!(e),
+                ready!(delay.poll_unpin(cx));
+                // Reset delay to get notified again.
+                delay.reset(now() + Duration::from_secs(600));
+                match delay.poll_unpin(cx) {
+                    Poll::Pending => (),
+                    _ => unreachable!(),
+                }
+                if options.activated.swap(false, SeqCst) {
+                    Poll::Ready(Ok(()))
+                } else {
+                    Poll::Pending
                 }
             })
-            .compat()
             .await;
             if wait_result.is_err() {
                 break;
@@ -121,57 +117,53 @@ mod tests {
     use crate::async_utils::delay;
     use std::time::Duration;
 
-    #[test]
-    fn smoke() {
-        crate::tokio_block_on_all(async {
-            let run = Arc::new(AtomicBool::new(false));
-            let t = {
-                let run = run.clone();
-                create_timer_async(move || {
-                    run.store(true, SeqCst);
-                    async { () }
-                })
-            };
+    #[tokio::test]
+    async fn smoke() {
+        let run = Arc::new(AtomicBool::new(false));
+        let t = {
+            let run = run.clone();
+            create_timer_async(move || {
+                run.store(true, SeqCst);
+                async { () }
+            })
+        };
 
-            t.adjust_and_activate(Duration::from_millis(10));
-            delay(Duration::from_millis(30)).await;
-            assert!(run.load(SeqCst));
-        });
+        t.adjust_and_activate(Duration::from_millis(10));
+        delay(Duration::from_millis(30)).await;
+        assert!(run.load(SeqCst));
     }
 
-    #[test]
-    fn adjust_activate_de_activate() {
-        crate::tokio_block_on_all(async {
-            let run = Arc::new(AtomicBool::new(false));
-            let t = {
-                let run = run.clone();
-                create_timer_async(move || {
-                    run.store(true, SeqCst);
-                    async { () }
-                })
-            };
+    #[tokio::test]
+    async fn adjust_activate_de_activate() {
+        let run = Arc::new(AtomicBool::new(false));
+        let t = {
+            let run = run.clone();
+            create_timer_async(move || {
+                run.store(true, SeqCst);
+                async { () }
+            })
+        };
 
-            t.adjust_and_activate(Duration::from_millis(10));
-            t.adjust_and_activate(Duration::from_millis(100));
+        t.adjust_and_activate(Duration::from_millis(10));
+        t.adjust_and_activate(Duration::from_millis(100));
 
-            delay(Duration::from_millis(20)).await;
-            assert!(!run.load(SeqCst));
-            delay(Duration::from_millis(120)).await;
-            assert!(run.load(SeqCst));
+        delay(Duration::from_millis(20)).await;
+        assert!(!run.load(SeqCst));
+        delay(Duration::from_millis(120)).await;
+        assert!(run.load(SeqCst));
 
-            run.store(false, SeqCst);
+        run.store(false, SeqCst);
 
-            t.adjust_and_activate(Duration::from_millis(10));
-            t.de_activate();
-            delay(Duration::from_millis(20)).await;
-            assert!(!run.load(SeqCst));
+        t.adjust_and_activate(Duration::from_millis(10));
+        t.de_activate();
+        delay(Duration::from_millis(20)).await;
+        assert!(!run.load(SeqCst));
 
-            t.adjust_and_activate(Duration::from_millis(10));
-            t.de_activate();
-            t.adjust_and_activate(Duration::from_millis(15));
-            delay(Duration::from_millis(30)).await;
-            assert!(run.load(SeqCst));
-        });
+        t.adjust_and_activate(Duration::from_millis(10));
+        t.de_activate();
+        t.adjust_and_activate(Duration::from_millis(15));
+        delay(Duration::from_millis(30)).await;
+        assert!(run.load(SeqCst));
     }
 
     #[cfg(feature = "bench")]
@@ -180,7 +172,7 @@ mod tests {
         // Workaround lifetime issues.
         let b1 = Arc::new(Mutex::new(b0.clone()));
         let b = b1.clone();
-        crate::tokio_block_on_all(async move {
+        tokio::runtime::run(async move {
             let run = Arc::new(AtomicBool::new(false));
             let t = {
                 let run = run.clone();

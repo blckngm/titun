@@ -25,7 +25,7 @@ clap = { version = "2.19.3", default-features = false }
 env_logger = { version = "0.6", default-features = false }
 failure = "0.1"
 fnv = "1.0.6"
-futures-preview = { version = "0.3.0-alpha.16", features = ["compat", "nightly", "async-await"] }
+futures-preview = { version = "0.3.0-alpha.17", features = ["nightly", "async-await"] }
 hex = "0.3"
 ip-lookup-trie = { path = "./ip-lookup-trie" }
 log = "0.4.3"
@@ -34,29 +34,26 @@ net2 = "0.2.33"
 nix = "0.13"
 noise-protocol = "0.1.0"
 num_cpus = "1.9.0"
-# TODO: update to 0.8 once tokio-reactor got updated.
-parking_lot = "0.7"
+parking_lot = "0.8"
 pin-utils = "0.1.0-alpha.4"
 rand = "0.6"
 ring = { path = "patched/ring" }
 tai64 = {version = "1", default-features = false}
-tokio = { version = "0.1.17", features = ["async-await-preview"] }
-tokio-signal = "0.2"
-tokio-threadpool = "0.1.11"
+tokio = { git = "https://github.com/sopium/tokio.git", branch = "futures-io" }
+tokio-signal = { git = "https://github.com/sopium/tokio.git", branch = "futures-io" }
+tokio-uds = { git = "https://github.com/sopium/tokio.git", branch = "futures-io" }
+# tokio-threadpool = { git = "https://github.com/tokio-rs/tokio.git" }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["std", "fileapi", "winbase", "ioapiset", "synchapi", "namedpipeapi"] }
 winreg = "0.6"
 
-[target.'cfg(target_os = "linux")'.dependencies]
-inotify = "0.7"
+# TODO: use inotify after it has been upgrade to tokio v0.2 or is compatible.
+# [target.'cfg(target_os = "linux")'.dependencies]
+# inotify = "0.7"
 
 [target.'cfg(not(any(target_arch = "x86", target_arch = "x86_64")))'.dependencies]
 packed_simd = { version = "0.3", features = ["into_bits"] }
-
-[patch.crates-io]
-tokio-async-await = { path = "patched/tokio-async-await-0.1.7" }
-tokio = { path = "patched/tokio-0.1.19" }
 
 [profile.release]
 lto = true

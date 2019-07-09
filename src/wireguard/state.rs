@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::async_utils::{delay, tokio_spawn, yield_once, AsyncScope};
+use crate::async_utils::{delay, yield_once, AsyncScope};
 use crate::udp_socket::*;
 use crate::wireguard::*;
 use failure::Error;
@@ -96,7 +96,7 @@ impl Drop for IdMapGuard {
                 return;
             }
             let id = self.id;
-            tokio_spawn(async move {
+            tokio::spawn(async move {
                 wg.id_map.write().remove(&id);
             });
         }
@@ -134,7 +134,7 @@ fn udp_process_handshake_init<'a>(
             let mac1 = get_mac1(p);
             let reply = cookie_reply(info.pubkey(), &cookie, peer_id, &mac1);
             return async move {
-                let _ = wg.send_to_async(&reply[..], addr).await;
+                let _ = wg.send_to(&reply[..], addr).await;
             }
                 .left_future()
                 .left_future();
@@ -198,7 +198,7 @@ fn udp_process_handshake_init<'a>(
             wg.id_map.write().insert(self_id, peer0.clone());
             debug!("{}: Handshake successful as responder.", peer.info.log_id());
             return async move {
-                let _ = wg.send_to_async(&response[..], addr).await;
+                let _ = wg.send_to(&response[..], addr).await;
             }
                 .right_future()
                 .left_future();
@@ -237,7 +237,7 @@ fn udp_process_handshake_resp<'a>(
             let mac1 = get_mac1(p);
             let reply = cookie_reply(info.pubkey(), &cookie, peer_id, &mac1);
             return async move {
-                let _ = wg.send_to_async(&reply, addr).await;
+                let _ = wg.send_to(&reply, addr).await;
             }
                 .left_future()
                 .right_future();
@@ -312,7 +312,7 @@ fn udp_process_handshake_resp<'a>(
                 for p in queued_packets {
                     let encrypted = &mut buffer[..p.len() + 32];
                     t.encrypt(&p, encrypted).0.unwrap();
-                    let _ = wg.send_to_async(encrypted, addr).await;
+                    let _ = wg.send_to(encrypted, addr).await;
                 }
             }
                 .right_future()
@@ -412,7 +412,7 @@ async fn udp_process_transport<'a>(
         // Release peer.
     };
     if should_write {
-        let _ = wg.tun.write_async(&decrypted[..packet_len]).await;
+        let _ = wg.tun.write(&decrypted[..packet_len]).await;
     }
     if should_set_endpoint {
         // Lock peer.
@@ -431,7 +431,7 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
         for _ in 0..1024 {
             let (len, addr) = {
                 let socket = wg.socket.lock().clone();
-                let recv = socket.recv_from_async(&mut p).fuse();
+                let recv = socket.recv_from(&mut p).fuse();
                 pin_mut!(recv);
                 select! {
                     recv = recv => recv.unwrap(),
@@ -504,7 +504,7 @@ async fn tun_packet_processing(wg: Arc<WgState>) {
     let mut encrypted = vec![0u8; BUFSIZE];
     loop {
         for _ in 0..1024 {
-            let len = wg.tun.read_async(&mut pkt).await.unwrap();
+            let len = wg.tun.read(&mut pkt).await.unwrap();
 
             let padded_len = pad_len(len);
             // Do not leak other packets' data!
@@ -562,7 +562,7 @@ async fn tun_packet_processing(wg: Arc<WgState>) {
             };
 
             if should_send {
-                let _ = wg.send_to_async(encrypted, endpoint).await;
+                let _ = wg.send_to(encrypted, endpoint).await;
             }
 
             if should_handshake {
@@ -649,14 +649,14 @@ impl WgState {
         Ok(socket)
     }
 
-    pub(crate) async fn send_to_async<'a>(
+    pub(crate) async fn send_to<'a>(
         &'a self,
         buf: &'a [u8],
         target: impl Into<SocketAddr> + 'static,
     ) -> Result<usize, std::io::Error> {
         let target = target.into();
         let socket = self.socket.lock().clone();
-        socket.send_to_async(buf, target).await
+        socket.send_to(buf, &target).await
     }
 
     /// Add a pper.
@@ -764,8 +764,6 @@ impl WgState {
     }
 
     /// Change listen port.
-    // Clippy issue: https://github.com/rust-lang/rust-clippy/issues/3988
-    #[allow(clippy::needless_lifetimes)]
     pub async fn set_port(&self, mut new_port: u16) -> Result<(), Error> {
         let new_socket = WgState::prepare_socket(&mut new_port, self.info.read().fwmark)?;
         let mut sender = self.socket_sender.lock().as_ref().unwrap().clone();

@@ -23,7 +23,7 @@ use std::path::Path;
 //
 // It is not possible to use kqueue to watch delete events on a socket:
 // https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=170177
-#[cfg(not(target_os = "linux"))]
+//#[cfg(not(target_os = "linux"))]
 pub async fn wait_delete(path: &Path) -> Result<(), failure::Error> {
     let (tx, rx) = futures::channel::oneshot::channel();
     let path = path.to_owned();
@@ -39,50 +39,49 @@ pub async fn wait_delete(path: &Path) -> Result<(), failure::Error> {
     rx.await.unwrap()
 }
 
-#[cfg(target_os = "linux")]
-pub async fn wait_delete(p: &Path) -> Result<(), failure::Error> {
-    // Use inotify on linux.
-    use inotify::{Inotify, WatchMask};
-    use tokio::prelude::*;
+// TODO: use inotify after it has been upgrade to tokio v0.2 or is compatible.
+// #[cfg(target_os = "linux")]
+// pub async fn wait_delete(p: &Path) -> Result<(), failure::Error> {
+//     // Use inotify on linux.
+//     use inotify::{Inotify, WatchMask};
+//     use tokio::prelude::*;
 
-    let mut inotify = Inotify::init()?;
-    // DELETE_SELF does not get triggered until all opened file descriptors
-    // are closed. So watch for ATTRIB as well.
-    inotify.add_watch(p, WatchMask::ATTRIB | WatchMask::DELETE_SELF)?;
-    let buf = vec![0u8; 1024];
-    let mut stream = inotify.event_stream(buf);
-    loop {
-        let _event = stream.next().await.unwrap()?;
-        if !p.exists() {
-            break;
-        }
-    }
-    Ok(())
-}
+//     let mut inotify = Inotify::init()?;
+//     // DELETE_SELF does not get triggered until all opened file descriptors
+//     // are closed. So watch for ATTRIB as well.
+//     inotify.add_watch(p, WatchMask::ATTRIB | WatchMask::DELETE_SELF)?;
+//     let buf = vec![0u8; 1024];
+//     let mut stream = inotify.event_stream(buf);
+//     loop {
+//         let _event = stream.next().await.unwrap()?;
+//         if !p.exists() {
+//             break;
+//         }
+//     }
+//     Ok(())
+// }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_wait_delete() {
+    #[tokio::test]
+    async fn test_wait_delete() {
         use crate::async_utils::*;
         use nix::unistd::{mkstemp, unlink};
         use std::time::Duration;
 
-        tokio_block_on_all(async {
-            let mut file = std::env::temp_dir();
-            file.push("test_wait_delete_XXXXXX");
-            let (_, tmp_path) = mkstemp(&file).expect("mkstemp");
-            {
-                let tmp_path = tmp_path.clone();
-                tokio_spawn(async move {
-                    delay(Duration::from_millis(10)).await;
-                    unlink(&tmp_path).expect("unlink");
-                });
-            }
-            wait_delete(&tmp_path).await.expect("wait delete");
-            assert!(!tmp_path.exists());
-        });
+        let mut file = std::env::temp_dir();
+        file.push("test_wait_delete_XXXXXX");
+        let (_, tmp_path) = mkstemp(&file).expect("mkstemp");
+        {
+            let tmp_path = tmp_path.clone();
+            tokio::spawn(async move {
+                delay(Duration::from_millis(10)).await;
+                unlink(&tmp_path).expect("unlink");
+            });
+        }
+        wait_delete(&tmp_path).await.expect("wait delete");
+        assert!(!tmp_path.exists());
     }
 }

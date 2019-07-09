@@ -16,7 +16,9 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 pub mod commands;
-mod parse;
+// Export for parsing.
+#[doc(hidden)]
+pub mod parse;
 mod server;
 mod wait_delete;
 mod windows_named_pipe;

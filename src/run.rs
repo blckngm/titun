@@ -20,8 +20,7 @@ use crate::ipc::ipc_server;
 use crate::wireguard::re_exports::{DH, X25519};
 use crate::wireguard::*;
 use failure::{Error, ResultExt};
-use futures::compat::Future01CompatExt;
-use tokio::prelude::*;
+use futures::prelude::*;
 
 pub struct Config {
     pub dev_name: String,
@@ -48,33 +47,34 @@ pub async fn run(c: Config) -> Result<(), Error> {
     });
 
     scope0.clone().spawn_canceller(async move {
-        let mut ctrl_c = tokio_signal::ctrl_c().compat().await.unwrap();
+        let mut ctrl_c = tokio_signal::ctrl_c().await.unwrap();
         ctrl_c.next().await;
         info!("Received SIGINT or Ctrl-C, shutting down.");
     });
 
-    if c.exit_stdin_eof {
-        scope0.clone().spawn_canceller(async move {
-            let mut stdin = tokio::io::stdin();
-            let mut buf = [0u8; 4096];
-            loop {
-                match stdin.read_async(&mut buf).await {
-                    Ok(0) => break,
-                    Err(e) => {
-                        warn!("Read from stdin error: {}", e);
-                        break;
-                    }
-                    _ => (),
-                }
-            }
-            info!("Stdin EOF, shutting down.");
-        });
-    }
+    // TODO: restore this functionality.
+    // if c.exit_stdin_eof {
+    //     scope0.clone().spawn_canceller(async move {
+    //         let mut stdin = tokio::io::stdin();
+    //         let mut buf = [0u8; 4096];
+    //         loop {
+    //             match stdin.read_async(&mut buf).await {
+    //                 Ok(0) => break,
+    //                 Err(e) => {
+    //                     warn!("Read from stdin error: {}", e);
+    //                     break;
+    //                 }
+    //                 _ => (),
+    //             }
+    //         }
+    //         info!("Stdin EOF, shutting down.");
+    //     });
+    // }
     #[cfg(unix)]
     scope0.clone().spawn_canceller(async move {
         use tokio_signal::unix::{Signal, SIGTERM};
 
-        let mut term = Signal::new(SIGTERM).compat().await.unwrap();
+        let mut term = Signal::new(SIGTERM).await.unwrap();
         term.next().await;
         info!("Received SIGTERM, shutting down.");
     });

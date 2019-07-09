@@ -17,20 +17,19 @@
 
 // XXX: named pipe security???
 
-use crate::async_utils::tokio_spawn;
 use crate::ipc::commands::*;
 use crate::ipc::parse::*;
 use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::{SetPeerCommand, WgState, WgStateOut};
 use failure::{Error, ResultExt};
+use futures::io::BufWriter;
+use futures::prelude::*;
 use hex::encode;
-use std::io::Read;
 use std::marker::Unpin;
 use std::path::Path;
 use std::sync::{Arc, Weak};
 use std::time::SystemTime;
-use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::prelude::AsyncWriteExt;
+use tokio::io::AsyncReadExt;
 
 #[cfg(windows)]
 pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> {
@@ -57,8 +56,7 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
     use nix::sys::stat::{umask, Mode};
     use pin_utils::pin_mut;
     use std::fs::{create_dir_all, remove_file};
-    use tokio::net::unix::UnixListener;
-    use tokio::prelude::StreamAsyncExt;
+    use tokio_uds::UnixListener;
 
     umask(Mode::from_bits(0o077).unwrap());
     let dir = Path::new(r#"/var/run/wireguard"#);
@@ -66,52 +64,45 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
     let mut path = dir.join(dev_name);
     path.set_extension("sock");
     let _ = remove_file(path.as_path());
-    let listener = UnixListener::bind(path.as_path()).context("Bind IPC socket.")?;
+    let mut listener = UnixListener::bind(path.as_path()).context("Bind IPC socket.")?;
 
     crate::systemd::notify_ready().unwrap_or_else(|e| warn!("Failed to notify systemd: {}", e));
 
     let deleted = super::wait_delete::wait_delete(&path).fuse();
     pin_mut!(deleted);
 
-    let mut incoming = listener.incoming();
     loop {
-        let mut accept = incoming.next().fuse();
+        let mut accept = listener.accept().fuse();
         let wg = wg.clone();
-        let stream_or_err = select! {
-            stream_or_err = accept => stream_or_err,
+        let (stream, _) = select! {
+            stream_or_err = accept => stream_or_err?,
             deleted = deleted => {
                 deleted?;
                 info!("IPC socket deleted. Shutting down.");
                 return Ok(());
             },
         };
-        match stream_or_err {
-            Some(Ok(stream)) => tokio_spawn(async move {
-                serve(&wg, stream).await.unwrap_or_else(|e| {
-                    warn!("Error serving IPC connection: {:?}", e);
-                });
-            }),
-            Some(Err(e)) => return Err(e.into()),
-            None => unreachable!(),
-        }
+        tokio::spawn(async move {
+            serve(&wg, stream.compat()).await.unwrap_or_else(|e| {
+                warn!("Error serving IPC connection: {:?}", e);
+            })
+        });
     }
 }
 
 macro_rules! writeln {
     ($dst:expr, $fmt:expr, $($arg:tt)*) => {{
         let it = format!(concat!($fmt, "\n"), $($arg)*);
-        $dst.write_all_async(it.as_bytes()).await
+        $dst.write_all(it.as_bytes()).await
     }};
     ($dst:expr, $fmt:expr) => {
-        $dst.write_all_async(concat!($fmt, "\n").as_bytes()).await
+        $dst.write_all(concat!($fmt, "\n").as_bytes()).await
     };
     ($dst:expr) => {
-        $dst.write_all_async("\n".as_bytes()).await
+        $dst.write_all("\n".as_bytes()).await
     };
 }
 
-// Clippy issue: https://github.com/rust-lang/rust-clippy/issues/3988
-#[allow(clippy::needless_lifetimes)]
 async fn write_wg_state(
     mut w: impl AsyncWrite + Unpin + 'static,
     state: &WgStateOut,
@@ -149,7 +140,7 @@ async fn write_wg_state(
     }
     writeln!(w, "errno=0")?;
     writeln!(w)?;
-    w.flush_async().await
+    w.flush().await
 }
 
 async fn write_error(
@@ -158,7 +149,7 @@ async fn write_error(
 ) -> Result<(), ::std::io::Error> {
     writeln!(stream, "errno={}", errno)?;
     writeln!(stream)?;
-    stream.flush_async().await
+    stream.flush().await
 }
 
 async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
@@ -204,9 +195,10 @@ where
 {
     let (stream_r, stream_w) = stream.split();
 
-    let stream_w = std::io::BufWriter::with_capacity(4096, stream_w);
+    let stream_w = BufWriter::with_capacity(4096, stream_w);
 
-    let c = match parse_command_io(stream_r.take(1024 * 1024)).await {
+    // TODO: limit total length of input stream.
+    let c = match parse_command_io(stream_r).await {
         Ok(Some(c)) => c,
         Ok(None) => return Ok(()),
         Err(e) => {

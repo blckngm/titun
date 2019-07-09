@@ -17,6 +17,9 @@
 
 #![cfg_attr(feature = "bench", feature(test))]
 #![feature(async_await)]
+// Too many false positives with async/await:
+// https://github.com/rust-lang/rust-clippy/issues/3988
+#![allow(clippy::needless_lifetimes)]
 
 #[cfg(feature = "bench")]
 extern crate test;
@@ -28,10 +31,10 @@ extern crate log;
 
 mod async_utils;
 mod crypto;
-mod ipc;
+// Export for fuzzing.
+#[doc(hidden)]
+pub mod ipc;
 mod udp_socket;
-
-pub use async_utils::tokio_block_on_all;
 
 #[doc(hidden)]
 pub mod run;

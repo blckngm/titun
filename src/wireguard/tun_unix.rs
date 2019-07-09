@@ -18,18 +18,19 @@
 #![cfg(unix)]
 
 use failure::Error;
-use futures::future::Future;
+use futures::future::poll_fn;
+use futures::ready;
 use mio::event::Evented;
 use mio::unix::{EventedFd, UnixReady};
-use mio::{Poll, PollOpt, Ready, Token};
+use mio::{Poll as MioPoll, PollOpt, Ready, Token};
 use nix::fcntl::{fcntl, open, FcntlArg, OFlag};
 use nix::sys::stat::Mode;
 use nix::unistd::{close, read, write};
 use std::io::{self, Error as IOError, Read, Write};
 use std::mem;
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
-use tokio::prelude::Async;
-use tokio::reactor::PollEvented2;
+use std::task::{Context, Poll};
+use tokio::reactor::PollEvented;
 
 #[allow(unused)]
 mod ioctl {
@@ -54,7 +55,7 @@ mod ioctl {
 
 #[derive(Debug)]
 pub struct AsyncTun {
-    io: PollEvented2<Tun>,
+    io: PollEvented<Tun>,
 }
 
 impl AsyncTun {
@@ -62,42 +63,38 @@ impl AsyncTun {
         self.io.get_ref().get_name()
     }
 
-    pub fn poll_read(&self, buf: &mut [u8]) -> Result<Async<usize>, IOError> {
+    fn poll_read(&self, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<Result<usize, IOError>> {
         let ready = Ready::readable() | UnixReady::error();
-        match self.io.poll_read_ready(ready) {
-            Ok(Async::Ready(_)) => (),
-            Ok(Async::NotReady) => return Ok(Async::NotReady),
-            Err(e) => return Err(e),
-        }
+        ready!(self.io.poll_read_ready(cx, ready))?;
         match self.io.get_ref().read(buf) {
-            Ok(x) => Ok(x.into()),
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                self.io.clear_read_ready(ready)?;
-                Ok(Async::NotReady)
+                self.io.clear_read_ready(cx, ready)?;
+                Poll::Pending
             }
-            Err(e) => Err(e),
+            x => Poll::Ready(x),
         }
     }
 
-    pub fn read_async<'a>(
-        &'a self,
-        buf: &'a mut [u8],
-    ) -> impl Future<Output = Result<usize, IOError>> + 'a + Unpin {
-        use std::task::Poll;
+    fn poll_write(&self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize, IOError>> {
+        ready!(self.io.poll_write_ready(cx))?;
 
-        futures::future::poll_fn(move |_| match self.poll_read(buf) {
-            Ok(Async::NotReady) => Poll::Pending,
-            Ok(Async::Ready(x)) => Poll::Ready(Ok(x)),
-            Err(e) => Poll::Ready(Err(e)),
-        })
+        match self.io.get_ref().write(buf) {
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                self.io.clear_write_ready(cx)?;
+                Poll::Pending
+            }
+            x => Poll::Ready(x),
+        }
     }
 
-    pub async fn write_async<'a>(&'a self, buf: &'a [u8]) -> Result<usize, IOError> {
-        use tokio::prelude::AsyncWriteExt;
+    // Should be used from only one task.
+    pub async fn read<'a>(&'a self, buf: &'a mut [u8]) -> Result<usize, IOError> {
+        poll_fn(|cx| self.poll_read(cx, buf)).await
+    }
 
-        let mut io = &self.io;
-
-        io.write_async(buf).await
+    // Should be used from only one task.
+    pub async fn write<'a>(&'a self, buf: &'a [u8]) -> Result<usize, IOError> {
+        poll_fn(|cx| self.poll_write(cx, buf)).await
     }
 }
 
@@ -201,7 +198,7 @@ impl Tun {
     pub fn create_async(name: Option<&str>) -> Result<AsyncTun, Error> {
         let tun = Tun::create(name, OFlag::O_NONBLOCK)?;
         Ok(AsyncTun {
-            io: PollEvented2::new(tun),
+            io: PollEvented::new(tun),
         })
     }
 
@@ -323,7 +320,7 @@ impl<'a> Write for &'a Tun {
 impl Evented for Tun {
     fn register(
         &self,
-        poll: &Poll,
+        poll: &MioPoll,
         token: Token,
         interest: Ready,
         opts: PollOpt,
@@ -333,7 +330,7 @@ impl Evented for Tun {
 
     fn reregister(
         &self,
-        poll: &Poll,
+        poll: &MioPoll,
         token: Token,
         interest: Ready,
         opts: PollOpt,
@@ -341,7 +338,7 @@ impl Evented for Tun {
         EventedFd(&self.fd).reregister(poll, token, interest, opts)
     }
 
-    fn deregister(&self, poll: &Poll) -> io::Result<()> {
+    fn deregister(&self, poll: &MioPoll) -> io::Result<()> {
         EventedFd(&self.fd).deregister(poll)
     }
 }

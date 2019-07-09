@@ -19,60 +19,75 @@ use crate::ipc::commands::*;
 use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::X25519Key;
 use failure::Error;
+use futures::io::{self, AsyncRead, BufReader};
+use futures::prelude::*;
 use hex::decode;
 use std::marker::Unpin;
-use tokio::prelude::stream::Fuse;
-use tokio::prelude::*;
 
-struct Peekable<S: Stream> {
-    stream: Fuse<S>,
+// Futures has a `Peekable`, but it does not have an async `peek` method,
+// and I could not define one on top of its `peek` due to lifetime issues.
+struct Peekable<S: Stream + Unpin> {
+    inner: S,
     peeked: Option<S::Item>,
 }
 
-impl<S: Stream> Stream for Peekable<S> {
-    type Item = S::Item;
-    type Error = S::Error;
-
-    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        if let Some(item) = self.peeked.take() {
-            return Ok(Async::Ready(Some(item)));
-        }
-        self.stream.poll()
-    }
-}
-
-impl<S: Stream + Unpin> Peekable<S> {
-    pub fn new(stream: S) -> Self {
-        Peekable {
-            stream: stream.fuse(),
+impl<S, R, E> Peekable<S>
+where
+    S: Stream<Item = Result<R, E>> + Unpin,
+    R: 'static,
+{
+    fn new(inner: S) -> Self {
+        Self {
+            inner,
             peeked: None,
         }
     }
 
-    // Clippy issue: https://github.com/rust-lang/rust-clippy/issues/3988
-    #[allow(clippy::needless_lifetimes)]
-    pub async fn peek(&mut self) -> Result<Option<&S::Item>, S::Error> {
-        if self.peeked.is_some() {
-            return Ok(self.peeked.as_ref());
-        }
-        match self.stream.next().await {
-            Some(Ok(item)) => {
-                self.peeked = Some(item);
-                Ok(self.peeked.as_ref())
+    async fn try_next(&mut self) -> Result<Option<R>, E> {
+        loop {
+            if let Some(x) = self.peeked.take() {
+                return match x {
+                    Ok(x) => Ok(Some(x)),
+                    Err(e) => Err(e),
+                };
             }
-            None => Ok(None),
-            Some(Err(e)) => Err(e),
+
+            self.peeked = self.inner.next().await;
+            if self.peeked.is_none() {
+                return Ok(None);
+            }
+        }
+    }
+
+    async fn try_peek(&mut self) -> Result<Option<&'_ R>, E> {
+        loop {
+            match self.peeked {
+                Some(Ok(ref x)) => return Ok(Some(x)),
+                Some(Err(_)) => {
+                    let e = match self.peeked.take() {
+                        Some(Err(e)) => e,
+                        _ => unreachable!(),
+                    };
+                    return Err(e);
+                }
+                None => {
+                    self.peeked = self.inner.next().await;
+                    if self.peeked.is_none() {
+                        return Ok(None);
+                    }
+                }
+            }
         }
     }
 }
 
 async fn parse_peer<S>(stream: &mut Peekable<S>) -> Result<WgSetPeerCommand, Error>
 where
-    S: Stream<Item = String, Error = std::io::Error> + Unpin,
+    S: Stream<Item = io::Result<String>> + Unpin,
 {
-    let public_key_line = match stream.next().await {
+    let public_key_line = match stream.try_next().await? {
         None => bail!("Unexpected end of input stream"),
-        Some(line_or_err) => line_or_err?,
+        Some(line) => line,
     };
     let mut kv = public_key_line.splitn(2, '=');
     let k = kv.next().unwrap();
@@ -100,7 +115,7 @@ where
     };
 
     loop {
-        let line = match stream.peek().await? {
+        let line = match stream.try_peek().await? {
             None => bail!("Unexpected end of input stream"),
             Some(line) => line,
         };
@@ -143,7 +158,7 @@ where
             }
             _ => break,
         }
-        stream.next().await;
+        stream.try_next().await.unwrap();
     }
 
     Ok(peer)
@@ -151,7 +166,7 @@ where
 
 async fn parse_set_command<S>(stream: &mut Peekable<S>) -> Result<WgSetCommand, Error>
 where
-    S: Stream<Item = String, Error = std::io::Error> + Unpin,
+    S: Stream<Item = io::Result<String>> + Unpin,
 {
     let mut command = WgSetCommand {
         private_key: None,
@@ -161,18 +176,18 @@ where
         peers: vec![],
     };
     'outer: loop {
-        let line = match stream.peek().await? {
+        let line = match stream.try_peek().await? {
             None => bail!("Unexpected end of input stream"),
             Some(line) => line,
         };
         if line.is_empty() {
-            stream.next().await;
+            stream.try_next().await.unwrap();
             break;
         } else if line.starts_with("public_key") {
             loop {
                 let peer = parse_peer(stream).await?;
                 command.peers.push(peer);
-                let line = match stream.peek().await? {
+                let line = match stream.try_peek().await? {
                     None => bail!("Unexpected end of input stream"),
                     Some(line) => line,
                 };
@@ -181,7 +196,7 @@ where
                 }
             }
         } else {
-            let line = stream.next().await.unwrap().unwrap();
+            let line = stream.try_next().await.unwrap().unwrap();
             let mut kv = line.splitn(2, '=');
             let key = kv.next().unwrap();
             let value = match kv.next() {
@@ -208,19 +223,19 @@ where
 
 pub async fn parse_command<S>(stream: S) -> Result<Option<WgIpcCommand>, Error>
 where
-    S: Stream<Item = String, Error = std::io::Error> + Unpin,
+    S: Stream<Item = io::Result<String>> + Unpin,
 {
     let mut stream = Peekable::new(stream);
 
-    let first_line = match stream.next().await {
+    let first_line = match stream.try_next().await? {
         None => return Ok(None),
-        Some(line_or_err) => line_or_err?,
+        Some(line) => line,
     };
     match first_line.as_ref() {
         "get=1" => {
-            let empty_line = match stream.next().await {
+            let empty_line = match stream.try_next().await? {
                 None => bail!("Unexpected end of input stream"),
-                Some(line_or_err) => line_or_err?,
+                Some(line) => line,
             };
             if !empty_line.is_empty() {
                 bail!("Expected empty line, got {}", empty_line);
@@ -236,10 +251,10 @@ where
 
 pub async fn parse_command_io<R>(stream: R) -> Result<Option<WgIpcCommand>, Error>
 where
-    R: tokio::io::AsyncRead + Unpin,
+    R: AsyncRead + Unpin,
 {
-    let lines_codec = tokio::codec::LinesCodec::new_with_max_length(128);
-    let lines_stream = tokio::codec::FramedRead::new(stream, lines_codec);
+    // TODO: use tokio's LinesCodec, because it has the max line length protection.
+    let lines_stream = BufReader::new(stream).lines();
     parse_command(lines_stream).await
 }
 
@@ -250,11 +265,15 @@ mod tests {
     #[test]
     fn test_parsing() {
         futures::executor::block_on(async {
-            let stream = stream::iter_ok(vec!["get=1".into(), "".into()]);
+            let stream = stream::iter(vec!["get=1", ""]).map(|x| Ok(x.to_owned()));
             let result = parse_command(stream).await;
             assert_eq!(result.unwrap(), Some(WgIpcCommand::Get));
 
-            let stream = stream::iter_ok(include_str!("example.txt").lines().map(|x| x.into()));
+            let stream = stream::iter(
+                include_str!("example.txt")
+                    .lines()
+                    .map(|x| Ok(x.to_owned())),
+            );
             let result = parse_command(stream).await;
             assert!(result.is_ok());
         });

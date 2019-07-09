@@ -81,7 +81,7 @@ impl AsyncScope {
         T: Future<Output = ()> + Send + 'static,
     {
         let cancelled = self.receiver.clone();
-        tokio_spawn(async move {
+        tokio::spawn(async move {
             pin_mut!(cancelled);
             let f = future.fuse();
             pin_mut!(f);
@@ -117,26 +117,10 @@ impl Future for YieldOnce {
 }
 
 pub async fn delay(duration: Duration) {
-    use futures::compat::Future01CompatExt;
     use tokio::clock::now;
     use tokio::timer::Delay;
 
-    Delay::new(now() + duration).compat().await.unwrap();
-}
-
-pub fn tokio_block_on_all<T, Fut>(fut: Fut) -> T
-where
-    Fut: futures::Future<Output = T> + Send + 'static,
-    T: Send + 'static,
-{
-    use futures::*;
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on_all(fut.unit_error().boxed().compat()).unwrap()
-}
-
-pub fn tokio_spawn(fut: impl futures::Future<Output = ()> + Send + 'static) {
-    use futures::*;
-    tokio::spawn(fut.unit_error().boxed().compat());
+    Delay::new(now() + duration).await;
 }
 
 #[cfg(windows)]
@@ -161,10 +145,10 @@ mod tests {
 
     #[test]
     fn cancellation() {
-        crate::tokio_block_on_all(async {
+        tokio::run(async {
             let scope = AsyncScope::new();
-            scope.spawn_async(future::empty());
-            scope.spawn_async(future::empty());
+            scope.spawn_async(future::pending());
+            scope.spawn_async(future::pending());
             drop(scope);
         });
     }

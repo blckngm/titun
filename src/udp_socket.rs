@@ -15,34 +15,28 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
+use futures::future::poll_fn;
 use futures::lock::Mutex;
+use futures::ready;
 use mio::net::UdpSocket as MioUdpSocket;
+use std::io;
 use std::net::SocketAddr;
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
-use std::task::Poll;
-use tokio::prelude::{Async, Poll as Poll01};
-use tokio::reactor::PollEvented2;
+use std::task::{Context, Poll};
+use tokio::reactor::PollEvented;
 
 /// Like tokio UdpSocket, but can be used from multiple tasks concurrently.
 pub struct UdpSocket {
-    socket: PollEvented2<MioUdpSocket>,
+    socket: PollEvented<MioUdpSocket>,
     send_lock: Mutex<()>,
     recv_lock: Mutex<()>,
-}
-
-fn convert_poll<T, E>(p: Poll01<T, E>) -> Poll<Result<T, E>> {
-    match p {
-        Ok(Async::NotReady) => Poll::Pending,
-        Ok(Async::Ready(t)) => Poll::Ready(Ok(t)),
-        Err(e) => Poll::Ready(Err(e)),
-    }
 }
 
 impl UdpSocket {
     pub fn from_std(socket: std::net::UdpSocket) -> Result<UdpSocket, std::io::Error> {
         socket.set_nonblocking(true)?;
-        let socket = PollEvented2::new(MioUdpSocket::from_socket(socket)?);
+        let socket = PollEvented::new(MioUdpSocket::from_socket(socket)?);
         Ok(UdpSocket {
             socket,
             send_lock: Mutex::new(()),
@@ -51,77 +45,46 @@ impl UdpSocket {
     }
 
     fn poll_recv_from(
-        socket: &PollEvented2<MioUdpSocket>,
+        &self,
+        cx: &mut Context<'_>,
         buf: &mut [u8],
-    ) -> Poll01<(usize, SocketAddr), std::io::Error> {
-        match socket.poll_read_ready(mio::Ready::readable()) {
-            Ok(Async::NotReady) => return Ok(Async::NotReady),
-            Ok(Async::Ready(_)) => (),
-            Err(e) => return Err(e),
-        }
+    ) -> Poll<io::Result<(usize, SocketAddr)>> {
+        ready!(self.socket.poll_read_ready(cx, mio::Ready::readable()))?;
 
-        match socket.get_ref().recv_from(buf) {
-            Ok(x) => Ok(x.into()),
+        match self.socket.get_ref().recv_from(buf) {
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                socket.clear_read_ready(mio::Ready::readable())?;
-                Ok(Async::NotReady)
+                self.socket.clear_read_ready(cx, mio::Ready::readable())?;
+                Poll::Pending
             }
-            Err(e) => Err(e),
+            x => Poll::Ready(x),
         }
     }
 
     fn poll_send_to(
-        socket: &PollEvented2<MioUdpSocket>,
+        &self,
+        cx: &mut Context<'_>,
         buf: &[u8],
-        target: SocketAddr,
-    ) -> Poll01<usize, std::io::Error> {
-        match socket.poll_write_ready() {
-            Ok(Async::NotReady) => return Ok(Async::NotReady),
-            Ok(Async::Ready(_)) => (),
-            Err(e) => return Err(e),
-        }
+        target: &SocketAddr,
+    ) -> Poll<io::Result<usize>> {
+        ready!(self.socket.poll_write_ready(cx))?;
 
-        match socket.get_ref().send_to(buf, &target) {
-            Ok(n) => Ok(n.into()),
+        match self.socket.get_ref().send_to(buf, target) {
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                socket.clear_write_ready()?;
-                Ok(Async::NotReady)
+                self.socket.clear_write_ready(cx)?;
+                Poll::Pending
             }
-            Err(e) => Err(e),
+            x => Poll::Ready(x),
         }
     }
 
-    /// Async recvfrom.
-    pub async fn recv_from_async<'a>(
-        &'a self,
-        buf: &'a mut [u8],
-    ) -> Result<(usize, SocketAddr), std::io::Error> {
+    pub async fn recv_from<'a>(&'a self, buf: &'a mut [u8]) -> io::Result<(usize, SocketAddr)> {
         let _guard = self.recv_lock.lock().await;
-        futures::future::poll_fn(|_| convert_poll(UdpSocket::poll_recv_from(&self.socket, buf)))
-            .await
+        poll_fn(move |cx| self.poll_recv_from(cx, buf)).await
     }
 
-    /// Async sendto.
-    pub async fn send_to_async<'a>(
-        &'a self,
-        buf: &'a [u8],
-        target: SocketAddr,
-    ) -> Result<usize, std::io::Error> {
-        // First try to send directly.
-        match self.socket.get_ref().send_to(buf, &target) {
-            Ok(len) => return Ok(len),
-            Err(e) => {
-                if e.kind() != std::io::ErrorKind::WouldBlock {
-                    return Err(e);
-                }
-            }
-        }
-        // If would block, use poll_send_to with lock.
+    pub async fn send_to<'a>(&'a self, buf: &'a [u8], target: &'a SocketAddr) -> io::Result<usize> {
         let _guard = self.send_lock.lock().await;
-        futures::future::poll_fn(|_| {
-            convert_poll(UdpSocket::poll_send_to(&self.socket, buf, target))
-        })
-        .await
+        poll_fn(|cx| self.poll_send_to(cx, buf, target)).await
     }
 }
 
