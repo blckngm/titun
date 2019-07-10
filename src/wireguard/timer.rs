@@ -172,7 +172,8 @@ mod tests {
         // Workaround lifetime issues.
         let b1 = Arc::new(Mutex::new(b0.clone()));
         let b = b1.clone();
-        tokio::runtime::run(async move {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
             let run = Arc::new(AtomicBool::new(false));
             let t = {
                 let run = run.clone();

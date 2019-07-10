@@ -145,11 +145,15 @@ mod tests {
 
     #[test]
     fn cancellation() {
-        tokio::run(async {
+        let mut rt = tokio::runtime::current_thread::Runtime::new().unwrap();
+
+        rt.spawn(async {
             let scope = AsyncScope::new();
             scope.spawn_async(future::pending());
             scope.spawn_async(future::pending());
             drop(scope);
         });
+
+        rt.run().unwrap();
     }
 }

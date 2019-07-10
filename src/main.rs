@@ -127,13 +127,10 @@ fn main() -> Result<(), Error> {
                 std::cmp::min(2, num_cpus::get())
             };
             info!("Will spawn {} worker threads", threads);
-            // TODO: actually set number of worker threads.
-            tokio::run(async move {
-                if let Err(err) = run(config).await {
-                    error!("Error: {}", err);
-                    std::process::exit(1);
-                }
-            });
+            let rt = tokio::runtime::Builder::new()
+                .core_threads(threads)
+                .build()?;
+            rt.block_on(run(config))?;
         }
         _ => {
             unreachable!();
