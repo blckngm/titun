@@ -93,7 +93,9 @@ fn hchacha_real<M: Machine>(key: &[u8; 32], nonce: &[u8; 16], m: M) -> [u8; 32] 
     out
 }
 
-fn hchacha(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
+// Export for fuzzing.
+#[doc(hidden)]
+pub fn hchacha(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
         if is_x86_feature_detected!("ssse3") {

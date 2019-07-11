@@ -30,7 +30,9 @@ extern crate failure;
 extern crate log;
 
 mod async_utils;
-mod crypto;
+// Export for fuzzing.
+#[doc(hidden)]
+pub mod crypto;
 // Export for fuzzing.
 #[doc(hidden)]
 pub mod ipc;

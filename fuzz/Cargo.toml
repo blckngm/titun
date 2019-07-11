@@ -24,3 +24,11 @@ members = ["."]
 [[bin]]
 name = "ipc-parsing"
 path = "fuzz_targets/ipc-parsing.rs"
+
+[[bin]]
+name = "blake2s"
+path = "fuzz_targets/blake2s.rs"
+
+[[bin]]
+name = "hchacha"
+path = "fuzz_targets/hchacha.rs"
