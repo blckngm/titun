@@ -10,14 +10,14 @@ before_script:
 
 test:
   variables:
-    RUSTUP_TOOLCHAIN: nightly
+    RUSTUP_TOOLCHAIN: nightly-2019-07-10
   script:
   - cargo test --locked --all --verbose --jobs 1 -- --nocapture
   - cargo test --locked --all --verbose --jobs 1 --features=bench -- --nocapture
 
 aarch64:
   variables:
-    RUSTUP_TOOLCHAIN: nightly
+    RUSTUP_TOOLCHAIN: nightly-2019-07-10
     CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
     CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER: qemu-aarch64-static -L /usr/aarch64-linux-gnu
   script:
@@ -27,7 +27,7 @@ aarch64:
 
 freebsd:
   variables:
-    RUSTUP_TOOLCHAIN: nightly
+    RUSTUP_TOOLCHAIN: nightly-2019-07-10
   script:
   - rustup target add x86_64-unknown-freebsd
   - cargo check --target x86_64-unknown-freebsd --locked --all --tests --jobs 1
@@ -35,7 +35,7 @@ freebsd:
 fmt:
   allow_failure: true
   variables:
-    RUSTUP_TOOLCHAIN: nightly
+    RUSTUP_TOOLCHAIN: nightly-2019-07-10
   script:
   - rustup component add rustfmt
   - cargo fmt -- --check

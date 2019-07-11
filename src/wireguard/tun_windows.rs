@@ -23,8 +23,8 @@ use crate::async_utils::blocking;
 
 use parking_lot::Mutex;
 use std::ffi::CString;
-use std::fmt::{Debug, Formatter};
-use std::io::{Error, ErrorKind, Read, Result, Write};
+use std::fmt;
+use std::io::{self, Error, ErrorKind, Read, Write};
 use std::mem::zeroed;
 use std::net::Ipv4Addr;
 use std::ptr::null_mut;
@@ -65,11 +65,11 @@ impl AsyncTun {
         AsyncTun { tun }
     }
 
-    pub async fn read<'a>(&'a self, buf: &'a mut [u8]) -> Result<usize> {
+    pub async fn read<'a>(&'a self, buf: &'a mut [u8]) -> io::Result<usize> {
         blocking(|| self.tun.read(buf)).await
     }
 
-    pub async fn write<'a>(&'a self, buf: &'a [u8]) -> Result<usize> {
+    pub async fn write<'a>(&'a self, buf: &'a [u8]) -> io::Result<usize> {
         blocking(|| self.tun.write(buf)).await
     }
 }
@@ -82,9 +82,11 @@ pub struct Tun {
     cancel_event: HandleWrapper,
 }
 
-impl Debug for Tun {
-    fn fmt(&self, f: &mut Formatter<'_>) -> ::std::result::Result<(), ::std::fmt::Error> {
-        write!(f, "Tun {{ handle = {:?} }}", self.handle.0)
+impl fmt::Debug for Tun {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        f.debug_struct("Tun")
+            .field("handle", &self.handle.0)
+            .finish()
     }
 }
 
@@ -106,7 +108,7 @@ struct OverlappedWrapper {
 }
 
 impl OverlappedWrapper {
-    fn new() -> Result<OverlappedWrapper> {
+    fn new() -> io::Result<OverlappedWrapper> {
         unsafe {
             let mut o: OVERLAPPED = zeroed();
             o.hEvent = CreateEventA(null_mut(), 0, 0, null_mut());
@@ -136,7 +138,7 @@ macro_rules! continue_on_error {
 }
 
 /// Get network interface GUID from alias.
-fn get_netcfg_instance_id(alias: &str) -> Result<String> {
+fn get_netcfg_instance_id(alias: &str) -> io::Result<String> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let connections = hklm.open_subkey(
         r"SYSTEM\CurrentControlSet\Control\Network\{4D36E972-E325-11CE-BFC1-08002BE10318}",
@@ -154,7 +156,7 @@ fn get_netcfg_instance_id(alias: &str) -> Result<String> {
 }
 
 /// Show warning if interface is not a tap-windows device.
-fn check_interface_is_tap(guid: &str) -> Result<()> {
+fn check_interface_is_tap(guid: &str) -> io::Result<()> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let adapters = hklm.open_subkey(
         r"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}",
@@ -211,10 +213,10 @@ impl Tun {
     /// * `alias` - e.g., `Local Area Network 2`.
     /// * `network` - Network configuration. Used in `TAP_IOCTL_CONFIG_TUN`.
     #[allow(non_snake_case)]
-    pub fn open(alias: &str, network: NetworkConfig) -> Result<Tun> {
+    pub fn open(alias: &str, network: NetworkConfig) -> io::Result<Tun> {
         let instance_id = get_netcfg_instance_id(alias)?;
         check_interface_is_tap(&instance_id)
-            .unwrap_or_else(|e| warn!("Error checking interface: {:?}", e));
+            .unwrap_or_else(|e| warn!("Error checking interface: {}", e));
         let file_name = CString::new(format!("\\\\.\\Global\\{}.tap", instance_id)).unwrap();
         unsafe {
             // CreateFile.
@@ -283,7 +285,7 @@ impl Tun {
         }
     }
 
-    pub fn open_async(alias: &str, network: NetworkConfig) -> Result<AsyncTun> {
+    pub fn open_async(alias: &str, network: NetworkConfig) -> io::Result<AsyncTun> {
         let tun = Tun::open(alias, network)?;
         Ok(AsyncTun::new(tun))
     }
@@ -291,7 +293,7 @@ impl Tun {
     /// Read a packet from the device.
     ///
     /// Blocking.
-    pub fn read(&self, buf: &mut [u8]) -> Result<usize> {
+    pub fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
         let mut bytes_read = 0;
         unsafe {
             let mut ow = self.read_overlapped.lock();
@@ -333,7 +335,7 @@ impl Tun {
     /// Write a packet to the device.
     ///
     /// Blocking.
-    pub fn write(&self, buf: &[u8]) -> Result<usize> {
+    pub fn write(&self, buf: &[u8]) -> io::Result<usize> {
         let mut bytes_written = 0;
         unsafe {
             let mut ow = self.write_overlapped.lock();
@@ -371,17 +373,17 @@ impl Tun {
 }
 
 impl Read for Tun {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         Tun::read(self, buf)
     }
 }
 
 impl Write for Tun {
-    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         Tun::write(self, buf)
     }
 
-    fn flush(&mut self) -> Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
