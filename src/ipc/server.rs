@@ -29,7 +29,6 @@ use std::marker::Unpin;
 use std::path::Path;
 use std::sync::{Arc, Weak};
 use std::time::SystemTime;
-use tokio::io::AsyncReadExt;
 
 #[cfg(windows)]
 pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> {
@@ -41,7 +40,7 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
     loop {
         let wg = wg.clone();
         let stream = listener.accept_async().await?;
-        tokio_spawn(async move {
+        tokio::spawn(async move {
             serve(&wg, stream).await.unwrap_or_else(|e| {
                 warn!("Error serving IPC connection: {:?}", e);
             });
@@ -56,6 +55,7 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
     use nix::sys::stat::{umask, Mode};
     use pin_utils::pin_mut;
     use std::fs::{create_dir_all, remove_file};
+    use tokio::io::AsyncReadExt;
     use tokio_uds::UnixListener;
 
     umask(Mode::from_bits(0o077).unwrap());

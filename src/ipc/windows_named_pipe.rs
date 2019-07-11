@@ -27,13 +27,14 @@
 
 #![cfg(windows)]
 
+use futures::io::{AsyncRead, AsyncWrite};
 use std::borrow::Cow;
 use std::ffi::OsString;
 use std::io::{self, Read, Write};
 use std::os::windows::prelude::*;
 use std::path::Path;
-use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::prelude::{Async, Poll};
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use winapi::shared::minwindef::{DWORD, LPCVOID, LPVOID};
 use winapi::shared::winerror::{ERROR_PIPE_CONNECTED, ERROR_PIPE_NOT_CONNECTED};
 use winapi::um::fileapi::{CreateFileW, FlushFileBuffers, ReadFile, WriteFile, OPEN_EXISTING};
@@ -161,25 +162,29 @@ impl<'a> Write for &'a PipeStream {
 }
 
 impl AsyncRead for PipeStream {
-    fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, io::Error> {
-        match tokio_threadpool::blocking(|| self.read(buf)).unwrap() {
-            Async::Ready(Ok(len)) => Ok(Async::Ready(len)),
-            Async::Ready(Err(e)) => Err(e),
-            Async::NotReady => Ok(Async::NotReady),
-        }
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<io::Result<usize>> {
+        tokio_threadpool::blocking(|| self.read(buf)).map(|r| r.unwrap())
     }
 }
 
 impl AsyncWrite for PipeStream {
-    fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, io::Error> {
-        match tokio_threadpool::blocking(|| self.write(buf)).unwrap() {
-            Async::Ready(Ok(len)) => Ok(Async::Ready(len)),
-            Async::Ready(Err(e)) => Err(e),
-            Async::NotReady => Ok(Async::NotReady),
-        }
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        tokio_threadpool::blocking(|| self.write(buf)).map(|r| r.unwrap())
     }
 
-    fn shutdown(&mut self) -> Poll<(), io::Error> {
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Ok(()).into()
+    }
+
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         unimplemented!()
     }
 }

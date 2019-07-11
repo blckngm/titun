@@ -125,18 +125,18 @@ pub async fn delay(duration: Duration) {
 
 #[cfg(windows)]
 pub fn blocking<T>(f: impl FnOnce() -> T) -> impl futures::Future<Output = T> + Unpin {
-    use futures::compat::Future01CompatExt;
+    use futures::future::poll_fn;
+    use futures::prelude::*;
 
     // Hack for FnMut.
     let mut f = Some(f);
-    tokio::prelude::future::poll_fn(move || {
+    poll_fn(move |_cx| {
         // The closure is not redundant!
         // https://github.com/rust-lang/rust-clippy/issues/3071
         #[allow(clippy::redundant_closure)]
         tokio_threadpool::blocking(|| f.take().unwrap()())
     })
-    .compat()
-    .map(Result::unwrap)
+    .map(|x| x.unwrap())
 }
 
 #[cfg(test)]

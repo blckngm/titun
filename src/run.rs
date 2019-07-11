@@ -32,24 +32,14 @@ pub struct Config {
 pub async fn run(c: Config) -> Result<(), Error> {
     let scope0 = AsyncScope::new();
 
-    // XXX: On windows, tokio-signal will spawn a never ended task
-    // and prevent the event loop from shuting down on itself.
-    #[cfg(windows)]
-    let scope = scope0.clone();
-    #[cfg(windows)]
-    crate::async_utils::tokio_spawn(async move {
-        use crate::async_utils::delay;
-        use std::time::Duration;
-
-        scope.cancelled().await;
-        delay(Duration::from_millis(100)).await;
-        std::process::exit(0);
-    });
-
     scope0.clone().spawn_canceller(async move {
         let mut ctrl_c = tokio_signal::CtrlC::new().await.unwrap();
         ctrl_c.next().await;
         info!("Received SIGINT or Ctrl-C, shutting down.");
+
+        // XXX: shutdown not working properly on windows.
+        #[cfg(windows)]
+        std::process::exit(0);
     });
 
     // TODO: restore this functionality.

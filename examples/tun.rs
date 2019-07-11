@@ -81,7 +81,7 @@ mod imp {
 mod imp {
     use failure::Error;
 
-    pub fn main() -> Result<(), Error> {
+    pub async fn main() -> Result<(), Error> {
         Ok(())
     }
 }

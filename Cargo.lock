@@ -934,6 +934,7 @@ dependencies = [
  "tai64 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.2.0 (git+https://github.com/sopium/tokio.git?branch=futures-io)",
  "tokio-signal 0.3.0 (git+https://github.com/sopium/tokio.git?branch=futures-io)",
+ "tokio-threadpool 0.2.0 (git+https://github.com/sopium/tokio.git?branch=futures-io)",
  "tokio-uds 0.3.0 (git+https://github.com/sopium/tokio.git?branch=futures-io)",
  "winapi 0.3.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "winreg 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
