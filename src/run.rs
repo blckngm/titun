@@ -29,6 +29,14 @@ pub struct Config {
     pub network: (::std::net::Ipv4Addr, u32),
 }
 
+fn schedule_force_shutdown() {
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        warn!("Clean shutdown seem to have failed. Force shutting down.");
+        std::process::exit(0);
+    });
+}
+
 pub async fn run(c: Config) -> Result<(), Error> {
     let scope0 = AsyncScope::new();
 
@@ -36,30 +44,30 @@ pub async fn run(c: Config) -> Result<(), Error> {
         let mut ctrl_c = tokio_signal::CtrlC::new().await.unwrap();
         ctrl_c.next().await;
         info!("Received SIGINT or Ctrl-C, shutting down.");
-
-        // XXX: shutdown not working properly on windows.
-        #[cfg(windows)]
-        std::process::exit(0);
     });
 
-    // TODO: restore this functionality.
-    // if c.exit_stdin_eof {
-    //     scope0.clone().spawn_canceller(async move {
-    //         let mut stdin = tokio::io::stdin();
-    //         let mut buf = [0u8; 4096];
-    //         loop {
-    //             match stdin.read_async(&mut buf).await {
-    //                 Ok(0) => break,
-    //                 Err(e) => {
-    //                     warn!("Read from stdin error: {}", e);
-    //                     break;
-    //                 }
-    //                 _ => (),
-    //             }
-    //         }
-    //         info!("Stdin EOF, shutting down.");
-    //     });
-    // }
+    if c.exit_stdin_eof {
+        let scope = scope0.clone();
+        std::thread::spawn(move || {
+            use std::io::Read;
+
+            let stdin = std::io::stdin();
+            let mut stdin = stdin.lock();
+            let mut buf = vec![0u8; 4096];
+            loop {
+                match stdin.read(&mut buf) {
+                    Ok(0) => break,
+                    Err(e) => {
+                        warn!("Error read from stdin: {}", e);
+                        break;
+                    }
+                    _ => (),
+                }
+            }
+            info!("Stdin EOF, shutting down.");
+            scope.cancel();
+        });
+    }
     #[cfg(unix)]
     scope0.clone().spawn_canceller(async move {
         use tokio_signal::unix::{Signal, SIGTERM};
@@ -93,5 +101,6 @@ pub async fn run(c: Config) -> Result<(), Error> {
     });
 
     scope0.cancelled().await;
+    schedule_force_shutdown();
     Ok(())
 }
