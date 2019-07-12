@@ -21,14 +21,18 @@
 
 use crate::async_utils::blocking;
 
-use parking_lot::Mutex;
 use std::ffi::CString;
 use std::fmt;
 use std::io::{self, Error, ErrorKind, Read, Write};
 use std::mem::zeroed;
 use std::net::Ipv4Addr;
 use std::ptr::null_mut;
+use std::sync::Arc;
 
+use futures::channel::mpsc::{channel, Receiver};
+use futures::lock::Mutex as AsyncMutex;
+use futures::prelude::*;
+use parking_lot::Mutex;
 use winapi::shared::winerror::ERROR_IO_PENDING;
 use winapi::um::fileapi::{CreateFileA, ReadFile, WriteFile, OPEN_EXISTING};
 use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
@@ -51,7 +55,8 @@ const fn tap_control_code(request: u32, method: u32) -> u32 {
 }
 
 pub struct AsyncTun {
-    tun: Tun,
+    tun: Arc<Tun>,
+    read_rx: AsyncMutex<Receiver<io::Result<Vec<u8>>>>,
 }
 
 impl Drop for AsyncTun {
@@ -61,12 +66,48 @@ impl Drop for AsyncTun {
 }
 
 impl AsyncTun {
+    pub fn open(alias: &str, network: NetworkConfig) -> io::Result<AsyncTun> {
+        let tun = Tun::open(alias, network)?;
+        Ok(AsyncTun::new(tun))
+    }
+
     fn new(tun: Tun) -> AsyncTun {
-        AsyncTun { tun }
+        let tun = Arc::new(tun);
+        let (mut read_tx, read_rx) = channel(8);
+        std::thread::spawn({
+            let tun = tun.clone();
+            move || {
+                futures::executor::block_on(async move {
+                    loop {
+                        let mut buf = vec![0u8; 65536];
+                        let result = match tun.read(&mut buf[..]) {
+                            Err(e) => Err(e),
+                            Ok(len) => {
+                                buf.truncate(len);
+                                Ok(buf)
+                            }
+                        };
+                        if read_tx.send(result).await.is_err() {
+                            break;
+                        }
+                    }
+                });
+            }
+        });
+        AsyncTun {
+            tun,
+            read_rx: AsyncMutex::new(read_rx),
+        }
     }
 
     pub async fn read<'a>(&'a self, buf: &'a mut [u8]) -> io::Result<usize> {
-        blocking(|| self.tun.read(buf)).await
+        // Don't use `blocking` for operations that may block forever.
+
+        let mut rx = self.read_rx.lock().await;
+        let p = rx.next().await.unwrap()?;
+        let len = std::cmp::min(p.len(), buf.len());
+        buf[..len].copy_from_slice(&p[..len]);
+        Ok(len)
     }
 
     pub async fn write<'a>(&'a self, buf: &'a [u8]) -> io::Result<usize> {
@@ -75,7 +116,7 @@ impl AsyncTun {
 }
 
 /// A handle to a tun device.
-pub struct Tun {
+struct Tun {
     handle: HandleWrapper,
     read_overlapped: Mutex<OverlappedWrapper>,
     write_overlapped: Mutex<OverlappedWrapper>,
@@ -283,11 +324,6 @@ impl Tun {
                 cancel_event,
             })
         }
-    }
-
-    pub fn open_async(alias: &str, network: NetworkConfig) -> io::Result<AsyncTun> {
-        let tun = Tun::open(alias, network)?;
-        Ok(AsyncTun::new(tun))
     }
 
     /// Read a packet from the device.

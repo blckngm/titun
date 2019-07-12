@@ -27,7 +27,9 @@
 
 #![cfg(windows)]
 
+use futures::channel::mpsc::{channel, Receiver};
 use futures::io::{AsyncRead, AsyncWrite};
+use futures::{SinkExt, StreamExt};
 use std::borrow::Cow;
 use std::ffi::OsString;
 use std::io::{self, Read, Write};
@@ -47,6 +49,32 @@ use winapi::um::winbase::{
     PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
 };
 use winapi::um::winnt::{FILE_ATTRIBUTE_NORMAL, GENERIC_READ, GENERIC_WRITE, HANDLE};
+
+pub struct AsyncPipeListener {
+    rx: Receiver<io::Result<PipeStream>>,
+}
+
+impl AsyncPipeListener {
+    pub fn bind<P: Into<Cow<'static, Path>>>(path: P) -> io::Result<Self> {
+        let (mut tx, rx) = channel(0);
+        let mut listener = PipeListener::bind(path)?;
+        std::thread::spawn(move || {
+            futures::executor::block_on(async move {
+                loop {
+                    let stream_or_error = listener.accept();
+                    if tx.send(stream_or_error).await.is_err() {
+                        break;
+                    }
+                }
+            });
+        });
+        Ok(Self { rx })
+    }
+
+    pub async fn accept(&mut self) -> io::Result<PipeStream> {
+        self.rx.next().await.unwrap()
+    }
+}
 
 #[derive(Debug)]
 pub struct PipeStream {
@@ -167,6 +195,7 @@ impl AsyncRead for PipeStream {
         _cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
+        // TODO: use dedicated thread and channel.
         tokio_threadpool::blocking(|| self.read(buf)).map(|r| r.unwrap())
     }
 }
@@ -221,7 +250,7 @@ impl FromRawHandle for PipeStream {
 }
 
 #[derive(Debug)]
-pub struct PipeListener<'a> {
+struct PipeListener<'a> {
     path: Cow<'a, Path>,
     next_pipe: Handle,
 }
@@ -295,15 +324,6 @@ impl<'a> PipeListener<'a> {
 
     pub fn incoming<'b>(&'b mut self) -> Incoming<'b, 'a> {
         Incoming { listener: self }
-    }
-}
-
-// Unable to make rustc happy about this lifetime with async/await. Just use 'static.
-impl PipeListener<'static> {
-    pub fn accept_async<'a>(
-        &'a mut self,
-    ) -> impl futures::Future<Output = io::Result<PipeStream>> + 'a {
-        crate::async_utils::blocking(move || self.accept())
     }
 }
 

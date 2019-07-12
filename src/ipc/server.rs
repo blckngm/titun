@@ -36,10 +36,10 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
 
     let mut path = Path::new(r#"\\.\pipe\wireguard"#).join(dev_name);
     path.set_extension("sock");
-    let mut listener = PipeListener::bind(path).context("Bind IPC socket")?;
+    let mut listener = AsyncPipeListener::bind(path).context("Bind IPC socket")?;
     loop {
         let wg = wg.clone();
-        let stream = listener.accept_async().await?;
+        let stream = listener.accept().await?;
         tokio::spawn(async move {
             serve(&wg, stream).await.unwrap_or_else(|e| {
                 warn!("Error serving IPC connection: {}", e);
