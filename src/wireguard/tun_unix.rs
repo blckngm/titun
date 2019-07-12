@@ -59,6 +59,13 @@ pub struct AsyncTun {
 }
 
 impl AsyncTun {
+    pub fn open(name: impl AsRef<str>) -> Result<AsyncTun, Error> {
+        let tun = Tun::open(name.as_ref(), OFlag::O_NONBLOCK)?;
+        Ok(AsyncTun {
+            io: PollEvented::new(tun),
+        })
+    }
+
     pub fn get_name(&self) -> &str {
         self.io.get_ref().get_name()
     }
@@ -100,7 +107,7 @@ impl AsyncTun {
 
 /// A linux tun device.
 #[derive(Debug)]
-pub struct Tun {
+struct Tun {
     fd: i32,
     name: String,
 }
@@ -118,17 +125,14 @@ impl Tun {
 
     /// O_CLOEXEC, IFF_NO_PI.
     #[cfg(target_os = "linux")]
-    pub fn create(name: Option<&str>, extra_flags: OFlag) -> Result<Tun, Error> {
+    pub fn open(name: &str, extra_flags: OFlag) -> Result<Tun, Error> {
         use std::ffi::{CStr, CString};
 
-        if let Some(n) = name {
-            // IFNAMESIZ is 16.
-            if n.len() > 15 {
-                bail!("Device name is too long.");
-            }
+        if name.len() > 15 {
+            bail!("Device name is too long.");
         }
 
-        let name = CString::new(name.unwrap_or(""))?;
+        let name = CString::new(name)?;
         let name = name.as_bytes_with_nul();
 
         let fd = open(
@@ -166,12 +170,10 @@ impl Tun {
 
     // BSD systems.
     #[cfg(not(target_os = "linux"))]
-    pub fn create(name: Option<&str>, extra_flags: OFlag) -> Result<Tun, Error> {
+    pub fn open(name: &str, extra_flags: OFlag) -> Result<Tun, Error> {
         use std::path::Path;
 
-        let name = name
-            .ok_or_else(|| format_err!("Tun device name must be specified"))?
-            .to_string();
+        let name = name.to_string();
         if !name.starts_with("tun") || name[3..].parse::<u32>().is_err() {
             bail!(
                 "Invalid tun device name {}: must be tunN where N is an integer.",
@@ -193,13 +195,6 @@ impl Tun {
         }
 
         Ok(tun)
-    }
-
-    pub fn create_async(name: Option<&str>) -> Result<AsyncTun, Error> {
-        let tun = Tun::create(name, OFlag::O_NONBLOCK)?;
-        Ok(AsyncTun {
-            io: PollEvented::new(tun),
-        })
     }
 
     /// Get name of this device. Should be the same name if you have

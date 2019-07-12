@@ -40,7 +40,7 @@ async fn main() -> Result<(), Error> {
 mod imp {
     use failure::Error;
     use std::process::{Child, Command};
-    use titun::wireguard::Tun;
+    use titun::wireguard::AsyncTun;
 
     fn up_and_ping(name: &str) -> Result<Child, Error> {
         Command::new("ifconfig").args(&[name, "up"]).output()?;
@@ -64,7 +64,7 @@ mod imp {
     }
 
     pub async fn main() -> Result<(), Error> {
-        let t = Tun::create_async(Some("tun7"))?;
+        let t = AsyncTun::open("tun7")?;
 
         up_and_ping(t.get_name())?;
 

@@ -41,7 +41,6 @@ ring = { path = "patched/ring" }
 tai64 = {version = "1", default-features = false}
 tokio = { git = "https://github.com/sopium/tokio.git", branch = "futures-io" }
 tokio-signal = { git = "https://github.com/sopium/tokio.git", branch = "futures-io" }
-tokio-uds = { git = "https://github.com/sopium/tokio.git", branch = "futures-io" }
 tokio-threadpool = { git = "https://github.com/sopium/tokio.git", branch = "futures-io" }
 
 [target.'cfg(windows)'.dependencies]

@@ -56,7 +56,7 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
     use pin_utils::pin_mut;
     use std::fs::{create_dir_all, remove_file};
     use tokio::io::AsyncReadExt;
-    use tokio_uds::UnixListener;
+    use tokio::net::UnixListener;
 
     umask(Mode::from_bits(0o077).unwrap());
     let dir = Path::new(r#"/var/run/wireguard"#);
