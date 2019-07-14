@@ -52,7 +52,7 @@ pub fn cookie_reply(
 
     {
         let (nonce, encrypted_cookie) = out[8..64].split_at_mut(24);
-        OsRng::new().unwrap().fill_bytes(nonce);
+        OsRng.fill_bytes(nonce);
 
         // Calc encryption key.
         let temp = Blake2s::new(32)
@@ -136,7 +136,7 @@ mod tests {
 
     #[test]
     fn cookie() {
-        let mut rng = OsRng::new().unwrap();
+        let mut rng = OsRng;
         let mut pk = [0u8; 32];
         rng.fill_bytes(&mut pk);
 
@@ -158,7 +158,7 @@ mod tests {
     #[cfg(feature = "bench")]
     #[bench]
     fn bench_cookie_reply(b: &mut crate::test::Bencher) {
-        let mut rng = OsRng::new().unwrap();
+        let mut rng = OsRng;
 
         let mut pk = [0u8; 32];
         rng.fill_bytes(&mut pk);

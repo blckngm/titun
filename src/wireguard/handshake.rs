@@ -21,6 +21,7 @@ use crate::wireguard::*;
 use noise_protocol::patterns::noise_ik_psk2;
 use noise_protocol::*;
 use ring::constant_time::verify_slices_are_equal;
+use std::convert::TryInto;
 use tai64::TAI64N;
 
 const PROLOGUE: &[u8] = b"WireGuard v1 zx2c4 Jason@zx2c4.com";
@@ -105,7 +106,7 @@ pub fn initiate(
 
     // Noise part: e, s, timestamp.
     let timestamp = TAI64N::now();
-    hs.write_message(&timestamp.to_external(), &mut msg[8..116])
+    hs.write_message(&timestamp.to_bytes(), &mut msg[8..116])
         .map_err(|_| ())?;
 
     // Mac1.
@@ -153,7 +154,7 @@ pub fn process_initiation(wg: &WgInfo, msg: &[u8]) -> Result<InitProcessResult, 
     let mut timestamp = [0u8; 12];
     hs.read_message(&msg[8..116], &mut timestamp)
         .map_err(|_| ())?;
-    let timestamp = TAI64N::from_external(&timestamp).ok_or(())?;
+    let timestamp = timestamp.try_into().map_err(|_| ())?;
 
     Ok(InitProcessResult {
         peer_id: peer_index,
@@ -283,7 +284,7 @@ mod tests {
     #[test]
     fn wg_handshake_init_responde_with_psk() {
         let mut psk = [0u8; 32];
-        OsRng::new().unwrap().fill_bytes(&mut psk);
+        OsRng.fill_bytes(&mut psk);
 
         let k = X25519::genkey();
         let init = WgInfo {

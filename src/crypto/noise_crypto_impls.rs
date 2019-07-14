@@ -139,7 +139,7 @@ impl DH for X25519 {
 
     fn genkey() -> Self::Key {
         let mut k = [0u8; 32];
-        OsRng::new().unwrap().fill_bytes(&mut k);
+        OsRng.fill_bytes(&mut k);
         k[0] &= 248;
         k[31] &= 127;
         k[31] |= 64;
@@ -204,7 +204,7 @@ mod benches {
 
     #[bench]
     fn chacha20poly1305(b: &mut crate::test::Bencher) {
-        let mut rng = OsRng::new().unwrap();
+        let mut rng = OsRng;
 
         const MSG_LEN: usize = 1400;
         let mut key = [0u8; 32];

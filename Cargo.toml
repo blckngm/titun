@@ -34,11 +34,11 @@ net2 = "0.2.33"
 nix = "0.13"
 noise-protocol = "0.1.0"
 num_cpus = "1.9.0"
-parking_lot = "0.8"
+parking_lot = "0.9"
 pin-utils = "0.1.0-alpha.4"
-rand = "0.6"
+rand = "0.7"
 ring = { path = "patched/ring" }
-tai64 = {version = "1", default-features = false}
+tai64 = "2.0.1"
 tokio = { git = "https://github.com/sopium/tokio.git", branch = "futures-io" }
 tokio-signal = { git = "https://github.com/sopium/tokio.git", branch = "futures-io" }
 tokio-threadpool = { git = "https://github.com/sopium/tokio.git", branch = "futures-io" }

@@ -593,7 +593,7 @@ impl WgState {
     /// Create a new `WgState`, start worker threads.
     pub fn new(mut info: WgInfo, tun: AsyncTun) -> Result<Arc<WgState>, Error> {
         let mut cookie = [0u8; 32];
-        OsRng::new().unwrap().fill_bytes(&mut cookie);
+        OsRng.fill_bytes(&mut cookie);
 
         let socket = WgState::prepare_socket(&mut info.port, info.fwmark)?;
 
@@ -620,7 +620,7 @@ impl WgState {
                 loop {
                     delay(Duration::from_secs(120)).await;
                     let mut cookie = wg.cookie_secret.write();
-                    OsRng::new().unwrap().fill_bytes(&mut cookie[..]);
+                    OsRng.fill_bytes(&mut cookie[..]);
                 }
             });
         }

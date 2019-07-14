@@ -104,7 +104,7 @@ impl Id {
     /// Generate a new random ID.
     pub fn gen() -> Id {
         let mut id = [0u8; 4];
-        OsRng::new().unwrap().fill_bytes(&mut id);
+        OsRng.fill_bytes(&mut id);
         Id(id)
     }
 
