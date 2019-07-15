@@ -55,7 +55,6 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
     use nix::sys::stat::{umask, Mode};
     use pin_utils::pin_mut;
     use std::fs::{create_dir_all, remove_file};
-    use tokio::io::AsyncReadExt;
     use tokio::net::UnixListener;
 
     umask(Mode::from_bits(0o077).unwrap());
@@ -82,8 +81,9 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
                 return Ok(());
             },
         };
+        let stream = super::compat::Compat::new(stream);
         tokio::spawn(async move {
-            serve(&wg, stream.compat()).await.unwrap_or_else(|e| {
+            serve(&wg, stream).await.unwrap_or_else(|e| {
                 warn!("Error serving IPC connection: {}", e);
             })
         });

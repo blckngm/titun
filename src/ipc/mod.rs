@@ -17,6 +17,8 @@
 
 pub mod commands;
 // Export for parsing.
+#[cfg(not(windows))]
+mod compat;
 #[doc(hidden)]
 pub mod parse;
 mod server;
