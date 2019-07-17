@@ -29,6 +29,8 @@ const LABEL_MAC1: &[u8] = b"mac1----";
 
 pub const HANDSHAKE_INIT_LEN: usize = 148;
 pub const HANDSHAKE_RESP_LEN: usize = 92;
+/// Timestamp precision: 50 micro seconds.
+const TIMESTAMP_PRECISION: u32 = 50_000;
 
 pub type HS = HandshakeState<X25519, ChaCha20Poly1305, NoiseBlake2s>;
 
@@ -105,7 +107,9 @@ pub fn initiate(
     msg[4..8].copy_from_slice(self_index.as_slice());
 
     // Noise part: e, s, timestamp.
-    let timestamp = TAI64N::now();
+    let mut timestamp = TAI64N::now();
+    // Truncate the timestamp to avoid being a timing oracle for other attacks.
+    timestamp.1 = timestamp.1 / TIMESTAMP_PRECISION * TIMESTAMP_PRECISION;
     hs.write_message(&timestamp.to_bytes(), &mut msg[8..116])
         .map_err(|_| ())?;
 
