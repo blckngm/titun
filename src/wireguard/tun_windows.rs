@@ -29,7 +29,7 @@ use std::net::Ipv4Addr;
 use std::ptr::null_mut;
 use std::sync::Arc;
 
-use futures::channel::mpsc::{channel, Receiver};
+use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::lock::Mutex as AsyncMutex;
 use futures::prelude::*;
 use parking_lot::Mutex;
@@ -56,7 +56,12 @@ const fn tap_control_code(request: u32, method: u32) -> u32 {
 
 pub struct AsyncTun {
     tun: Arc<Tun>,
-    read_rx: AsyncMutex<Receiver<io::Result<Vec<u8>>>>,
+    channels: AsyncMutex<TunChannels>,
+}
+
+struct TunChannels {
+    read_rx: Receiver<io::Result<(Box<[u8]>, usize)>>,
+    buffer_tx: Sender<Box<[u8]>>,
 }
 
 impl Drop for AsyncTun {
@@ -73,22 +78,37 @@ impl AsyncTun {
 
     fn new(tun: Tun) -> AsyncTun {
         let tun = Arc::new(tun);
-        let (mut read_tx, read_rx) = channel(8);
+        // read thread -> async fn read.
+        let (mut read_tx, read_rx) = channel(2);
+        // async fn read -> read thread, to reuse buffers.
+        let (mut buffer_tx, mut buffer_rx) = channel::<Box<[u8]>>(2);
+        buffer_tx.try_send(vec![0u8; 65536].into()).unwrap();
+        buffer_tx.try_send(vec![0u8; 65536].into()).unwrap();
         std::thread::spawn({
             let tun = tun.clone();
             move || {
                 futures::executor::block_on(async move {
-                    loop {
-                        let mut buf = vec![0u8; 65536];
-                        let result = match tun.read(&mut buf[..]) {
-                            Err(e) => Err(e),
-                            Ok(len) => {
-                                buf.truncate(len);
-                                Ok(buf)
-                            }
+                    'outer: loop {
+                        let mut buf = match buffer_rx.next().await {
+                            None => break,
+                            Some(buf) => buf,
                         };
-                        if read_tx.send(result).await.is_err() {
-                            break;
+                        // We don't want to consume the `buf` when we get an
+                        // `Err`. So loop until we get an `Ok`.
+                        loop {
+                            match tun.read(&mut buf[..]) {
+                                Err(e) => {
+                                    if read_tx.send(Err(e)).await.is_err() {
+                                        break 'outer;
+                                    }
+                                }
+                                Ok(len) => {
+                                    if read_tx.send(Ok((buf, len))).await.is_err() {
+                                        break 'outer;
+                                    }
+                                    break;
+                                }
+                            }
                         }
                     }
                 });
@@ -96,17 +116,19 @@ impl AsyncTun {
         });
         AsyncTun {
             tun,
-            read_rx: AsyncMutex::new(read_rx),
+            channels: AsyncMutex::new(TunChannels { read_rx, buffer_tx }),
         }
     }
 
     pub async fn read<'a>(&'a self, buf: &'a mut [u8]) -> io::Result<usize> {
         // Don't use `blocking` for operations that may block forever.
 
-        let mut rx = self.read_rx.lock().await;
-        let p = rx.next().await.unwrap()?;
-        let len = std::cmp::min(p.len(), buf.len());
+        let mut channels = self.channels.lock().await;
+
+        let (p, p_len) = channels.read_rx.next().await.unwrap()?;
+        let len = std::cmp::min(p_len, buf.len());
         buf[..len].copy_from_slice(&p[..len]);
+        channels.buffer_tx.send(p).await.unwrap();
         Ok(len)
     }
 
