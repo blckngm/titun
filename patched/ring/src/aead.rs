@@ -236,6 +236,44 @@ fn open_within_<'in_out, A: AsRef<[u8]>>(
     )
 }
 
+#[inline]
+fn open_<'in_out, A: AsRef<[u8]>>(
+    key: &UnboundKey,
+    nonce: Nonce,
+    Aad(aad): Aad<A>,
+    ciphertext_and_tag: &[u8],
+    plaintext: &mut [u8],
+) -> Result<(), error::Unspecified> {
+    if ciphertext_and_tag.len().checked_sub(TAG_LEN) != Some(plaintext.len()) {
+        return Err(error::Unspecified);
+    }
+    check_per_nonce_max_bytes(key.algorithm, plaintext.len())?;
+
+    let (ciphertext, received_tag) = ciphertext_and_tag.split_at(plaintext.len());
+    plaintext.copy_from_slice(ciphertext);
+    let in_out = plaintext;
+
+    let Tag(calculated_tag) = (key.algorithm.open)(
+        &key.inner,
+        nonce,
+        Aad::from(aad.as_ref()),
+        0,
+        in_out,
+        key.cpu_features,
+    );
+    if constant_time::verify_slices_are_equal(calculated_tag.as_ref(), received_tag).is_err() {
+        // Zero out the plaintext so that it isn't accidentally leaked or used
+        // after verification fails. It would be safest if we could check the
+        // tag before decrypting, but some `open` implementations interleave
+        // authentication with decryption for performance.
+        for b in in_out {
+            *b = 0;
+        }
+        return Err(error::Unspecified);
+    }
+    Ok(())
+}
+
 /// An AEAD key for encrypting and signing ("sealing"), bound to a nonce
 /// sequence.
 ///
@@ -351,44 +389,6 @@ fn seal_in_place_separate_tag_(
         in_out,
         key.cpu_features,
     ))
-}
-
-/// Seal, not in place.
-pub fn seal(
-    key: &SealingKey, nonce: Nonce, aad: Aad, _in: &[u8], out: &mut [u8],
-) -> Result<(), error::Unspecified> {
-    out[.._in.len()].copy_from_slice(_in);
-    let _ = seal_in_place(key, nonce, aad, out, out.len() - _in.len())?;
-    Ok(())
-}
-
-/// Open, not in place.
-pub fn open(key: &OpeningKey, nonce: Nonce, aad: Aad, _in: &[u8], out: &mut [u8]) -> Result<(), error::Unspecified> {
-    if _in.len() != out.len() + 16 {
-        return Err(error::Unspecified);
-    }
-    check_per_nonce_max_bytes(key.key.algorithm, out.len())?;
-    let (ciphertext, received_tag) = _in.split_at(out.len());
-    out.copy_from_slice(ciphertext);
-    let Tag(calculated_tag) = (key.key.algorithm.open)(
-        &key.key.inner,
-        nonce,
-        aad,
-        0,
-        out,
-        key.key.cpu_features,
-    );
-    if constant_time::verify_slices_are_equal(calculated_tag.as_ref(), received_tag).is_err() {
-        // Zero out the plaintext so that it isn't accidentally leaked or used
-        // after verification fails. It would be safest if we could check the
-        // tag before decrypting, but some `open` implementations interleave
-        // authentication with decryption for performance.
-        for b in out {
-            *b = 0;
-        }
-        return Err(error::Unspecified);
-    }
-    Ok(())
 }
 
 /// The additionally authenticated data (AAD) for an opening or sealing
@@ -528,6 +528,41 @@ impl LessSafeKey {
         A: AsRef<[u8]>,
     {
         open_within_(&self.key, nonce, aad, in_out, ciphertext_and_tag)
+    }
+
+    /// Open.
+    #[inline]
+    pub fn open<A>(
+        &self,
+        nonce: Nonce,
+        aad: Aad<A>,
+        ciphertext_and_tag: &[u8],
+        plaintext: &mut [u8],
+    ) -> Result<(), error::Unspecified>
+    where
+        A: AsRef<[u8]>,
+    {
+        open_(&self.key, nonce, aad, ciphertext_and_tag, plaintext)
+    }
+
+    /// Seal.
+    pub fn seal<A>(
+        &self,
+        nonce: Nonce,
+        aad: Aad<A>,
+        plaintext: &[u8],
+        ciphertext_and_tag: &mut [u8],
+    ) -> Result<(), error::Unspecified>
+    where
+        A: AsRef<[u8]>,
+    {
+        if plaintext.len().checked_add(TAG_LEN) != Some(ciphertext_and_tag.len()) {
+            return Err(error::Unspecified);
+        }
+        ciphertext_and_tag[..plaintext.len()].copy_from_slice(plaintext);
+        let tag = self.seal_in_place_separate_tag(nonce, aad, &mut ciphertext_and_tag[..plaintext.len()])?;
+        ciphertext_and_tag[plaintext.len()..].copy_from_slice(tag.as_ref());
+        Ok(())
     }
 
     /// Deprecated. Renamed to [`seal_in_place_append_tag()`].

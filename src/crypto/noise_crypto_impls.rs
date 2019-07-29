@@ -171,11 +171,11 @@ impl Cipher for ChaCha20Poly1305 {
         let mut n = [0u8; 12];
         n[4..].copy_from_slice(&nonce.to_le_bytes());
 
-        let k = SealingKey::new(&CHACHA20_POLY1305, k.as_slice()).unwrap();
+        let k = LessSafeKey::new(UnboundKey::new(&CHACHA20_POLY1305, k.as_slice()).unwrap());
         let aad = Aad::from(ad);
         let n = Nonce::assume_unique_for_key(n);
 
-        seal(&k, n, aad, plaintext, out).unwrap();
+        k.seal(n, aad, plaintext, out).unwrap();
     }
 
     fn decrypt(
@@ -190,11 +190,11 @@ impl Cipher for ChaCha20Poly1305 {
         let mut n = [0u8; 12];
         n[4..].copy_from_slice(&nonce.to_le_bytes());
 
-        let k = OpeningKey::new(&CHACHA20_POLY1305, k.as_slice()).unwrap();
+        let k = LessSafeKey::new(UnboundKey::new(&CHACHA20_POLY1305, k.as_slice()).unwrap());
         let aad = Aad::from(ad);
         let n = Nonce::assume_unique_for_key(n);
 
-        open(&k, n, aad, ciphertext, out).map_err(|_| ())
+        k.open(n, aad, ciphertext, out).map_err(|_| ())
     }
 }
 

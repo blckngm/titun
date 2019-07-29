@@ -125,11 +125,11 @@ pub fn encrypt(key: &[u8], nonce: &[u8], ad: &[u8], p: &[u8], out: &mut [u8]) {
     let mut real_nonce = [0u8; 12];
     real_nonce[4..].copy_from_slice(chacha_nonce);
 
-    let key = SealingKey::new(&CHACHA20_POLY1305, &real_key).unwrap();
+    let key = LessSafeKey::new(UnboundKey::new(&CHACHA20_POLY1305, &real_key).unwrap());
     let aad = Aad::from(ad);
     let nonce = Nonce::assume_unique_for_key(real_nonce);
 
-    seal(&key, nonce, aad, p, out).unwrap();
+    key.seal(nonce, aad, p, out).unwrap();
 }
 
 pub fn decrypt(key: &[u8], nonce: &[u8], ad: &[u8], c: &[u8], out: &mut [u8]) -> Result<(), ()> {
@@ -142,11 +142,11 @@ pub fn decrypt(key: &[u8], nonce: &[u8], ad: &[u8], c: &[u8], out: &mut [u8]) ->
     let mut real_nonce = [0u8; 12];
     real_nonce[4..].copy_from_slice(chacha_nonce);
 
-    let key = OpeningKey::new(&CHACHA20_POLY1305, &real_key).unwrap();
+    let key = LessSafeKey::new(UnboundKey::new(&CHACHA20_POLY1305, &real_key).unwrap());
     let aad = Aad::from(ad);
     let nonce = Nonce::assume_unique_for_key(real_nonce);
 
-    open(&key, nonce, aad, c, out).map_err(|_| ())
+    key.open(nonce, aad, c, out).map_err(|_| ())
 }
 
 #[cfg(test)]
