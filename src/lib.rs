@@ -17,9 +17,6 @@
 
 #![cfg_attr(feature = "bench", feature(test))]
 #![feature(async_await)]
-// Too many false positives with async/await:
-// https://github.com/rust-lang/rust-clippy/issues/3988
-#![allow(clippy::needless_lifetimes)]
 
 #[cfg(feature = "bench")]
 extern crate test;

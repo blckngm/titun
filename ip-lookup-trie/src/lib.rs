@@ -437,7 +437,7 @@ impl<A: Address, T> IpLookupTable<A, T> {
     }
 
     /// Get iterator.
-    pub fn iter<'a>(&'a self) -> Iter<'a, A, T> {
+    pub fn iter(&self) -> Iter<'_, A, T> {
         self.into_iter()
     }
 
@@ -454,7 +454,7 @@ impl<A: Address, T> IpLookupTable<A, T> {
 /// Iterator.
 #[allow(missing_debug_implementations)]
 pub struct Iter<'a, A: Address, T> {
-    nodes: Vec<&'a Box<TrieNode<A::U, T>>>,
+    nodes: Vec<&'a TrieNode<A::U, T>>,
 }
 
 impl<'a, A: Address, T> Iterator for Iter<'a, A, T> {
@@ -463,8 +463,12 @@ impl<'a, A: Address, T> Iterator for Iter<'a, A, T> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(n) = self.nodes.pop() {
-                self.nodes.extend(&n.right);
-                self.nodes.extend(&n.left);
+                if let Some(ref n) = n.right {
+                    self.nodes.push(&n);
+                }
+                if let Some(ref n) = n.left {
+                    self.nodes.push(&n);
+                }
                 if let Some(ref t) = n.value {
                     return Some((A::from_integer(n.k), n.len, t));
                 }
@@ -481,7 +485,7 @@ impl<'a, A: Address, T> IntoIterator for &'a IpLookupTable<A, T> {
 
     fn into_iter(self) -> Iter<'a, A, T> {
         Iter {
-            nodes: self.root.iter().collect(),
+            nodes: self.root.iter().map(|n| &**n).collect()
         }
     }
 }
@@ -489,7 +493,7 @@ impl<'a, A: Address, T> IntoIterator for &'a IpLookupTable<A, T> {
 /// Iterator.
 #[allow(missing_debug_implementations)]
 pub struct IntoIter<A: Address, T> {
-    nodes: Vec<Box<TrieNode<A::U, T>>>,
+    nodes: Vec<TrieNode<A::U, T>>,
 }
 
 impl<A: Address, T> Iterator for IntoIter<A, T> {
@@ -498,8 +502,8 @@ impl<A: Address, T> Iterator for IntoIter<A, T> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(n) = self.nodes.pop() {
-                self.nodes.extend(n.right);
-                self.nodes.extend(n.left);
+                self.nodes.extend(n.right.map(|n| *n));
+                self.nodes.extend(n.left.map(|n| *n));
                 if let Some(t) = n.value {
                     return Some((A::from_integer(n.k), n.len, t));
                 }
@@ -516,7 +520,7 @@ impl<A: Address, T> IntoIterator for IpLookupTable<A, T> {
 
     fn into_iter(self) -> IntoIter<A, T> {
         IntoIter {
-            nodes: self.root.into_iter().collect(),
+            nodes: self.root.into_iter().map(|n| *n).collect(),
         }
     }
 }
