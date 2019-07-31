@@ -485,7 +485,7 @@ impl<'a, A: Address, T> IntoIterator for &'a IpLookupTable<A, T> {
 
     fn into_iter(self) -> Iter<'a, A, T> {
         Iter {
-            nodes: self.root.iter().map(|n| &**n).collect()
+            nodes: self.root.iter().map(|n| &**n).collect(),
         }
     }
 }
