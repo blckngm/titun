@@ -9,15 +9,12 @@ before_script:
 - rustc --version && cargo --version
 
 test:
-  variables:
-    RUSTUP_TOOLCHAIN: nightly
   script:
   - cargo test --locked --all --verbose --jobs 1 -- --nocapture
   - cargo test --locked --all --verbose --jobs 1 --features=bench -- --nocapture
 
 aarch64:
   variables:
-    RUSTUP_TOOLCHAIN: nightly
     CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
     CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER: qemu-aarch64-static -L /usr/aarch64-linux-gnu
   script:
@@ -26,16 +23,12 @@ aarch64:
   - cargo test --target aarch64-unknown-linux-gnu --locked --all --jobs 1
 
 freebsd:
-  variables:
-    RUSTUP_TOOLCHAIN: nightly
   script:
   - rustup target add x86_64-unknown-freebsd
   - cargo check --target x86_64-unknown-freebsd --locked --all --tests --jobs 1
 
 fmt:
   allow_failure: true
-  variables:
-    RUSTUP_TOOLCHAIN: nightly
   script:
   - rustup component add rustfmt
   - cargo fmt -- --check
