@@ -71,7 +71,8 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
     pin_mut!(deleted);
 
     loop {
-        let mut accept = listener.accept().fuse();
+        let accept = listener.accept().fuse();
+        pin_mut!(accept);
         let wg = wg.clone();
         let (stream, _) = select! {
             stream_or_err = accept => stream_or_err?,

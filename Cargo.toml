@@ -31,7 +31,7 @@ ip-lookup-trie = { path = "./ip-lookup-trie" }
 log = "0.4.3"
 mio = "0.6"
 net2 = "0.2.33"
-nix = "0.13"
+nix = "0.14.1"
 noise-protocol = "0.1.0"
 num_cpus = "1.9.0"
 parking_lot = "0.9"
