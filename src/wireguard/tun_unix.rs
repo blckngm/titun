@@ -23,7 +23,7 @@ use futures::ready;
 use mio::event::Evented;
 use mio::unix::{EventedFd, UnixReady};
 use mio::{Poll as MioPoll, PollOpt, Ready, Token};
-use nix::fcntl::{fcntl, open, FcntlArg, OFlag};
+use nix::fcntl::{open, OFlag};
 use nix::sys::stat::Mode;
 use nix::unistd::{close, read, write};
 use std::io::{self, Error as IOError, Read, Write};
@@ -201,15 +201,6 @@ impl Tun {
     /// passed one in when createing the device.
     pub fn get_name(&self) -> &str {
         self.name.as_str()
-    }
-
-    pub fn set_nonblocking(&self, nb: bool) -> Result<(), Error> {
-        let flags = fcntl(self.fd, FcntlArg::F_GETFL)?;
-        // XXX: Nix won't recognize O_LARGEFILE because libc O_LARGEFILE is 0!
-        let mut flags = OFlag::from_bits_truncate(flags);
-        flags.set(OFlag::O_NONBLOCK, nb);
-        fcntl(self.fd, FcntlArg::F_SETFL(flags))?;
-        Ok(())
     }
 }
 

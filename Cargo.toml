@@ -25,13 +25,13 @@ clap = { version = "2.19.3", default-features = false }
 env_logger = { version = "0.6", default-features = false }
 failure = "0.1"
 fnv = "1.0.6"
-futures-preview = { version = "0.3.0-alpha.17", features = ["nightly", "async-await"] }
+futures-preview = { version = "0.3.0-alpha.18", features = ["nightly", "async-await"] }
 hex = "0.3"
 ip-lookup-trie = { path = "./ip-lookup-trie" }
 log = "0.4.3"
 mio = "0.6"
 net2 = "0.2.33"
-nix = "0.14.1"
+nix = "0.15"
 noise-protocol = "0.1.0"
 num_cpus = "1.9.0"
 parking_lot = "0.9"
