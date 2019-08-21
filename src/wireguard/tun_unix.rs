@@ -30,7 +30,7 @@ use std::io::{self, Error as IOError, Read, Write};
 use std::mem;
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
 use std::task::{Context, Poll};
-use tokio::reactor::PollEvented;
+use tokio_net::util::PollEvented;
 
 #[allow(unused)]
 mod ioctl {

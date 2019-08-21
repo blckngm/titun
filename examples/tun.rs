@@ -27,7 +27,6 @@
 // Got packet: 84 bytes
 // Got packet: 84 bytes
 // ...
-#![feature(async_await)]
 
 use failure::Error;
 

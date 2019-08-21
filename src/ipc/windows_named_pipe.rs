@@ -196,7 +196,7 @@ impl AsyncRead for PipeStream {
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
         // TODO: use dedicated thread and channel.
-        tokio_threadpool::blocking(|| self.read(buf)).map(|r| r.unwrap())
+        tokio_executor::threadpool::blocking(|| self.read(buf)).map(|r| r.unwrap())
     }
 }
 
@@ -206,7 +206,7 @@ impl AsyncWrite for PipeStream {
         _cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        tokio_threadpool::blocking(|| self.write(buf)).map(|r| r.unwrap())
+        tokio_executor::threadpool::blocking(|| self.write(buf)).map(|r| r.unwrap())
     }
 
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {

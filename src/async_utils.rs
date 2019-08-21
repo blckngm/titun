@@ -134,7 +134,7 @@ pub fn blocking<T>(f: impl FnOnce() -> T) -> impl futures::Future<Output = T> + 
         // The closure is not redundant!
         // https://github.com/rust-lang/rust-clippy/issues/3071
         #[allow(clippy::redundant_closure)]
-        tokio_threadpool::blocking(|| f.take().unwrap()())
+        tokio_executor::threadpool::blocking(|| f.take().unwrap()())
     })
     .map(|x| x.unwrap())
 }

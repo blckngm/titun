@@ -16,7 +16,6 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 #![cfg_attr(feature = "bench", feature(test))]
-#![feature(async_await)]
 
 #[cfg(feature = "bench")]
 extern crate test;

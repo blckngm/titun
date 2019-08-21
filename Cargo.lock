@@ -570,6 +570,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "proc-macro2"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "unicode-xid 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "quickcheck"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -596,6 +604,14 @@ version = "0.6.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "proc-macro2 0.4.30 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "quote"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "proc-macro2 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -844,6 +860,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "syn"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "proc-macro2 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quote 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "unicode-xid 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "synstructure"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -903,134 +929,49 @@ dependencies = [
  "rand 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ring 0.16.5",
  "tai64 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-signal 0.3.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-threadpool 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
+ "tokio 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-executor 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-net 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi 0.3.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "winreg 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "tokio"
-version = "0.2.0-alpha.1"
-source = "git+https://github.com/tokio-rs/tokio.git#930cce86771d318c640a16483b8b27d48844a8d7"
+version = "0.2.0-alpha.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "futures-core-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-sink-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-util-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "num_cpus 1.10.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-current-thread 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-executor 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-io 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-macros 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-reactor 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-sync 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-threadpool 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-timer 0.3.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-uds 0.3.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
+ "tokio-executor 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-io 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-macros 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-net 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-sync 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-timer 0.3.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tracing-core 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "tokio-codec"
-version = "0.2.0-alpha.1"
-source = "git+https://github.com/tokio-rs/tokio.git#930cce86771d318c640a16483b8b27d48844a8d7"
+version = "0.2.0-alpha.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-core-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-sink-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-io 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
-]
-
-[[package]]
-name = "tokio-current-thread"
-version = "0.2.0-alpha.1"
-source = "git+https://github.com/tokio-rs/tokio.git#930cce86771d318c640a16483b8b27d48844a8d7"
-dependencies = [
- "crossbeam-channel 0.3.9 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-executor 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
+ "tokio-io 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "tokio-executor"
-version = "0.2.0-alpha.1"
-source = "git+https://github.com/tokio-rs/tokio.git#930cce86771d318c640a16483b8b27d48844a8d7"
-
-[[package]]
-name = "tokio-io"
-version = "0.2.0-alpha.1"
-source = "git+https://github.com/tokio-rs/tokio.git#930cce86771d318c640a16483b8b27d48844a8d7"
+version = "0.2.0-alpha.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
- "futures-core-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
- "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "memchr 2.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "tokio-macros"
-version = "0.2.0-alpha.1"
-source = "git+https://github.com/tokio-rs/tokio.git#930cce86771d318c640a16483b8b27d48844a8d7"
-dependencies = [
- "proc-macro2 0.4.30 (registry+https://github.com/rust-lang/crates.io-index)",
- "quote 0.6.13 (registry+https://github.com/rust-lang/crates.io-index)",
- "syn 0.15.44 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "tokio-reactor"
-version = "0.2.0-alpha.1"
-source = "git+https://github.com/tokio-rs/tokio.git#930cce86771d318c640a16483b8b27d48844a8d7"
-dependencies = [
- "crossbeam-utils 0.6.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "futures-core-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
- "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "mio 0.6.19 (registry+https://github.com/rust-lang/crates.io-index)",
- "num_cpus 1.10.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "parking_lot 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "slab 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-executor 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-io 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-sync 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
-]
-
-[[package]]
-name = "tokio-signal"
-version = "0.3.0-alpha.1"
-source = "git+https://github.com/tokio-rs/tokio.git#930cce86771d318c640a16483b8b27d48844a8d7"
-dependencies = [
- "futures-core-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
- "futures-util-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
- "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "libc 0.2.60 (registry+https://github.com/rust-lang/crates.io-index)",
- "mio 0.6.19 (registry+https://github.com/rust-lang/crates.io-index)",
- "mio-uds 0.6.7 (registry+https://github.com/rust-lang/crates.io-index)",
- "signal-hook-registry 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-executor 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-io 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-reactor 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-sync 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "winapi 0.3.7 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "tokio-sync"
-version = "0.2.0-alpha.1"
-source = "git+https://github.com/tokio-rs/tokio.git#930cce86771d318c640a16483b8b27d48844a8d7"
-dependencies = [
- "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "futures-core-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
- "futures-sink-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
- "futures-util-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "tokio-threadpool"
-version = "0.2.0-alpha.1"
-source = "git+https://github.com/tokio-rs/tokio.git#930cce86771d318c640a16483b8b27d48844a8d7"
-dependencies = [
+ "crossbeam-channel 0.3.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "crossbeam-deque 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "crossbeam-queue 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "crossbeam-utils 0.6.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1040,39 +981,79 @@ dependencies = [
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "num_cpus 1.10.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "slab 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-executor 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-sync 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
+ "tokio-sync 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "tokio-io"
+version = "0.2.0-alpha.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
+ "futures-core-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "memchr 2.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pin-utils 0.1.0-alpha.4 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "tokio-macros"
+version = "0.2.0-alpha.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "quote 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "syn 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "tokio-net"
+version = "0.2.0-alpha.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
+ "crossbeam-utils 0.6.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "futures-core-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "futures-sink-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "futures-util-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "iovec 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.60 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "mio 0.6.19 (registry+https://github.com/rust-lang/crates.io-index)",
+ "mio-uds 0.6.7 (registry+https://github.com/rust-lang/crates.io-index)",
+ "num_cpus 1.10.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "parking_lot 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "signal-hook-registry 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "slab 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-codec 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-executor 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-io 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-sync 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "winapi 0.3.7 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "tokio-sync"
+version = "0.2.0-alpha.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "futures-core-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "futures-sink-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "futures-util-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "tokio-timer"
-version = "0.3.0-alpha.1"
-source = "git+https://github.com/tokio-rs/tokio.git#930cce86771d318c640a16483b8b27d48844a8d7"
+version = "0.3.0-alpha.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "crossbeam-utils 0.6.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-core-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-util-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "slab 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-executor 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-sync 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
-]
-
-[[package]]
-name = "tokio-uds"
-version = "0.3.0-alpha.1"
-source = "git+https://github.com/tokio-rs/tokio.git#930cce86771d318c640a16483b8b27d48844a8d7"
-dependencies = [
- "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
- "futures-core-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
- "futures-util-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
- "iovec 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "libc 0.2.60 (registry+https://github.com/rust-lang/crates.io-index)",
- "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "mio 0.6.19 (registry+https://github.com/rust-lang/crates.io-index)",
- "mio-uds 0.6.7 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-codec 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-io 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
- "tokio-reactor 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)",
+ "tokio-executor 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-sync 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1097,6 +1078,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "unicode-xid"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "unicode-xid"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -1311,9 +1297,11 @@ dependencies = [
 "checksum proc-macro-hack 0.5.8 (registry+https://github.com/rust-lang/crates.io-index)" = "982a35d1194084ba319d65c4a68d24ca28f5fdb5b8bc20899e4eef8641ea5178"
 "checksum proc-macro-nested 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)" = "369a6ed065f249a159e06c45752c780bda2fb53c995718f9e484d08daa9eb42e"
 "checksum proc-macro2 0.4.30 (registry+https://github.com/rust-lang/crates.io-index)" = "cf3d2011ab5c909338f7887f4fc896d35932e29146c12c8d01da6b22a80ba759"
+"checksum proc-macro2 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "4c5c2380ae88876faae57698be9e9775e3544decad214599c3a6266cca6ac802"
 "checksum quickcheck 0.8.5 (registry+https://github.com/rust-lang/crates.io-index)" = "9c35d9c36a562f37eca96e79f66d5fd56eefbc22560dacc4a864cabd2d277456"
 "checksum quickcheck_macros 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d7dfc1c4a1e048f5cc7d36a4c4118dfcf31d217c79f4b9a61bad65d68185752c"
 "checksum quote 0.6.13 (registry+https://github.com/rust-lang/crates.io-index)" = "6ce23b6b870e8f94f81fb0a363d65d86675884b34a09043c81e5562f11c1f8e1"
+"checksum quote 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "053a8c8bcc71fcce321828dc897a98ab9760bef03a4fc36693c231e5b3216cfe"
 "checksum rand 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)" = "6d71dacdc3c88c1fde3885a3be3fbab9f35724e6ce99467f7d9c5026132184ca"
 "checksum rand 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d47eab0e83d9693d40f825f86948aa16eff6750ead4bdffc4ab95b8b3a7f052c"
 "checksum rand_chacha 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "556d3a1ca6600bfcbab7c7c91ccb085ac7fbbcd70e008a98742e7847f4f7bcef"
@@ -1343,26 +1331,24 @@ dependencies = [
 "checksum sourcefile 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "4bf77cb82ba8453b42b6ae1d692e4cdc92f9a47beaf89a847c8be83f4e328ad3"
 "checksum spin 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "cbdb51a221842709c2dd65b62ad4b78289fc3e706a02c17a26104528b6aa7837"
 "checksum syn 0.15.44 (registry+https://github.com/rust-lang/crates.io-index)" = "9ca4b3b69a77cbe1ffc9e198781b7acb0c7365a883670e8f1c1bc66fba79a5c5"
+"checksum syn 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)" = "158521e6f544e7e3dcfc370ac180794aa38cb34a1b1e07609376d4adcf429b93"
 "checksum synstructure 0.10.2 (registry+https://github.com/rust-lang/crates.io-index)" = "02353edf96d6e4dc81aea2d8490a7e9db177bf8acb0e951c24940bf866cb313f"
 "checksum tai64 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "5f442aa71b3f67bc82699063a608b32331ab5b0fcdd078694d3d4b84716b0942"
 "checksum textwrap 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
 "checksum thread_local 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)" = "c6b53e329000edc2b34dbe8545fd20e55a333362d0a321909685a19bd28c3f1b"
-"checksum tokio 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)" = "<none>"
-"checksum tokio-codec 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)" = "<none>"
-"checksum tokio-current-thread 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)" = "<none>"
-"checksum tokio-executor 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)" = "<none>"
-"checksum tokio-io 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)" = "<none>"
-"checksum tokio-macros 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)" = "<none>"
-"checksum tokio-reactor 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)" = "<none>"
-"checksum tokio-signal 0.3.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)" = "<none>"
-"checksum tokio-sync 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)" = "<none>"
-"checksum tokio-threadpool 0.2.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)" = "<none>"
-"checksum tokio-timer 0.3.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)" = "<none>"
-"checksum tokio-uds 0.3.0-alpha.1 (git+https://github.com/tokio-rs/tokio.git)" = "<none>"
+"checksum tokio 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)" = "0bc38954f527bff6150016d9d464bd624f89cb999a423e4e19cc4652bb503e8b"
+"checksum tokio-codec 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)" = "f6ae83cd6b34943a67d563b8ecde8c8e74719db520c7d955f3c5ee5154e17dee"
+"checksum tokio-executor 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)" = "b51b35d58733fff12d18a10f8541eb050e5d02149c91fe23a67ed36788754166"
+"checksum tokio-io 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)" = "2372d5b0be0a5ca8e8c9be30abaccb91a712c0545f740a6e63c4c90ad1530ed3"
+"checksum tokio-macros 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)" = "72cb7202008f759bb78b96532cad9b3be20ae76ef45e13da42148fd12706cd12"
+"checksum tokio-net 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)" = "b20f29622c17152567f9b3ffeafda1148940491d4cdb916d3923e6fb2e586b0b"
+"checksum tokio-sync 0.2.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)" = "49924b9f0710d5e682feb252f664be7058c92d627c3f61873d90aa11ee393f7d"
+"checksum tokio-timer 0.3.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)" = "f9c7a4d6ce2485cea52eba32cdd07603d797caefd12f8b6803ff929a9f2ce354"
 "checksum tracing-core 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "a092e91612f25f6571c7bff934e1157b708f2b09e229fdc7760e791e1d2fd74f"
 "checksum unicode-segmentation 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "1967f4cdfc355b37fd76d2a954fb2ed3871034eb4f26d60537d88795cfc332a9"
 "checksum unicode-width 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "882386231c45df4700b275c7ff55b6f3698780a650026380e72dabe76fa46526"
 "checksum unicode-xid 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "fc72304796d0818e357ead4e000d19c9c174ab23dc11093ac919054d20a6a7fc"
+"checksum unicode-xid 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "826e7639553986605ec5979c7dd957c7895e93eabed50ab2ffa7f6128a75097c"
 "checksum untrusted 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "60369ef7a31de49bcb3f6ca728d4ba7300d9a1658f94c727d4cab8c8d9f4aece"
 "checksum version_check 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "914b1a6776c4c929a602fafd8bc742e06365d4bcbe48c30f9cca5824f70dc9dd"
 "checksum void 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"

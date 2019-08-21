@@ -39,14 +39,14 @@ pin-utils = "0.1.0-alpha.4"
 rand = "0.7"
 ring = { path = "patched/ring" }
 tai64 = "2.0.1"
-tokio = { git = "https://github.com/tokio-rs/tokio.git", default-features = false, features = [
+tokio = { version = "0.2.0-alpha.2", default-features = false, features = [
     "io",
     "rt-full",
     "timer",
     "uds"
 ] }
-tokio-signal = { git = "https://github.com/tokio-rs/tokio.git" }
-tokio-threadpool = { git = "https://github.com/tokio-rs/tokio.git" }
+tokio-net = { version = "0.2.0-alpha.2", features = ["signal"] }
+tokio-executor = "0.2.0-alpha.2"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["std", "fileapi", "winbase", "ioapiset", "synchapi", "namedpipeapi"] }

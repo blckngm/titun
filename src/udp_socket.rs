@@ -24,7 +24,7 @@ use std::net::SocketAddr;
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
 use std::task::{Context, Poll};
-use tokio::reactor::PollEvented;
+use tokio_net::util::PollEvented;
 
 /// Like tokio UdpSocket, but can be used from multiple tasks concurrently.
 pub struct UdpSocket {
