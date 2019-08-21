@@ -560,7 +560,11 @@ impl LessSafeKey {
             return Err(error::Unspecified);
         }
         ciphertext_and_tag[..plaintext.len()].copy_from_slice(plaintext);
-        let tag = self.seal_in_place_separate_tag(nonce, aad, &mut ciphertext_and_tag[..plaintext.len()])?;
+        let tag = self.seal_in_place_separate_tag(
+            nonce,
+            aad,
+            &mut ciphertext_and_tag[..plaintext.len()],
+        )?;
         ciphertext_and_tag[plaintext.len()..].copy_from_slice(tag.as_ref());
         Ok(())
     }

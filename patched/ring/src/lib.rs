@@ -38,7 +38,6 @@
 //! </table>
 
 #![allow(clippy::all)]
-
 #![doc(html_root_url = "https://briansmith.org/rustdoc/")]
 #![allow(
     missing_copy_implementations,
