@@ -21,8 +21,8 @@ use crate::wireguard::*;
 use failure::Error;
 use fnv::FnvHashMap;
 use futures::channel::mpsc::*;
+use futures::future::{select, Either};
 use futures::prelude::*;
-use futures::select;
 use ip_lookup_trie::IpLookupTable;
 use noise_protocol::U8Array;
 use parking_lot::{Mutex, RwLock};
@@ -431,14 +431,14 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
         for _ in 0..1024 {
             let (len, addr) = {
                 let socket = wg.socket.lock().clone();
-                let recv = socket.recv_from(&mut p).fuse();
+                let recv = socket.recv_from(&mut p);
                 pin_mut!(recv);
-                select! {
-                    recv = recv => recv.unwrap(),
-                    recv_socket = receiver.next() => {
-                        *wg.socket.lock() = Arc::new(recv_socket.unwrap());
+                match select(recv, receiver.next()).await {
+                    Either::Left((recv_result, _)) => recv_result.unwrap(),
+                    Either::Right((socket, _)) => {
+                        *wg.socket.lock() = Arc::new(socket.unwrap());
                         continue;
-                    },
+                    }
                 }
             };
 

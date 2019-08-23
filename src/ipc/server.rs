@@ -50,8 +50,7 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
 
 #[cfg(not(windows))]
 pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> {
-    use futures::prelude::*;
-    use futures::select;
+    use futures::future::{select, Either};
     use nix::sys::stat::{umask, Mode};
     use pin_utils::pin_mut;
     use std::fs::{create_dir_all, remove_file};
@@ -67,27 +66,29 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
 
     crate::systemd::notify_ready().unwrap_or_else(|e| warn!("Failed to notify systemd: {}", e));
 
-    let deleted = super::wait_delete::wait_delete(&path).fuse();
-    pin_mut!(deleted);
+    let deleted = super::wait_delete::wait_delete(&path);
+    let accept_and_handle = async move {
+        loop {
+            let (stream, _) = listener.accept().await?;
+            let stream = super::compat::Compat::new(stream);
+            let wg = wg.clone();
+            tokio::spawn(async move {
+                serve(&wg, stream).await.unwrap_or_else(|e| {
+                    warn!("Error serving IPC connection: {}", e);
+                });
+            });
+        }
+    };
 
-    loop {
-        let accept = listener.accept().fuse();
-        pin_mut!(accept);
-        let wg = wg.clone();
-        let (stream, _) = select! {
-            stream_or_err = accept => stream_or_err?,
-            deleted = deleted => {
-                deleted?;
-                info!("IPC socket deleted. Shutting down.");
-                return Ok(());
-            },
-        };
-        let stream = super::compat::Compat::new(stream);
-        tokio::spawn(async move {
-            serve(&wg, stream).await.unwrap_or_else(|e| {
-                warn!("Error serving IPC connection: {}", e);
-            })
-        });
+    pin_mut!(deleted);
+    pin_mut!(accept_and_handle);
+    match select(accept_and_handle, deleted).await {
+        Either::Left((result, _)) => result,
+        Either::Right((deleted_result, _)) => {
+            deleted_result?;
+            info!("IPC socket deleted. Shutting down.");
+            Ok(())
+        }
     }
 }
 

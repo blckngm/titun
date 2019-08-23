@@ -25,7 +25,7 @@ clap = { version = "2.19.3", default-features = false }
 env_logger = { version = "0.6", default-features = false }
 failure = "0.1"
 fnv = "1.0.6"
-futures-preview = { version = "0.3.0-alpha.18", features = ["nightly", "async-await"] }
+futures-preview = "0.3.0-alpha.18"
 hex = "0.3"
 ip-lookup-trie = { path = "./ip-lookup-trie" }
 log = "0.4.3"
@@ -45,7 +45,7 @@ tokio = { version = "0.2.0-alpha.2", default-features = false, features = [
     "timer",
     "uds"
 ] }
-tokio-net = { version = "0.2.0-alpha.2", features = ["signal"] }
+tokio-net = { version = "0.2.0-alpha.2", default-features = false, features = ["signal"] }
 tokio-executor = "0.2.0-alpha.2"
 
 [target.'cfg(windows)'.dependencies]

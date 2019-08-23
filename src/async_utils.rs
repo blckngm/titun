@@ -16,9 +16,9 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use futures::channel::oneshot::*;
+use futures::future::select;
 use futures::future::Shared;
 use futures::prelude::*;
-use futures::select;
 use parking_lot::Mutex;
 use pin_utils::pin_mut;
 use std::future::Future;
@@ -82,13 +82,9 @@ impl AsyncScope {
     {
         let cancelled = self.receiver.clone();
         tokio::spawn(async move {
-            pin_mut!(cancelled);
-            let f = future.fuse();
-            pin_mut!(f);
-            select! {
-                _ = cancelled => (),
-                _ = f => (),
-            }
+            pin_mut!(future);
+
+            select(future, cancelled).await;
         });
     }
 }
