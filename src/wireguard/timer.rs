@@ -30,7 +30,7 @@ use std::task::Poll;
 use std::time::Duration;
 use tokio::clock::now;
 use tokio::sync::oneshot::{channel, Sender};
-use tokio::timer::Delay;
+use tokio::timer::{delay, Delay};
 
 struct TimerOptions {
     activated: AtomicBool,
@@ -50,7 +50,7 @@ where
     let (tx, mut rx) = channel();
     let options0 = Arc::new(TimerOptions {
         activated: AtomicBool::new(false),
-        delay: Mutex::new(Delay::new(now())),
+        delay: Mutex::new(delay(now())),
     });
     let options = options0.clone();
     tokio::spawn(async move {

@@ -41,7 +41,7 @@ pub async fn run(c: Config) -> Result<(), Error> {
     let scope0 = AsyncScope::new();
 
     scope0.clone().spawn_canceller(async move {
-        let mut ctrl_c = tokio_net::signal::CtrlC::new().unwrap();
+        let mut ctrl_c = tokio_net::signal::ctrl_c().unwrap();
         ctrl_c.next().await;
         info!("Received SIGINT or Ctrl-C, shutting down.");
     });
@@ -70,9 +70,9 @@ pub async fn run(c: Config) -> Result<(), Error> {
     }
     #[cfg(unix)]
     scope0.clone().spawn_canceller(async move {
-        use tokio_net::signal::unix::{Signal, SignalKind};
+        use tokio_net::signal::unix::{signal, SignalKind};
 
-        let mut term = Signal::new(SignalKind::terminate()).unwrap();
+        let mut term = signal(SignalKind::terminate()).unwrap();
         term.next().await;
         info!("Received SIGTERM, shutting down.");
     });

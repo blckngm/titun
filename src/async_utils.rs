@@ -114,9 +114,9 @@ impl Future for YieldOnce {
 
 pub async fn delay(duration: Duration) {
     use tokio::clock::now;
-    use tokio::timer::Delay;
+    use tokio::timer::delay;
 
-    Delay::new(now() + duration).await;
+    delay(now() + duration).await;
 }
 
 #[cfg(windows)]
