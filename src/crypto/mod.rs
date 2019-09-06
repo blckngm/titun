@@ -15,7 +15,6 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-pub mod blake2s;
 pub mod noise_crypto_impls;
 mod simd;
 pub mod xchacha20poly1305;

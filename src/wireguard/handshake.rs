@@ -15,9 +15,9 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::crypto::blake2s::Blake2s;
 use crate::crypto::noise_crypto_impls::{ChaCha20Poly1305, X25519};
 use crate::wireguard::*;
+use blake2s_simd::{Params, State};
 use noise_protocol::patterns::noise_ik_psk2;
 use noise_protocol::*;
 use ring::constant_time::verify_slices_are_equal;
@@ -34,14 +34,8 @@ const TIMESTAMP_PRECISION: u32 = 50_000;
 
 pub type HS = HandshakeState<X25519, ChaCha20Poly1305, NoiseBlake2s>;
 
-#[derive(Clone)]
-pub struct NoiseBlake2s(Blake2s);
-
-impl Default for NoiseBlake2s {
-    fn default() -> Self {
-        NoiseBlake2s(Blake2s::new(32))
-    }
-}
+#[derive(Clone, Default)]
+pub struct NoiseBlake2s(State);
 
 impl Hash for NoiseBlake2s {
     type Output = [u8; 32];
@@ -63,7 +57,7 @@ impl Hash for NoiseBlake2s {
 /// WireGuard `MAC` function, aka. keyed blake2s with 16-byte output.
 fn mac(key: &[u8], data: &[&[u8]]) -> [u8; 16] {
     let mut mac = [0u8; 16];
-    let mut blake2s = Blake2s::with_key(16, key);
+    let mut blake2s = Params::new().hash_length(16).key(key).to_state();
     for d in data {
         blake2s.update(d);
     }
@@ -74,7 +68,7 @@ fn mac(key: &[u8], data: &[&[u8]]) -> [u8; 16] {
 // WireGuard `HASH` function, aka. blake2s with 32-byte output.
 macro_rules! hash {
     ($x1:expr, $x2:expr) => {{
-        Blake2s::new(32).update($x1).update($x2).finalize()
+        State::new().update($x1).update($x2).finalize()
     }};
 }
 

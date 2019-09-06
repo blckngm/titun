@@ -70,25 +70,6 @@ mod simd_x86 {
         }
     }
 
-    #[derive(Copy, Clone)]
-    pub struct SSE41Machine;
-
-    impl SSE41Machine {
-        pub unsafe fn new() -> Self {
-            Self
-        }
-    }
-
-    impl Machine for SSE41Machine {
-        fn has_ssse3(&self) -> bool {
-            true
-        }
-
-        fn has_sse41(&self) -> bool {
-            true
-        }
-    }
-
     impl std::fmt::Debug for u32x4 {
         #[allow(clippy::many_single_char_names)]
         fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
@@ -149,45 +130,6 @@ mod simd_x86 {
             }
         }
 
-        #[inline(always)]
-        pub fn gather<M: Machine>(
-            src: &[u32x4; 4],
-            i0: usize,
-            i1: usize,
-            i2: usize,
-            i3: usize,
-            m: M,
-        ) -> Self {
-            if m.has_sse41() {
-                // Make LLVM generate efficient loads and shuffles.
-                macro_rules! get {
-                    ($i:expr) => {{
-                        let a = $i / 4;
-                        let b = $i % 4;
-                        let r = match b {
-                            0 => _mm_extract_epi32(src[a].0, 0),
-                            1 => _mm_extract_epi32(src[a].0, 1),
-                            2 => _mm_extract_epi32(src[a].0, 2),
-                            3 => _mm_extract_epi32(src[a].0, 3),
-                            _ => unreachable!(),
-                        };
-                        r as u32
-                    }};
-                }
-                unsafe { u32x4::new(get!(i0), get!(i1), get!(i2), get!(i3)) }
-            } else {
-                unsafe {
-                    let src: &[u32; 16] = &*(src as *const _ as *const [u32; 16]);
-                    u32x4::new(src[i0], src[i1], src[i2], src[i3])
-                }
-            }
-        }
-
-        #[inline(always)]
-        pub fn from_le(x: Self) -> Self {
-            x
-        }
-
         /// # Safety
         ///
         /// `use_byte_shuffle` should be set only when PSHUFB is available. (SSSE3+).
@@ -199,11 +141,6 @@ mod simd_x86 {
                 24 => self.rotate_left_24(m),
                 x => self.rotate_left_any(x),
             }
-        }
-
-        #[inline(always)]
-        pub fn rotate_right_const<M: Machine>(self, amt: u32, m: M) -> Self {
-            self.rotate_left_const(32 - amt, m)
         }
 
         #[inline(always)]
@@ -411,33 +348,8 @@ mod simd_fallback {
         }
 
         #[inline(always)]
-        pub fn gather<M>(
-            src: &[u32x4; 4],
-            i0: usize,
-            i1: usize,
-            i2: usize,
-            i3: usize,
-            _: M,
-        ) -> Self {
-            unsafe {
-                let src: &[u32; 16] = std::mem::transmute(src);
-                u32x4::new(src[i0], src[i1], src[i2], src[i3])
-            }
-        }
-
-        #[inline(always)]
-        pub fn from_le(x: Self) -> Self {
-            u32x4(packed_simd::u32x4::from_le(x.0))
-        }
-
-        #[inline(always)]
         pub fn rotate_left_const<M>(self, amt: u32, _: M) -> Self {
             u32x4(self.0.rotate_left(packed_simd::u32x4::splat(amt)))
-        }
-
-        #[inline(always)]
-        pub fn rotate_right_const<M>(self, amt: u32, _: M) -> Self {
-            u32x4(self.0.rotate_right(packed_simd::u32x4::splat(amt)))
         }
 
         #[inline(always)]

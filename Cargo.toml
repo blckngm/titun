@@ -21,6 +21,7 @@ bench = []
 [dependencies]
 arrayvec = "0.4.6"
 base64 = "0.10"
+blake2s_simd = "0.5.7"
 clap = { version = "2.19.3", default-features = false }
 env_logger = { version = "0.6", default-features = false }
 failure = "0.1"
