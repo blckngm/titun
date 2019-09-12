@@ -44,7 +44,7 @@ pub struct TimerHandle {
 
 pub fn create_timer_async<F, Fut>(action: F) -> TimerHandle
 where
-    F: Fn() -> Fut + Send + 'static,
+    F: Fn() -> Fut + Send + Sync + 'static,
     Fut: Future<Output = ()> + Send,
 {
     let (tx, mut rx) = channel();
