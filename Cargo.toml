@@ -53,9 +53,8 @@ tokio-executor = "0.2.0-alpha.2"
 winapi = { version = "0.3", features = ["std", "fileapi", "winbase", "ioapiset", "synchapi", "namedpipeapi"] }
 winreg = "0.6"
 
-# TODO: use inotify after it has been upgrade to tokio v0.2 or is compatible.
-# [target.'cfg(target_os = "linux")'.dependencies]
-# inotify = "0.7"
+[target.'cfg(target_os = "linux")'.dependencies]
+inotify = { git = "https://github.com/sopium/inotify.git" }
 
 [target.'cfg(not(any(target_arch = "x86", target_arch = "x86_64")))'.dependencies]
 packed_simd = { version = "0.3", features = ["into_bits"] }
