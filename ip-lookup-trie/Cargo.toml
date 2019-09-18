@@ -9,5 +9,5 @@ num-traits = "0.2.6"
 
 [dev-dependencies]
 rand = "0.7"
-quickcheck = "0.8"
+quickcheck = "0.9"
 quickcheck_macros = "0.8"

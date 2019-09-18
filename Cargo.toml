@@ -27,7 +27,7 @@ env_logger = { version = "0.6", default-features = false }
 failure = "0.1"
 fnv = "1.0.6"
 futures-preview = "0.3.0-alpha.18"
-hex = "0.3"
+hex = "0.4"
 ip-lookup-trie = { path = "./ip-lookup-trie" }
 log = "0.4.3"
 mio = "0.6"
@@ -39,7 +39,7 @@ parking_lot = "0.9"
 pin-utils = "0.1.0-alpha.4"
 rand = "0.7"
 ring = { path = "patched/ring" }
-tai64 = "2.0.1"
+tai64 = "3"
 tokio = { version = "0.2.0-alpha.2", default-features = false, features = [
     "io",
     "rt-full",
