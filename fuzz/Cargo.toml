@@ -10,7 +10,7 @@ edition = "2018"
 cargo-fuzz = true
 
 [dependencies]
-futures-preview = "0.3.0-alpha.17"
+futures-preview = "0.3.0-alpha.18"
 
 [dependencies.titun]
 path = ".."
@@ -24,10 +24,6 @@ members = ["."]
 [[bin]]
 name = "ipc-parsing"
 path = "fuzz_targets/ipc-parsing.rs"
-
-[[bin]]
-name = "blake2s"
-path = "fuzz_targets/blake2s.rs"
 
 [[bin]]
 name = "hchacha"
