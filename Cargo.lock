@@ -320,7 +320,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "inotify"
 version = "0.7.1-dev"
-source = "git+https://github.com/sopium/inotify.git#70ff215c5191dbce0dc5cf9f87fa6b7f4909c909"
+source = "git+https://github.com/sopium/inotify.git#7e696a25daf1df720519abb85909e9ba916b6d86"
 dependencies = [
  "bitflags 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-core-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
