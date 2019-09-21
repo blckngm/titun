@@ -357,7 +357,7 @@ namespace titun_windows_gui
             uint index;
             try
             {
-                index = FindInterfaceIndexByAlias(config.dev_name) ?? throw new Exception($"Failed to find device {config.dev_name}");
+                index = FindInterfaceIndexByAlias(config.Interface.Name) ?? throw new Exception($"Failed to find device {config.Interface.Name}");
             }
             catch (Exception e)
             {
@@ -370,21 +370,21 @@ namespace titun_windows_gui
             {
                 SetBasic(index, new BasicConfig
                 {
-                    address = config.network.address,
-                    prefix = config.network.prefix,
-                    mtu = config.network.mtu,
-                    metric = config.network.metric
+                    address = config.Network.Address,
+                    prefix = config.Network.PrefixLen,
+                    mtu = config.Network.Mtu,
+                    metric = config.Network.Metric
                 });
             });
             // Fixate routes.
-            foreach (var p in config.peers)
+            foreach (var p in config.Peer)
             {
-                if (p.endpoint != null)
+                if (p.Endpoint != null)
                 {
                     // Fixate route if endpoint is in allowed ips.
-                    var d = p.endpoint.Split(':')[0];
+                    var d = p.Endpoint.Split(':')[0];
                     var shouldFixate = false;
-                    foreach(var r0 in p.allowed_ips)
+                    foreach(var r0 in p.AllowedIPs)
                     {
                         string r;
                         if (!r0.Contains('/'))
@@ -415,27 +415,27 @@ namespace titun_windows_gui
                 }
             }
             // Other routes.
-            foreach (var p in config.peers)
+            foreach (var p in config.Peer)
             {
-                foreach (var r in p.allowed_ips)
+                foreach (var r in p.AllowedIPs)
                 {
                     var rr = r.Split('/');
                     var network = IPAddress.Parse(rr[0]);
                     // XXX: IPv6.
                     var prefix = rr.Count() > 1 ? uint.Parse(rr[1]) : 32;
                     // Add route if it is not in interface network address/prefix.
-                    if (!IsSubNetwork(network, prefix, IPAddress.Parse(config.network.address), config.network.prefix))
+                    if (!IsSubNetwork(network, prefix, IPAddress.Parse(config.Network.Address), config.Network.PrefixLen))
                     {
                         Try($"Add route {r}", () =>
                         {
-                            AddRoute(index, r, config.network.next_hop);
+                            AddRoute(index, r, config.Network.NextHop);
                             routes.Add(r);
                         });
                     }
                 }
             }
-            Try($"Set DNS servers.", () => SetDns(index, config.network.dns));
-            if (config.network.prevent_dns_leak)
+            Try($"Set DNS servers.", () => SetDns(index, config.Network.Dns));
+            if (config.Network.PreventDnsLeak)
             {
                 Try($"Block other DNS servers", () => BlockOtherDNS(index));
             }
@@ -462,7 +462,7 @@ namespace titun_windows_gui
             uint index;
             try
             {
-                index = FindInterfaceIndexByAlias(config.dev_name) ?? throw new Exception($"Failed to find device {config.dev_name}");
+                index = FindInterfaceIndexByAlias(config.Interface.Name) ?? throw new Exception($"Failed to find device {config.Interface}");
             }
             catch (Exception e)
             {
@@ -470,7 +470,7 @@ namespace titun_windows_gui
                 return;
             }
             // Unblock DNS.
-            if (config.network.prevent_dns_leak)
+            if (config.Network.PreventDnsLeak)
             {
                 Try("Unblock DNS", () => UnBlockDNS());
             }

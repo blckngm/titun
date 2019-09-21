@@ -1,0 +1,10 @@
+private_key=20d673e5ebdb2417a4cafb6344b1dd9e282b29e27b1f139747b94b9bacaa316e
+listen_port=7777
+public_key=3469cf39cd29c659ce8d0cf90c348126c48ceab7f64f532305dbb19af2812e25
+allowed_ip=192.168.77.2/32
+persistent_keepalive_interval=0
+endpoint=192.168.3.2:7777
+rx_bytes=0
+tx_bytes=0
+errno=0
+

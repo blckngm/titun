@@ -16,20 +16,11 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::async_utils::AsyncScope;
+use crate::cli::Config;
 use crate::ipc::ipc_server;
-use crate::wireguard::re_exports::{DH, X25519};
 use crate::wireguard::*;
 use failure::{Error, ResultExt};
 use futures::prelude::*;
-use std::ffi::OsString;
-
-pub struct Config {
-    pub dev_name: OsString,
-    pub exit_stdin_eof: bool,
-    #[cfg(windows)]
-    pub network: (::std::net::Ipv4Addr, u32),
-    pub daemonize: bool,
-}
 
 fn schedule_force_shutdown() {
     std::thread::spawn(|| {
@@ -48,7 +39,7 @@ pub async fn run(c: Config) -> Result<(), Error> {
         info!("Received SIGINT or Ctrl-C, shutting down.");
     });
 
-    if c.exit_stdin_eof {
+    if c.general.exit_stdin_eof {
         let scope = scope0.clone();
         std::thread::spawn(move || {
             use std::io::Read;
@@ -79,27 +70,65 @@ pub async fn run(c: Config) -> Result<(), Error> {
         info!("Received SIGTERM, shutting down.");
     });
 
-    #[cfg(windows)]
-    let tun = AsyncTun::open(&c.dev_name, c.network)
-        .with_context(|e| format!("failed to open tun device: {}", e))?;
-    #[cfg(unix)]
-    let tun = AsyncTun::open(&c.dev_name)
-        .with_context(|e| format!("failed to open tun device: {}", e))?;
-    let wg = WgState::new(
-        WgInfo {
-            port: 0,
-            fwmark: 0,
-            key: X25519::genkey(),
-        },
-        tun,
-    )?;
+    let dev_name = c.interface.name.unwrap();
 
-    let weak = ::std::sync::Arc::downgrade(&wg);
+    #[cfg(windows)]
+    let tun = AsyncTun::open(
+        &dev_name,
+        c.network.map(|n| (n.address, n.prefix_len)).unwrap(),
+    )
+    .with_context(|e| format!("failed to open tun device: {}", e))?;
+    #[cfg(unix)]
+    let tun =
+        AsyncTun::open(&dev_name).with_context(|e| format!("failed to open tun device: {}", e))?;
+
+    let info = WgInfo {
+        port: c.interface.listen_port.unwrap_or(0),
+        fwmark: c.interface.fwmark.unwrap_or(0),
+        key: c.interface.private_key,
+    };
+    let wg = WgState::new(info, tun)?;
+
+    for p in c.peers {
+        info!("adding peer {}", base64::encode(&p.public_key));
+        wg.clone().add_peer(&p.public_key)?;
+        wg.set_peer(SetPeerCommand {
+            public_key: p.public_key,
+            preshared_key: p.preshared_key,
+            endpoint: p.endpoint,
+            keepalive: p.keepalive.map(|x| x.get()),
+            replace_allowed_ips: true,
+            allowed_ips: p.allowed_ips,
+        })?;
+    }
+
+    let weak = std::sync::Arc::downgrade(&wg);
 
     scope0.clone().spawn_canceller(WgState::run(wg));
 
+    #[cfg(unix)]
+    {
+        let weak1 = weak.clone();
+        if let Some(path) = c.general.config_file_path.clone() {
+            scope0.clone().spawn_canceller(async move {
+                use tokio_net::signal::unix::{signal, SignalKind};
+                while let Some(_) = signal(SignalKind::hangup()).unwrap().next().await {
+                    info!("reloading");
+                    if let Some(wg) = weak1.upgrade() {
+                        match super::load_config_from_file(&path) {
+                            Err(e) => Err(e),
+                            Ok(config) => crate::cli::reload(&wg, config).await,
+                        }
+                        .unwrap_or_else(|e| warn!("error in reloading: {}", e));
+                    }
+                }
+            });
+        }
+    }
+
+    let daemonize = !c.general.foreground;
     scope0.clone().spawn_canceller(async move {
-        ipc_server(weak, &c.dev_name, c.daemonize)
+        ipc_server(weak, &dev_name, daemonize)
             .await
             .unwrap_or_else(|e| error!("IPC server error: {}", e))
     });

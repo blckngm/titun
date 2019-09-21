@@ -134,7 +134,7 @@ async fn write_wg_state(
         writeln!(
             w,
             "persistent_keepalive_interval={}",
-            p.persistent_keepalive_interval.unwrap_or(0)
+            p.persistent_keepalive_interval,
         )?;
         if let Some(ref e) = p.endpoint {
             writeln!(w, "endpoint={}", e)?;
@@ -163,29 +163,39 @@ async fn write_error(
     stream.flush().await
 }
 
-async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
+async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) -> Result<(), std::io::Error> {
+    info!("processing a set request");
     if let Some(key) = command.private_key {
+        info!("set private key");
         wg.set_key(key);
     }
     if let Some(p) = command.listen_port {
-        wg.set_port(p).await.unwrap_or_else(|e| {
-            warn!("Failed to set port: {}", e);
-        });
+        info!("set listen port");
+        wg.set_port(p).await.map_err(|e| {
+            warn!("failed to set port: {}", e);
+            e
+        })?;
     }
     if let Some(fwmark) = command.fwmark {
-        wg.set_fwmark(fwmark).unwrap_or_else(|e| {
-            warn!("Failed to set fwmark: {}", e);
-        });
+        info!("set fwmark");
+        wg.set_fwmark(fwmark).map_err(|e| {
+            warn!("failed to set fwmark: {}", e);
+            e
+        })?;
     }
     if command.replace_peers {
+        info!("will replace all peers");
         wg.remove_all_peers();
     }
     for p in command.peers {
+        info!("setting peer {}", base64::encode(&p.public_key));
         if p.remove {
+            info!("removing peer");
             wg.remove_peer(&p.public_key);
             continue;
         }
         if !wg.peer_exists(&p.public_key) {
+            info!("adding peer");
             wg.clone().add_peer(&p.public_key).unwrap();
         }
         wg.set_peer(SetPeerCommand {
@@ -193,11 +203,12 @@ async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) {
             preshared_key: p.preshared_key,
             endpoint: p.endpoint,
             allowed_ips: p.allowed_ips,
-            persistent_keepalive_interval: p.persistent_keepalive_interval,
+            keepalive: p.persistent_keepalive_interval,
             replace_allowed_ips: p.replace_allowed_ips,
         })
         .unwrap();
     }
+    Ok(())
 }
 
 pub async fn serve<S>(wg: &Weak<WgState>, stream: S) -> Result<(), Error>
@@ -230,8 +241,11 @@ where
         }
         WgIpcCommand::Set(sc) => {
             // FnMut hack.
-            process_wg_set(&wg, sc).await;
-            write_error(stream_w, 0).await?;
+            let errno = match process_wg_set(&wg, sc).await {
+                Ok(()) => 0,
+                Err(e) => e.raw_os_error().unwrap(),
+            };
+            write_error(stream_w, errno).await?;
         }
     }
     Ok(())

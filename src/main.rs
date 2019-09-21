@@ -1,4 +1,4 @@
-// Copyright 2017 Guanhao Yin <sopium@mysterious.site>
+// Copyright 2017, 2018, 2019 Guanhao Yin <sopium@mysterious.site>
 
 // This file is part of TiTun.
 
@@ -15,15 +15,17 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-#[cfg(windows)]
-use failure::bail;
-use failure::Error;
+use failure::{bail, Error, ResultExt};
 use log::info;
+use rand::{rngs::OsRng, RngCore};
 use std::ffi::OsString;
+use std::io::{stdin, Read};
 #[cfg(windows)]
 use std::net::Ipv4Addr;
-use structopt::{clap::crate_version, StructOpt};
-use titun::run::*;
+use std::path::PathBuf;
+use structopt::{clap::crate_version, clap::AppSettings, StructOpt};
+use titun::cli;
+use titun::wireguard::re_exports::{U8Array, DH, X25519};
 
 fn main() {
     real_main().unwrap_or_else(|e| {
@@ -52,6 +54,12 @@ struct Options {
     #[structopt(short, long, help = "Run in foreground (don't daemonize)")]
     foreground: bool,
 
+    #[structopt(long, help = "Set logging (env_logger)", env = "RUST_LOG")]
+    log: Option<String>,
+
+    #[structopt(short, long, help = "Load initial configuration from file")]
+    config_file: Option<PathBuf>,
+
     #[structopt(long, help = "Exit if stdin is closed")]
     exit_stdin_eof: bool,
 
@@ -62,14 +70,161 @@ struct Options {
         parse(try_from_str = parse_network),
         help = "Network configuration for the device",
     )]
-    network: (Ipv4Addr, u32),
+    network: Option<(Ipv4Addr, u32)>,
+
+    #[structopt(long, help = "Number of worker threads", env = "TITUN_THREADS")]
+    threads: Option<usize>,
 
     #[structopt(value_name = "DEVICE_NAME", help = "Device name", parse(from_os_str))]
-    dev: OsString,
+    dev: Option<OsString>,
+
+    // This field is never accessed.
+    #[allow(unused)]
+    #[structopt(subcommand)]
+    cmd: Option<Cmd>,
+}
+
+impl Options {
+    fn run(self, version: &str) -> Result<(), Error> {
+        let options = self;
+
+        let mut config = if let Some(ref p) = options.config_file {
+            cli::load_config_from_file(&p)?
+        } else {
+            cli::Config {
+                #[cfg(windows)]
+                network: None,
+                general: Default::default(),
+                interface: cli::InterfaceConfig {
+                    name: None,
+                    private_key: X25519::genkey(),
+                    fwmark: None,
+                    listen_port: None,
+                },
+                peers: Vec::new(),
+            }
+        };
+
+        config.general.config_file_path = options.config_file;
+
+        if options.foreground {
+            config.general.foreground = true;
+        }
+
+        if let Some(log) = options.log.as_ref().or(config.general.log.as_ref()) {
+            std::env::set_var("RUST_LOG", log);
+        }
+        env_logger::init();
+
+        if options.exit_stdin_eof {
+            config.general.exit_stdin_eof = options.exit_stdin_eof;
+        }
+
+        if options.dev.is_some() {
+            config.interface.name = options.dev;
+        }
+        if config.interface.name.is_none() {
+            bail!("device name is never specified\nSpecify a device name via command line arg or in config file in `Interface.Name`.");
+        }
+
+        #[cfg(windows)]
+        {
+            if let Some((address, prefix_len)) = options.network {
+                config.network = Some(cli::NetworkConfig {
+                    address,
+                    prefix_len,
+                });
+            }
+            if config.network.is_none() {
+                bail!("network is never specified\nSpecify a network via command line options --network or in configuration file in `Netowrk`.");
+            }
+        }
+
+        let threads = options
+            .threads
+            .or(config.general.threads)
+            .unwrap_or_else(|| std::cmp::min(2, num_cpus::get()));
+
+        info!("titun {}", version);
+        info!("Will spawn {} worker threads", threads);
+        let rt = tokio::runtime::Builder::new()
+            .core_threads(threads)
+            .panic_handler(|e| std::panic::resume_unwind(e))
+            .build()?;
+        rt.block_on(cli::run(config))
+    }
+}
+
+#[derive(StructOpt)]
+enum Cmd {
+    #[structopt(about = "Show device status")]
+    Show {
+        #[structopt(help = "Devices to show. Omit to show all", parse(from_os_str))]
+        devices: Vec<OsString>,
+    },
+    #[structopt(about = "Check configuration file validity")]
+    Check { config_file: PathBuf },
+    #[structopt(about = "Generate private key")]
+    Genkey,
+    #[structopt(about = "Calculate public key from the private key read from stdin")]
+    Pubkey,
+    #[structopt(about = "Generate preshared key")]
+    Genpsk,
+}
+
+impl Cmd {
+    async fn run(self) -> Result<(), Error> {
+        match self {
+            Cmd::Show { devices } => {
+                #[cfg(unix)]
+                titun::cli::show(devices).await?;
+                #[cfg(not(unix))]
+                {
+                    drop(devices);
+                    Err(failure::format_err!(
+                        "the show command is not implemented on this platform"
+                    ))?;
+                }
+            }
+            Cmd::Check { config_file: p } => {
+                cli::load_config_from_file(&p)?;
+            }
+            Cmd::Genpsk => {
+                let mut k = [0u8; 32];
+                OsRng.fill_bytes(&mut k);
+                println!("{}", base64::encode(&k));
+            }
+            Cmd::Genkey => {
+                let k = X25519::genkey();
+                println!("{}", base64::encode(k.as_slice()));
+            }
+            Cmd::Pubkey => {
+                let mut buffer = String::new();
+                stdin().read_to_string(&mut buffer)?;
+                let k =
+                    base64::decode(buffer.trim()).context("failed to base64 decode private key")?;
+                if k.len() == 32 {
+                    let k = <X25519 as DH>::Key::from_slice(&k);
+                    let pk = <X25519 as DH>::pubkey(&k);
+                    println!("{}", base64::encode(pk.as_slice()));
+                } else {
+                    bail!(
+                        "Expect base64 encoded X25519 secret key (32-byte long), got {} bytes",
+                        k.len()
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 fn real_main() -> Result<(), Error> {
-    env_logger::init();
+    let default_panic_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        default_panic_hook(panic_info);
+        std::process::exit(2);
+    }));
 
     let version = if !env!("GIT_HASH").is_empty() {
         concat!(crate_version!(), "-", env!("GIT_HASH"))
@@ -77,31 +232,22 @@ fn real_main() -> Result<(), Error> {
         crate_version!()
     };
 
-    let options = Options::from_clap(
-        &Options::clap()
-            .about(include_str!("copyright.txt"))
-            .version(version)
-            .get_matches(),
-    );
+    let matches = Options::clap()
+        .about(include_str!("copyright.txt"))
+        .version(version)
+        .setting(AppSettings::VersionlessSubcommands)
+        .setting(AppSettings::SubcommandsNegateReqs)
+        .setting(AppSettings::ArgsNegateSubcommands)
+        .get_matches();
 
-    info!("titun {}", version);
-    let config = Config {
-        dev_name: options.dev,
-        exit_stdin_eof: options.exit_stdin_eof,
-        #[cfg(windows)]
-        network: options.network,
-        daemonize: !options.foreground,
-    };
-    let threads = if let Ok(Ok(t)) = std::env::var("TITUN_THREADS").map(|t| t.parse()) {
-        t
+    if matches.subcommand_name().is_none() {
+        let options = Options::from_clap(&matches);
+        options.run(version)?;
     } else {
-        std::cmp::min(2, num_cpus::get())
-    };
-    info!("Will spawn {} worker threads", threads);
-    let rt = tokio::runtime::Builder::new()
-        .core_threads(threads)
-        .build()?;
-    rt.block_on(run(config))?;
+        let cmd = Cmd::from_clap(&matches);
+        let mut rt = tokio::runtime::current_thread::Runtime::new()?;
+        rt.block_on(cmd.run())?;
+    }
 
     Ok(())
 }

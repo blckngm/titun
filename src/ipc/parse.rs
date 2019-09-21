@@ -18,10 +18,12 @@
 use crate::ipc::commands::*;
 use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::X25519Key;
+use crate::wireguard::{PeerStateOut, WgStateOut};
 use failure::Error;
 use futures::prelude::*;
 use hex::decode;
 use std::io;
+use std::time::{Duration, SystemTime};
 use tokio::io::AsyncRead;
 
 // Futures has a `Peekable`, but it does not have an async `peek` method,
@@ -263,6 +265,198 @@ where
     parse_command(lines).await
 }
 
+async fn parse_peer_state_out<S>(stream: &mut Peekable<S>) -> Result<PeerStateOut, Error>
+where
+    S: Stream<Item = io::Result<String>> + Unpin,
+{
+    let public_key_line = match stream.try_next().await? {
+        None => bail!("Unexpected end of input stream"),
+        Some(line) => line,
+    };
+    let mut kv = public_key_line.splitn(2, '=');
+    let k = kv.next().unwrap();
+    let v = match kv.next() {
+        None => bail!("Invalid line: {}", public_key_line),
+        Some(v) => v,
+    };
+    if k != "public_key" {
+        bail!("Unexpected line {}, expected public_key", public_key_line);
+    }
+    let v = decode(v)?;
+    if v.len() != 32 {
+        bail!("Invalid length public key");
+    }
+    let public_key = U8Array::from_slice(&v[..]);
+
+    let mut peer = PeerStateOut {
+        public_key,
+        preshared_key: None,
+        endpoint: None,
+        persistent_keepalive_interval: 0,
+        allowed_ips: vec![],
+        last_handshake_time: None,
+        rx_bytes: 0,
+        tx_bytes: 0,
+    };
+
+    loop {
+        let line = match stream.try_peek().await? {
+            None => bail!("Unexpected end of input stream"),
+            Some(line) => line,
+        };
+        if line.is_empty() || line.starts_with("public_key") {
+            break;
+        }
+        let mut kv = line.splitn(2, '=');
+        let k = kv.next().unwrap();
+        let v = match kv.next() {
+            None => bail!("Invalid line: {}", public_key_line),
+            Some(v) => v,
+        };
+        match k {
+            "last_handshake_time_sec" => {
+                let sec = v.parse()?;
+                peer.last_handshake_time = Some(SystemTime::UNIX_EPOCH + Duration::from_secs(sec));
+            }
+            "last_handshake_time_nsec" => {
+                let usec = v.parse()?;
+                if let Some(ref mut t) = peer.last_handshake_time {
+                    *t += Duration::from_nanos(usec);
+                } else {
+                    bail!("Get last_handshake_time_nsec but no last_handshake_time_sec");
+                }
+            }
+            "rx_bytes" => peer.rx_bytes = v.parse()?,
+            "tx_bytes" => peer.tx_bytes = v.parse()?,
+            "preshared_key" => {
+                let v = decode(v)?;
+                if v.len() != 32 {
+                    bail!("Invalid length for preshared key");
+                }
+                peer.preshared_key = Some(U8Array::from_slice(&v[..]));
+            }
+            "endpoint" => peer.endpoint = Some(v.parse()?),
+            "persistent_keepalive_interval" => peer.persistent_keepalive_interval = v.parse()?,
+            "allowed_ip" => {
+                let mut parts = v.splitn(2, '/');
+                let ip = parts.next().unwrap();
+                let prefix_len = match parts.next() {
+                    None => bail!("Invalid allowed ip: {}", v),
+                    Some(x) => x,
+                };
+                let ip: std::net::IpAddr = ip.parse()?;
+                let prefix_len: u32 = prefix_len.parse()?;
+                if prefix_len > if ip.is_ipv4() { 32 } else { 128 } {
+                    bail!("Invalid prefix length: {}", prefix_len);
+                }
+                peer.allowed_ips.push((ip, prefix_len));
+            }
+            _ => break,
+        }
+        stream.try_next().await.unwrap();
+    }
+
+    Ok(peer)
+}
+
+async fn parse_wg_state_out<S>(stream: &mut Peekable<S>) -> Result<WgStateOut, Error>
+where
+    S: Stream<Item = io::Result<String>> + Unpin,
+{
+    let mut state = WgStateOut {
+        private_key: X25519Key::new(),
+        peers: vec![],
+        listen_port: 0,
+        fwmark: 0,
+    };
+    'outer: loop {
+        let line = match stream.try_peek().await? {
+            None => bail!("Unexpected end of input stream"),
+            Some(line) => line,
+        };
+        if line.is_empty() {
+            stream.try_next().await.unwrap();
+            break;
+        } else if line.starts_with("public_key") {
+            loop {
+                let peer = parse_peer_state_out(stream).await?;
+                state.peers.push(peer);
+                let line = match stream.try_peek().await? {
+                    None => bail!("Unexpected end of input stream"),
+                    Some(line) => line,
+                };
+                if !line.starts_with("public_key") {
+                    break 'outer;
+                }
+            }
+        } else {
+            let line = stream.try_next().await.unwrap().unwrap();
+            let mut kv = line.splitn(2, '=');
+            let key = kv.next().unwrap();
+            let value = match kv.next() {
+                None => bail!("Invalid line: {}", line),
+                Some(v) => v,
+            };
+            match key {
+                "private_key" => {
+                    let v = decode(value)?;
+                    if v.len() != 32 {
+                        bail!("Invalid length for private_key");
+                    }
+                    state.private_key = X25519Key::from_slice(&v[..]);
+                }
+                "fwmark" => state.fwmark = value.parse()?,
+                "listen_port" => state.listen_port = value.parse()?,
+                // XXX: Check protocol version and errno.
+                "errno" => break,
+                "protocol_version" => break,
+                _ => bail!("Unexpected key: {}", key),
+            }
+        }
+    }
+    Ok(state)
+}
+
+pub async fn parse_get_response<S>(stream: S) -> Result<Result<WgStateOut, i32>, Error>
+where
+    S: Stream<Item = io::Result<String>> + Unpin,
+{
+    let mut stream = Peekable::new(stream);
+
+    let first_line = match stream.try_peek().await? {
+        None => bail!("Empty response"),
+        Some(line) => line,
+    };
+
+    if first_line.starts_with("errno=") {
+        let mut kv = first_line.splitn(2, '=');
+        kv.next().unwrap();
+        let v = match kv.next() {
+            None => bail!("Invalid line: {}", first_line),
+            Some(v) => v,
+        };
+        let errno: i32 = v.parse()?;
+        Ok(Err(errno))
+    } else {
+        let state: WgStateOut = parse_wg_state_out(&mut stream).await?;
+        Ok(Ok(state))
+    }
+}
+
+pub async fn parse_get_response_io<R>(stream: R) -> Result<Result<WgStateOut, i32>, Error>
+where
+    R: AsyncRead + Unpin,
+{
+    let codec = tokio::codec::LinesCodec::new_with_max_length(128);
+    let lines = tokio::codec::FramedRead::new(stream, codec).map_err(|e| match e {
+        tokio::codec::LinesCodecError::MaxLineLengthExceeded => {
+            io::Error::new(io::ErrorKind::Other, "max line length exceeded")
+        }
+        tokio::codec::LinesCodecError::Io(e) => e,
+    });
+    parse_get_response(lines).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,5 +476,27 @@ mod tests {
             let result = parse_command(stream).await;
             assert!(result.is_ok());
         });
+    }
+
+    #[test]
+    fn test_parsing_get_response() -> Result<(), Error> {
+        futures::executor::block_on(async {
+            assert!(
+                parse_get_response_io(&include_bytes!("example_response.txt")[..])
+                    .await?
+                    .is_ok()
+            );
+            assert!(
+                parse_get_response_io(&include_bytes!("example_response_1.txt")[..])
+                    .await?
+                    .is_ok()
+            );
+            assert!(
+                parse_get_response_io(&include_bytes!("example_response_2.txt")[..])
+                    .await?
+                    .is_ok()
+            );
+            Ok(())
+        })
     }
 }

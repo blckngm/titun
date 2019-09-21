@@ -22,28 +22,43 @@ $ cd debian
 $ ./build-deb.sh
 ```
 
-## Operating Systems Support
+## CLI and Configuration
 
-### Linux and FreeBSD
-
-Linux and FreeBSD are supported.
-
-On linux and FreeBSD, the WireGuard [cross platform userspace
-interface](https://www.wireguard.com/xplatform/) is implmeneted. Use `wg` (from
-wireguard-tools) and `ip` (or `ifconfig`) to configure the interface. See
-[quickstart](https://www.wireguard.com/quickstart/) (Use `titun tun0` instead of
-`ip link add dev wg0 type wireguard`).
-
-#### wg-quick
-
-TiTun is compatible with `wg-quick`. Use the `WG_QUICK_USERSPACE_IMPLEMENTATION`
-environment variable to specify `titun` as the userspace implementation.
+Use
 
 ```sh
-$ sudo WG_QUICK_USERSPACE_IMPLEMENTATION=titun wg-quick ...
+$ sudo titun -c tun0.toml -f tun0
 ```
 
-#### systemd
+to run TiTun and open the tun device `tun0`. Here `-f` tells the program to run in foreground, i.e., not daemonize. The `-c tun0.toml` option tells the program to load configuration from the file `tun0.toml`.
+
+Configuration file is similar to what `wg` produces and expects, but in TOML format:
+
+```toml
+[Interface]
+ListenPort = 7777
+PrivateKey = "2BJtcgPUjHfKKN3yMvTiVQbJ/UgHj2tcZE6xU/4BdGM="
+FwMark = 33
+
+[[Peer]]
+PublicKey = "Ck8P+fUguLIf17zmb3eWxxS7PqgN3+ciMFBlSwqRaw4="
+PresharedKey = "w64eiHxoUHU8DcFexHWzqILOvbWx9U+dxxh8iQqJr+k="
+AllowedIPs = ["192.168.77.0/24"]
+Endpoint = "192.168.3.1:7777"
+PersistentKeepalive = 17
+```
+
+A show subcommand is available to query device status (similar to `wg show`):
+
+```
+$ sudo titun show
+```
+
+After the program is running, use `ip` or `ifconfig` to configure IP addresses, routes, etc. And you are good to go!
+
+You can send a `SIGHUP` signal to reload configuration.
+
+### systemd
 
 TiTun supports systemd. Here is an example template service definiation:
 
@@ -56,12 +71,12 @@ Type=notify
 Environment=RUST_LOG=warn
 Environment=RUST_BACKTRACE=1
 
-ExecStart=/usr/bin/titun -f %I
-
-ExecStartPost=/usr/bin/wg setconf %I /etc/titun/%I.conf
+ExecStart=/usr/bin/titun -f -c /etc/titun/%I.conf %I
 ExecStartPost=/bin/sh -c "if [ -x /etc/titun/%I.up.sh ]; then /etc/titun/%I.up.sh; fi"
-
 ExecStopPost=/bin/sh -c "if [ -x /etc/titun/%I.down.sh ]; then /etc/titun/%I.down.sh; fi"
+
+ExecReload=/usr/bin/titun check /etc/titun/%I.conf
+ExecReload=/bin/kill -HUP $MAINPID
 
 Restart=always
 
@@ -69,7 +84,23 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
-When an instance is started, e.g. `titun@tun3`, a `tun3` interface is created.
-The configuration at `/etc/titun/tun3.conf` is applied and the script
-`/etc/titun/tun3.up.sh` is run (if present). When the service is stopped, the
-script at `/etc/titun/tun3.down.sh` is run (if present).
+### WireGuard cross platform user interface
+
+On unix-like operating systems, the WireGuard [cross platform userspace
+interface](https://www.wireguard.com/xplatform/) is implmeneted. Use `wg` (from
+wireguard-tools) and `ip` (or `ifconfig`) to configure the interface. See
+[quickstart](https://www.wireguard.com/quickstart/) (Use `titun tun0` instead of
+`ip link add dev wg0 type wireguard`).
+
+TiTun is compatible with `wg-quick`. Use the `WG_QUICK_USERSPACE_IMPLEMENTATION`
+environment variable to specify `titun` as the userspace implementation.
+
+```sh
+$ sudo WG_QUICK_USERSPACE_IMPLEMENTATION=titun wg-quick ...
+```
+
+## Operating Systems Support
+
+### Linux and FreeBSD
+
+Linux and FreeBSD are supported.

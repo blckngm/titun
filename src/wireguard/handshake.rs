@@ -90,7 +90,7 @@ pub fn initiate(
         hsbuilder.set_is_initiator(true);
         hsbuilder.set_prologue(PROLOGUE);
         hsbuilder.set_s(wg.key.clone());
-        hsbuilder.set_rs(peer.peer_pubkey);
+        hsbuilder.set_rs(peer.public_key);
         hsbuilder.build_handshake_state()
     };
     hs.push_psk(&peer.psk.unwrap_or([0u8; 32]));
@@ -108,7 +108,7 @@ pub fn initiate(
         .map_err(|_| ())?;
 
     // Mac1.
-    let mac1_key = hash!(LABEL_MAC1, &peer.peer_pubkey);
+    let mac1_key = hash!(LABEL_MAC1, &peer.public_key);
     let mac1 = mac(mac1_key.as_ref(), &[&msg[..116]]);
     msg[116..132].copy_from_slice(&mac1);
 
@@ -254,11 +254,11 @@ mod tests {
         };
 
         let init_peer = PeerInfo {
-            peer_pubkey: Clone::clone(resp.pubkey()),
+            public_key: Clone::clone(resp.pubkey()),
             psk: None,
             endpoint: None,
             allowed_ips: vec![],
-            keep_alive_interval: None,
+            keepalive: None,
             roaming: true,
         };
 
@@ -299,11 +299,11 @@ mod tests {
         };
 
         let init_peer = PeerInfo {
-            peer_pubkey: *resp.pubkey(),
+            public_key: *resp.pubkey(),
             psk: Some(psk),
             endpoint: None,
             allowed_ips: vec![],
-            keep_alive_interval: None,
+            keepalive: None,
             roaming: true,
         };
 
@@ -341,11 +341,11 @@ mod tests {
         };
 
         let init_peer = PeerInfo {
-            peer_pubkey: *resp.pubkey(),
+            public_key: *resp.pubkey(),
             psk: None,
             endpoint: None,
             allowed_ips: vec![],
-            keep_alive_interval: None,
+            keepalive: None,
             roaming: true,
         };
 
@@ -373,11 +373,11 @@ mod tests {
         };
 
         let init_peer = PeerInfo {
-            peer_pubkey: *resp.pubkey(),
+            public_key: *resp.pubkey(),
             psk: None,
             endpoint: None,
             allowed_ips: vec![],
-            keep_alive_interval: None,
+            keepalive: None,
             roaming: true,
         };
 
@@ -410,11 +410,11 @@ mod tests {
         };
 
         let init_peer = PeerInfo {
-            peer_pubkey: *resp.pubkey(),
+            public_key: *resp.pubkey(),
             psk: None,
             endpoint: None,
             allowed_ips: vec![],
-            keep_alive_interval: None,
+            keepalive: None,
             roaming: true,
         };
 
@@ -451,11 +451,11 @@ mod tests {
         };
 
         let init_peer = PeerInfo {
-            peer_pubkey: *resp.pubkey(),
+            public_key: *resp.pubkey(),
             psk: None,
             endpoint: None,
             allowed_ips: vec![],
-            keep_alive_interval: None,
+            keepalive: None,
             roaming: true,
         };
 

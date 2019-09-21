@@ -7,8 +7,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
-#pragma warning disable IDE1006 // 命名样式
-
 namespace titun_windows_gui
 {
     /// <summary>
@@ -18,43 +16,76 @@ namespace titun_windows_gui
     /// </summary>
     public class Config
     {
-        [Required]
-        public string dev_name { get; set; }
-        [Required, Base64Array32(ErrorMessage = "Key must be a base64 encoded 32-byte value")]
-        public string key { get; set; }
-        public ushort? listen_port { get; set; }
-        public bool auto_config { get; set; } = true;
         [Required, ValidateObject]
-        public NetworkConfig network { get; set; }
+        public InterfaceConfig Interface { get; set; }
+
+        [Required, ValidateObject]
+        public NetworkConfig Network { get; set; }
+
         [ValidateCollection]
-        public List<PeerConfig> peers { get; set; } = new List<PeerConfig>();
+        public List<PeerConfig> Peer { get; set; } = new List<PeerConfig>();
+    }
+
+    public class InterfaceConfig
+    {
+        [Required]
+        public string Name { get; set; }
     }
 
     public class NetworkConfig
     {
+        public bool AutoConfig { get; set; } = false;
         [Required, Ipv4Addr(ErrorMessage = "Address must be an IPv4 address")]
-        public string address { get; set; }
+        public string Address { get; set; }
         [Range(0, 32)]
-        public uint prefix { get; set; }
+        public uint PrefixLen { get; set; }
         [Range(0, 65536)]
-        public uint? mtu { get; set; }
-        public uint? metric { get; set; }
-        public List<string> dns { get; set; } = new List<string>();
-        public bool prevent_dns_leak { get; set; } = false;
+        public uint? Mtu { get; set; }
+        public uint? Metric { get; set; }
+        public List<string> Dns { get; set; } = new List<string>();
+        public bool PreventDnsLeak { get; set; } = false;
         // Next hop must not be null if auto_config.
-        public string next_hop { get; set; }
+        public string NextHop { get; set; }
     }
 
     public class PeerConfig
     {
-        [Required, Base64Array32(ErrorMessage = "Peer public key must be a base64 encoded 32-byte value")]
-        public string public_key { get; set; }
-        [Base64Array32(ErrorMessage = "PSK must be a base64 encoded 32-byte value")]
-        public string psk { get; set; }
         [IpAddrPort(ErrorMessage = "Endpoint must be in the form of [IP:port]")]
-        public string endpoint { get; set; }
+        public string Endpoint { get; set; }
         [IpCidrList(ErrorMessage = "Allowed IPs must be in the form of IP or [IP/PREFIX_LENGTH]")]
-        public List<string> allowed_ips { get; set; } = new List<string>();
+        public List<string> AllowedIPs { get; set; } = new List<string>();
+    }
+
+    [AttributeUsage(AttributeTargets.Property |
+  AttributeTargets.Field, AllowMultiple = false)]
+    public class IpAddrPortAttribute : ValidationAttribute
+    {
+        public override bool IsValid(object value)
+        {
+            if (value == null)
+            {
+                return true;
+            }
+            try
+            {
+                var parts = (value as string).Split(':');
+                if (parts.Length != 2)
+                {
+                    return false;
+                }
+                var a = IPAddress.Parse(parts[0]).AddressFamily;
+                var p = ushort.Parse(parts[1]);
+                return a == AddressFamily.InterNetwork || a == AddressFamily.InterNetworkV6;
+            }
+            catch (OverflowException)
+            {
+                return false;
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+        }
     }
 
     [AttributeUsage(AttributeTargets.Property |
@@ -125,60 +156,6 @@ namespace titun_windows_gui
                 }
             }
             return true;
-        }
-    }
-
-    [AttributeUsage(AttributeTargets.Property |
-      AttributeTargets.Field, AllowMultiple = false)]
-    public class IpAddrPortAttribute : ValidationAttribute
-    {
-        public override bool IsValid(object value)
-        {
-            if (value == null)
-            {
-                return true;
-            }
-            try
-            {
-                var parts = (value as string).Split(':');
-                if (parts.Length != 2)
-                {
-                    return false;
-                }
-                var a = IPAddress.Parse(parts[0]).AddressFamily;
-                var p = ushort.Parse(parts[1]);
-                return a == AddressFamily.InterNetwork || a == AddressFamily.InterNetworkV6;
-            }
-            catch (OverflowException)
-            {
-                return false;
-            }
-            catch (FormatException)
-            {
-                return false;
-            }
-        }
-    }
-
-    [AttributeUsage(AttributeTargets.Property |
-      AttributeTargets.Field, AllowMultiple = false)]
-    public class Base64Array32Attribute : ValidationAttribute
-    {
-        public override bool IsValid(object value)
-        {
-            if (value == null)
-            {
-                return true;
-            }
-            try
-            {
-                var a = Convert.FromBase64String(value as string);
-                return a.Length == 32;
-            }
-            catch (FormatException)
-            {
-                return false;
-            }
         }
     }
 

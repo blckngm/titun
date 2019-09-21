@@ -141,6 +141,20 @@ namespace titun_windows_gui
 
     public class StatusParser
     {
+        private static string CachedPrivateKey = null;
+        private static string CachedPublicKey = null;
+
+        private static async Task<string> GetOrCalculatePublicKey(string private_key) {
+            if(CachedPrivateKey == private_key)
+            {
+                return CachedPublicKey;
+            }
+            CachedPrivateKey = null;
+            CachedPublicKey = await MainWindow.CalculatePublicKey(private_key);
+            CachedPrivateKey = private_key;
+            return CachedPublicKey;
+        }
+
         public static async Task<Status> Parse(Stream stream)
         {
             var status = new Status();
@@ -159,7 +173,7 @@ namespace titun_windows_gui
                     switch (k)
                     {
                         case "private_key":
-                            status.public_key = await MainWindow.CalculatePublicKey(Convert.ToBase64String(DecodeHex(v)));
+                            status.public_key = await GetOrCalculatePublicKey(Convert.ToBase64String(DecodeHex(v)));
                             continue;
                         case "listen_port":
                             status.listen_port = ushort.Parse(v);

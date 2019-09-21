@@ -73,9 +73,9 @@ pub struct PeerState {
     // Rekey because of send but not recv in...
     pub rekey_no_recv: InitLater<TimerHandle>,
     // Keep alive because of recv but not send in...
-    pub keep_alive: InitLater<TimerHandle>,
+    pub keepalive: InitLater<TimerHandle>,
     // Persistent keep-alive.
-    pub persistent_keep_alive: InitLater<TimerHandle>,
+    pub persistent_keepalive: InitLater<TimerHandle>,
     // Stop handshake after REKEY_ATTEMPT_TIME.
     pub stop_handshake: InitLater<TimerHandle>,
     // Clear all sessions if no new handshake in REJECT_AFTER_TIME * 3.
@@ -120,7 +120,7 @@ impl PeerState {
         self.queue.lock().clear();
 
         self.rekey_no_recv.de_activate();
-        self.keep_alive.de_activate();
+        self.keepalive.de_activate();
         self.clear.de_activate();
     }
 
@@ -142,26 +142,26 @@ impl PeerState {
     pub fn on_recv(&self, is_keepalive: bool) {
         self.rekey_no_recv.de_activate();
         if !is_keepalive {
-            self.keep_alive
+            self.keepalive
                 .adjust_and_activate_if_not_activated(KEEPALIVE_TIMEOUT);
         }
     }
 
     pub fn on_send_transport(&self) {
-        self.keep_alive.de_activate();
+        self.keepalive.de_activate();
         self.rekey_no_recv
             .adjust_and_activate_if_not_activated(KEEPALIVE_TIMEOUT + REKEY_TIMEOUT);
-        if let Some(i) = self.info.keep_alive_interval {
-            self.persistent_keep_alive
-                .adjust_and_activate_secs(u64::from(i));
+        if let Some(i) = self.info.keepalive {
+            self.persistent_keepalive
+                .adjust_and_activate_secs(u64::from(i.get()));
         }
     }
 
     pub fn on_send_keepalive(&self) {
-        self.keep_alive.de_activate();
-        if let Some(i) = self.info.keep_alive_interval {
-            self.persistent_keep_alive
-                .adjust_and_activate_secs(u64::from(i));
+        self.keepalive.de_activate();
+        if let Some(i) = self.info.keepalive {
+            self.persistent_keepalive
+                .adjust_and_activate_secs(u64::from(i.get()));
         }
     }
 
@@ -241,9 +241,9 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
 
     let ps = PeerState {
         info: PeerInfo {
-            peer_pubkey: *public_key,
+            public_key: *public_key,
             endpoint: None,
-            keep_alive_interval: None,
+            keepalive: None,
             psk: None,
             allowed_ips: vec![],
             roaming: true,
@@ -258,9 +258,9 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
         queue: Mutex::new(VecDeque::with_capacity(QUEUE_SIZE)),
         transports: ArrayVec::new(),
         rekey_no_recv: None.into(),
-        keep_alive: None.into(),
+        keepalive: None.into(),
         stop_handshake: None.into(),
-        persistent_keep_alive: None.into(),
+        persistent_keepalive: None.into(),
         clear: None.into(),
     };
     let ps = Arc::new(RwLock::new(ps));
@@ -287,8 +287,8 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
         // Lock peer.
         let mut psw = ps.write();
         psw.rekey_no_recv = timer!(rekey_no_recv);
-        psw.keep_alive = timer!(keep_alive);
-        psw.persistent_keep_alive = timer!(persistent_keep_alive);
+        psw.keepalive = timer!(keepalive);
+        psw.persistent_keepalive = timer!(persistent_keepalive);
         psw.stop_handshake = timer!(stop_handshake);
         psw.clear = timer!(clear);
     }
@@ -303,24 +303,24 @@ async fn rekey_no_recv(wg: Arc<WgState>, ps: SharedPeerState) {
     do_handshake(&wg, &ps);
 }
 
-async fn keep_alive(wg: Arc<WgState>, ps: SharedPeerState) {
+async fn keepalive(wg: Arc<WgState>, ps: SharedPeerState) {
     debug!("{}: timer: keep alive.", ps.read().info.log_id());
-    let should_handshake = do_keep_alive1(&ps, &wg).await;
+    let should_handshake = do_keepalive1(&ps, &wg).await;
     if should_handshake {
         do_handshake(&wg, &ps);
     }
 }
 
-async fn persistent_keep_alive(wg: Arc<WgState>, ps: SharedPeerState) {
-    debug!("{}: timer: persistent_keep_alive.", ps.read().info.log_id());
-    let should_handshake = do_keep_alive1(&ps, &wg).await;
+async fn persistent_keepalive(wg: Arc<WgState>, ps: SharedPeerState) {
+    debug!("{}: timer: persistent_keepalive.", ps.read().info.log_id());
+    let should_handshake = do_keepalive1(&ps, &wg).await;
     if should_handshake {
         do_handshake(&wg, &ps);
     }
     let p = ps.read();
-    if let Some(i) = p.info.keep_alive_interval {
-        p.persistent_keep_alive
-            .adjust_and_activate_secs(u64::from(i));
+    if let Some(i) = p.info.keepalive {
+        p.persistent_keepalive
+            .adjust_and_activate_secs(u64::from(i.get()));
     }
 }
 
@@ -416,7 +416,7 @@ pub fn do_handshake(wg: &Arc<WgState>, peer0: &SharedPeerState) {
     });
 }
 
-pub async fn do_keep_alive1<'a>(peer0: &'a SharedPeerState, wg: &'a WgState) -> bool {
+pub async fn do_keepalive1<'a>(peer0: &'a SharedPeerState, wg: &'a WgState) -> bool {
     let endpoint;
     let mut out = [0u8; 32];
     let should_handshake = {

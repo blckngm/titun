@@ -301,7 +301,7 @@ fn udp_process_handshake_resp<'a>(
         if queued_packets.is_empty() {
             // Send a keep alive packet for key confirmation if there are
             // nothing else to send.
-            peer.keep_alive.adjust_and_activate_secs(1);
+            peer.keepalive.adjust_and_activate_secs(1);
         } else {
             // Send queued packets.
             for p in &queued_packets {
@@ -332,7 +332,7 @@ fn udp_process_cookie_reply(wg: &WgState, p: &[u8]) {
         let mut peer = peer.write();
         peer.count_recv(p.len());
         if let Some(mac1) = peer.last_mac1 {
-            if let Ok(cookie) = process_cookie_reply(&peer.info.peer_pubkey, &mac1, p) {
+            if let Ok(cookie) = process_cookie_reply(&peer.info.public_key, &mac1, p) {
                 peer.cookie = Some((cookie, tokio::clock::now()));
             } else {
                 debug!(
@@ -583,7 +583,7 @@ pub struct SetPeerCommand {
     /// Update if `Some`.
     ///
     /// Update to `None` if it is `Some(0)`.
-    pub persistent_keepalive_interval: Option<u16>,
+    pub keepalive: Option<u16>,
     pub replace_allowed_ips: bool,
     /// Replace if `replace_allowed_ips`, append otherwise.
     pub allowed_ips: Vec<(IpAddr, u32)>,
@@ -632,7 +632,7 @@ impl WgState {
     }
 
     // Create a new socket, set IPv6 only to false, set fwmark, and bind.
-    fn prepare_socket(port: &mut u16, fwmark: u32) -> Result<UdpSocket, Error> {
+    fn prepare_socket(port: &mut u16, fwmark: u32) -> Result<UdpSocket, std::io::Error> {
         let socket = net2::UdpBuilder::new_v6()?
             .only_v6(false)?
             .bind((Ipv6Addr::UNSPECIFIED, *port))?;
@@ -715,13 +715,13 @@ impl WgState {
                     let peer = p.read();
 
                     PeerStateOut {
-                        public_key: peer.info.peer_pubkey,
+                        public_key: peer.info.public_key,
                         preshared_key: peer.info.psk,
                         endpoint: peer.info.endpoint.map(unmap_ipv4_from_ipv6),
                         last_handshake_time: peer.get_last_handshake_time(),
                         rx_bytes: peer.rx_bytes.load(Ordering::Relaxed),
                         tx_bytes: peer.tx_bytes.load(Ordering::Relaxed),
-                        persistent_keepalive_interval: peer.info.keep_alive_interval,
+                        persistent_keepalive_interval: peer.info.keepalive.map_or(0, |x| x.get()),
                         allowed_ips: peer.info.allowed_ips.clone(),
                     }
                     // Release peer.
@@ -764,7 +764,10 @@ impl WgState {
     }
 
     /// Change listen port.
-    pub async fn set_port(&self, mut new_port: u16) -> Result<(), Error> {
+    pub async fn set_port(&self, mut new_port: u16) -> Result<(), std::io::Error> {
+        if new_port == self.info.read().port {
+            return Ok(());
+        }
         let new_socket = WgState::prepare_socket(&mut new_port, self.info.read().fwmark)?;
         let mut sender = self.socket_sender.lock().as_ref().unwrap().clone();
         sender.send(new_socket).await.unwrap();
@@ -773,7 +776,7 @@ impl WgState {
     }
 
     /// Set fwmark of the UDP socket.
-    pub fn set_fwmark(&self, new_fwmark: u32) -> Result<(), Error> {
+    pub fn set_fwmark(&self, new_fwmark: u32) -> Result<(), std::io::Error> {
         let mut info = self.info.write();
         if info.fwmark == new_fwmark {
             return Ok(());
@@ -796,26 +799,34 @@ impl WgState {
         // Lock peer.
         let mut peer = peer0.write();
 
-        if let Some(psk) = command.preshared_key {
+        if peer.info.psk != command.preshared_key {
+            debug!("setting peer psk");
             peer.clear();
-            peer.info.psk = Some(psk);
+            peer.info.psk = command.preshared_key;
         }
 
         if let Some(endpoint) = command.endpoint {
-            peer.info.endpoint = Some(map_ipv4_to_ipv6(endpoint));
+            if peer.info.endpoint != Some(map_ipv4_to_ipv6(endpoint)) {
+                debug!("setting peer endpoint");
+                peer.info.endpoint = Some(map_ipv4_to_ipv6(endpoint));
+            }
             peer.info.roaming = false;
         }
 
-        if let Some(interval) = command.persistent_keepalive_interval {
-            peer.info.keep_alive_interval = if interval > 0 { Some(interval) } else { None };
-            if interval > 0 {
-                peer.persistent_keep_alive.adjust_and_activate_secs(5);
-            } else {
-                peer.persistent_keep_alive.de_activate();
+        if let Some(interval) = command.keepalive {
+            if peer.info.keepalive != std::num::NonZeroU16::new(interval) {
+                debug!("setting peer keepalive");
+                peer.info.keepalive = std::num::NonZeroU16::new(interval);
+                if interval > 0 {
+                    peer.persistent_keepalive.adjust_and_activate_secs(5);
+                } else {
+                    peer.persistent_keepalive.de_activate();
+                }
             }
         }
 
         if command.replace_allowed_ips || !command.allowed_ips.is_empty() {
+            debug!("setting peer allowed IPs");
             // Lock rt4.
             let mut rt4 = self.rt4.write();
             // Lock rt6.
@@ -890,19 +901,19 @@ impl WgState {
 }
 
 #[cfg(target_os = "linux")]
-fn set_fwmark<Socket>(s: &Socket, fwmark: u32) -> Result<(), Error>
+fn set_fwmark<Socket>(s: &Socket, fwmark: u32) -> Result<(), std::io::Error>
 where
     Socket: ::std::os::unix::io::AsRawFd,
 {
     use nix::sys::socket::setsockopt;
     use nix::sys::socket::sockopt::Mark;
 
-    setsockopt(s.as_raw_fd(), Mark, &fwmark)?;
+    setsockopt(s.as_raw_fd(), Mark, &fwmark).map_err(|_| std::io::Error::last_os_error())?;
     Ok(())
 }
 
 #[cfg(not(target_os = "linux"))]
-fn set_fwmark<T>(_s: &T, _fwmark: u32) -> Result<(), Error> {
+fn set_fwmark<T>(_s: &T, _fwmark: u32) -> Result<(), std::io::Error> {
     warn!("fwmark is not supported on this platform.");
     Ok(())
 }

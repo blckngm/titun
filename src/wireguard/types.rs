@@ -20,6 +20,7 @@ use noise_protocol::DH;
 use rand::prelude::*;
 use rand::rngs::OsRng;
 use std::net::{IpAddr, SocketAddr, SocketAddrV6};
+use std::num::NonZeroU16;
 use std::ops::Deref;
 use std::time::SystemTime;
 
@@ -32,16 +33,16 @@ pub type X25519Pubkey = <X25519 as DH>::Pubkey;
 #[derive(Clone)]
 pub struct PeerInfo {
     /// Peer public key.
-    pub peer_pubkey: X25519Pubkey,
+    pub public_key: X25519Pubkey,
     /// Pre-shared key.
     pub psk: Option<[u8; 32]>,
     /// Peer endpoint.
     pub endpoint: Option<SocketAddrV6>,
     /// Allowed source IPs.
     pub allowed_ips: Vec<(IpAddr, u32)>,
-    /// Persistent keep-alive interval.
+    /// Persistent keep-alive interval in seconds.
     /// Valid values: 1 - 0xfffe.
-    pub keep_alive_interval: Option<u16>,
+    pub keepalive: Option<NonZeroU16>,
     /// Allow roaming.
     pub roaming: bool,
 }
@@ -88,7 +89,9 @@ pub struct PeerStateOut {
     /// Sent bytes.
     pub tx_bytes: u64,
     /// Persistent keep-alive interval.
-    pub persistent_keepalive_interval: Option<u16>,
+    ///
+    /// Zero value means persistent keepalive is not enabled.
+    pub persistent_keepalive_interval: u16,
     /// Allowed IP addresses.
     pub allowed_ips: Vec<(IpAddr, u32)>,
 }
@@ -136,7 +139,7 @@ impl Deref for Id {
 impl PeerInfo {
     /// Return an identifier suitable for logging.
     pub(crate) fn log_id(&self) -> String {
-        let mut pk = base64::encode(&self.peer_pubkey);
+        let mut pk = base64::encode(&self.public_key);
         pk.truncate(10);
         pk
     }

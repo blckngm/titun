@@ -6,19 +6,17 @@ using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
-using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
-using System.Web.Script.Serialization;
 using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Forms;
 using System.Windows.Input;
 using System.Windows.Media;
-using YamlDotNet.Serialization;
+using Nett;
 
 namespace titun_windows_gui
 {
@@ -277,7 +275,7 @@ namespace titun_windows_gui
 
             var dialog = new Microsoft.Win32.OpenFileDialog
             {
-                Filter = "Yaml files (*.yaml;*.yml)|*.yaml;*.yml|All files (*.*)|*.*"
+                Filter = "Toml files (*.toml)|*.toml|All files (*.*)|*.*"
             };
 
             if (dialog.ShowDialog() == true)
@@ -287,7 +285,7 @@ namespace titun_windows_gui
                 {
                     var configStr = File.ReadAllText(fileName, Encoding.UTF8);
 
-                    Run(configStr);
+                    Run(configStr, fileName);
                 }
                 catch (Exception ex)
                 {
@@ -298,19 +296,18 @@ namespace titun_windows_gui
         
         private NetworkConfigManager networkConfigManager = new NetworkConfigManager();
 
-        private async void Run(string config)
+        private async void Run(string config, string configFilePath)
         {
             RunOrStopButton.IsEnabled = false;
             Config configObj;
             try
             {
-                var de = new DeserializerBuilder().IgnoreUnmatchedProperties().Build();
-                configObj = de.Deserialize<Config>(config);
+                configObj = Toml.ReadString<Config>(config);
 
                 var context = new ValidationContext(configObj);
                 Validator.ValidateObject(configObj, context, true);
 
-                if (configObj.auto_config && configObj.network.next_hop == null)
+                if (configObj.Network.AutoConfig && configObj.Network.NextHop == null)
                 {
                     throw new Exception("network.next_hop must be specified unless auto_config is false");
                 }
@@ -328,7 +325,7 @@ namespace titun_windows_gui
                 return;
             }
 
-            var info = new ProcessStartInfo(titunPath, $"tun \"--dev={configObj.dev_name}\" --network {configObj.network.address}/{configObj.network.prefix} --exit-stdin-eof")
+            var info = new ProcessStartInfo(titunPath, "-c " + configFilePath)
             {
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
@@ -336,7 +333,7 @@ namespace titun_windows_gui
                 CreateNoWindow = true,
                 UseShellExecute = false
             };
-            info.EnvironmentVariables.Add("RUST_LOG", "warn");
+            info.EnvironmentVariables.Add("RUST_LOG", "info");
             info.EnvironmentVariables.Add("RUST_BACKTRACE", "1");
             var p = titunProcess = new Process()
             {
@@ -364,15 +361,13 @@ namespace titun_windows_gui
             var task = ReadStream(titunProcess.StandardError.BaseStream);
             task = ReadStream(titunProcess.StandardOutput.BaseStream);
 
-            await WriteConfig(configObj);
-
             var getStatusCancellationTokenSource = new CancellationTokenSource();
-            task = GetStatus(getStatusCancellationTokenSource.Token, configObj.dev_name);
+            task = GetStatus(getStatusCancellationTokenSource.Token, configObj.Interface.Name);
 
             var haveRunAutoConfigure = false;
             IEnumerable<string> routes = null;
 
-            if (configObj.auto_config)
+            if (configObj.Network.AutoConfig)
             {
                 if (Task.WaitAny(new Task[] { exitSeamophore.WaitAsync() }, 500) == -1)
                 {
@@ -432,43 +427,7 @@ namespace titun_windows_gui
             var data = Convert.FromBase64String(s);
             return BitConverter.ToString(data).Replace("-", string.Empty);
         }
-
-        private async Task WriteConfig(Config config)
-        {
-            using (var conn = new NamedPipeClientStream($"wireguard\\{config.dev_name}.sock"))
-            {
-                await conn.ConnectAsync();
-                // var writer = new StringWriter();
-                var writer = new StreamWriter(conn, new UTF8Encoding(false), 128, true)
-                {
-                    NewLine = "\n"
-                };
-                await writer.WriteLineAsync("set=1");
-                await writer.WriteLineAsync($"private_key={Base64ToHex(config.key)}");
-                if (config.listen_port != null)
-                {
-                    await writer.WriteLineAsync($"listen_port={config.listen_port}");
-                }
-
-                foreach (var p in config.peers)
-                {
-                    await writer.WriteLineAsync($"public_key={Base64ToHex(p.public_key)}");
-                    if (p.endpoint != null)
-                    {
-                        await writer.WriteLineAsync($"endpoint={p.endpoint}");
-                    }
-                    foreach (var a in p.allowed_ips)
-                    {
-                        await writer.WriteLineAsync($"allowed_ip={a}");
-                    }
-                }
-                await writer.WriteLineAsync();
-                await writer.FlushAsync();
-                
-                await new StreamReader(conn, new UTF8Encoding(false)).ReadToEndAsync();
-            }
-        }
-
+        
         private async Task GetStatus(CancellationToken token, string deviceName)
         {
             while (!token.IsCancellationRequested)
