@@ -19,10 +19,10 @@ use crate::ipc::commands::*;
 use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::X25519Key;
 use failure::Error;
-use futures::io::{self, AsyncRead, BufReader};
 use futures::prelude::*;
 use hex::decode;
-use std::marker::Unpin;
+use std::io;
+use tokio::io::AsyncRead;
 
 // Futures has a `Peekable`, but it does not have an async `peek` method,
 // and I could not define one on top of its `peek` due to lifetime issues.
@@ -253,9 +253,14 @@ pub async fn parse_command_io<R>(stream: R) -> Result<Option<WgIpcCommand>, Erro
 where
     R: AsyncRead + Unpin,
 {
-    // TODO: use tokio's LinesCodec, because it has the max line length protection.
-    let lines_stream = BufReader::new(stream).lines();
-    parse_command(lines_stream).await
+    let codec = tokio::codec::LinesCodec::new_with_max_length(128);
+    let lines = tokio::codec::FramedRead::new(stream, codec).map_err(|e| match e {
+        tokio::codec::LinesCodecError::MaxLineLengthExceeded => {
+            io::Error::new(io::ErrorKind::Other, "max line length exceeded")
+        }
+        tokio::codec::LinesCodecError::Io(e) => e,
+    });
+    parse_command(lines).await
 }
 
 #[cfg(test)]

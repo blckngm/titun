@@ -16,9 +16,7 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 pub mod commands;
-// Export for parsing.
-#[cfg(not(windows))]
-mod compat;
+// Export for fuzzing.
 #[doc(hidden)]
 pub mod parse;
 mod server;

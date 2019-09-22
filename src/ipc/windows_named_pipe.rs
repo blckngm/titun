@@ -28,7 +28,6 @@
 #![cfg(windows)]
 
 use futures::channel::mpsc::{channel, Receiver};
-use futures::io::{AsyncRead, AsyncWrite};
 use futures::{SinkExt, StreamExt};
 use std::borrow::Cow;
 use std::ffi::OsString;
@@ -37,6 +36,7 @@ use std::os::windows::prelude::*;
 use std::path::Path;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use tokio::io::{AsyncRead, AsyncWrite};
 use winapi::shared::minwindef::{DWORD, LPCVOID, LPVOID};
 use winapi::shared::winerror::{ERROR_PIPE_CONNECTED, ERROR_PIPE_NOT_CONNECTED};
 use winapi::um::fileapi::{CreateFileW, FlushFileBuffers, ReadFile, WriteFile, OPEN_EXISTING};
@@ -213,7 +213,7 @@ impl AsyncWrite for PipeStream {
         Ok(()).into()
     }
 
-    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         unimplemented!()
     }
 }

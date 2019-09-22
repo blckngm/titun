@@ -850,10 +850,12 @@ name = "tokio"
 version = "0.2.0-alpha.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
+ "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-core-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-sink-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-util-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "num_cpus 1.10.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-codec 0.2.0-alpha.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-executor 0.2.0-alpha.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-io 0.2.0-alpha.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-macros 0.2.0-alpha.5 (registry+https://github.com/rust-lang/crates.io-index)",

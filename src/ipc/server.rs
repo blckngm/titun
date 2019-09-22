@@ -22,13 +22,11 @@ use crate::ipc::parse::*;
 use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::{SetPeerCommand, WgState, WgStateOut};
 use failure::{Error, ResultExt};
-use futures::io::BufWriter;
-use futures::prelude::*;
 use hex::encode;
-use std::marker::Unpin;
 use std::path::Path;
 use std::sync::{Arc, Weak};
 use std::time::SystemTime;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
 
 #[cfg(windows)]
 pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> {
@@ -73,7 +71,6 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
     let accept_and_handle = async move {
         loop {
             let (stream, _) = listener.accept().await?;
-            let stream = super::compat::Compat::new(stream);
             let wg = wg.clone();
             tokio::spawn(async move {
                 serve(&wg, stream).await.unwrap_or_else(|e| {
@@ -198,12 +195,11 @@ pub async fn serve<S>(wg: &Weak<WgState>, stream: S) -> Result<(), Error>
 where
     S: AsyncRead + AsyncWrite + 'static,
 {
-    let (stream_r, stream_w) = stream.split();
+    let (stream_r, stream_w) = tokio::io::split(stream);
 
     let stream_w = BufWriter::with_capacity(4096, stream_w);
 
-    // TODO: limit total length of input stream.
-    let c = match parse_command_io(stream_r).await {
+    let c = match parse_command_io(stream_r.take(1024 * 1024)).await {
         Ok(Some(c)) => c,
         Ok(None) => return Ok(()),
         Err(e) => {

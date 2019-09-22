@@ -41,6 +41,7 @@ rand = "0.7"
 ring = { path = "patched/ring" }
 tai64 = "3"
 tokio = { version = "0.2.0-alpha.2", default-features = false, features = [
+    "codec",
     "io",
     "rt-full",
     "timer",
