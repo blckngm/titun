@@ -85,7 +85,7 @@ fn main() -> Result<(), Error> {
         ("pubkey", _) => {
             let mut buffer = String::new();
             stdin().read_to_string(&mut buffer)?;
-            let k = decode(buffer.trim()).context("Base64 decode key")?;
+            let k = decode(buffer.trim()).context("failed to base64 decode private key")?;
             if k.len() == 32 {
                 let k = <X25519 as DH>::Key::from_slice(&k);
                 let pk = <X25519 as DH>::pubkey(&k);

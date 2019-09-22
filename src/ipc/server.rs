@@ -36,7 +36,8 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
 
     let mut path = Path::new(r#"\\.\pipe\wireguard"#).join(dev_name);
     path.set_extension("sock");
-    let mut listener = AsyncPipeListener::bind(path).context("Bind IPC socket")?;
+    let mut listener = AsyncPipeListener::bind(path)
+        .with_context(|e| format!("failed to bind IPC socket: {}", e))?;
     loop {
         let wg = wg.clone();
         let stream = listener.accept().await?;
@@ -58,11 +59,13 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
 
     umask(Mode::from_bits(0o077).unwrap());
     let dir = Path::new(r#"/var/run/wireguard"#);
-    create_dir_all(&dir).context("Create directory /var/run/wireguard")?;
+    create_dir_all(&dir)
+        .with_context(|e| format!("failed to create directory /var/run/wireguard: {}", e))?;
     let mut path = dir.join(dev_name);
     path.set_extension("sock");
     let _ = remove_file(path.as_path());
-    let mut listener = UnixListener::bind(path.as_path()).context("Bind IPC socket.")?;
+    let mut listener = UnixListener::bind(path.as_path())
+        .with_context(|e| format!("failed to bind IPC socket: {}", e))?;
 
     crate::systemd::notify_ready().unwrap_or_else(|e| warn!("Failed to notify systemd: {}", e));
 

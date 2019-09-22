@@ -78,9 +78,11 @@ pub async fn run(c: Config) -> Result<(), Error> {
     });
 
     #[cfg(windows)]
-    let tun = AsyncTun::open(&c.dev_name, c.network).context("Open tun device")?;
+    let tun = AsyncTun::open(&c.dev_name, c.network)
+        .with_context(|e| format!("failed to open tun device: {}", e))?;
     #[cfg(unix)]
-    let tun = AsyncTun::open(&c.dev_name).context("Open tun device")?;
+    let tun = AsyncTun::open(&c.dev_name)
+        .with_context(|e| format!("failed to open tun device: {}", e))?;
     let wg = WgState::new(
         WgInfo {
             port: 0,
