@@ -29,7 +29,7 @@ use std::time::SystemTime;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
 
 #[cfg(windows)]
-pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> {
+pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str, _daemonize: bool) -> Result<(), Error> {
     use crate::ipc::windows_named_pipe::*;
 
     let mut path = Path::new(r#"\\.\pipe\wireguard"#).join(dev_name);
@@ -48,7 +48,7 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
 }
 
 #[cfg(not(windows))]
-pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> {
+pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str, daemonize: bool) -> Result<(), Error> {
     use futures::future::{select, Either};
     use nix::sys::stat::{umask, Mode};
     use pin_utils::pin_mut;
@@ -65,7 +65,11 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str) -> Result<(), Error> 
     let mut listener = UnixListener::bind(path.as_path())
         .with_context(|e| format!("failed to bind IPC socket: {}", e))?;
 
-    crate::systemd::notify_ready().unwrap_or_else(|e| warn!("Failed to notify systemd: {}", e));
+    if daemonize {
+        daemonize::Daemonize::new().start()?;
+    } else {
+        crate::systemd::notify_ready().unwrap_or_else(|e| warn!("Failed to notify systemd: {}", e));
+    }
 
     let deleted = super::wait_delete::wait_delete(&path);
     let accept_and_handle = async move {

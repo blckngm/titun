@@ -15,51 +15,22 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate log;
-
-use base64::{decode, encode};
-use clap::{App, AppSettings, Arg, SubCommand};
-use failure::{Error, ResultExt};
-use std::io::{stdin, Read};
+use clap::{App, Arg};
+#[cfg(windows)]
+use failure::bail;
+use failure::Error;
+use log::info;
 use titun::run::*;
-use titun::wireguard::re_exports::{U8Array, DH, X25519};
 
-fn main() -> Result<(), Error> {
-    let default_panic_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |panic_info| {
-        default_panic_hook(panic_info);
-        std::process::exit(2);
-    }));
+fn main() {
+    real_main().unwrap_or_else(|e| {
+        eprintln!("Error: {}", e);
+        std::process::exit(1);
+    });
+}
 
+fn real_main() -> Result<(), Error> {
     env_logger::init();
-
-    let sub_tun = SubCommand::with_name("tun")
-        .display_order(1)
-        .arg(
-            Arg::with_name("dev")
-                .long("dev")
-                .value_name("DEVICE_NAME")
-                .required(true)
-                .help("Device name"),
-        )
-        .arg(
-            Arg::with_name("exit-stdin-eof")
-                .long("exit-stdin-eof")
-                .help("Exit if stdin is closed"),
-        );
-    #[cfg(windows)]
-    let sub_tun = sub_tun.arg(
-        Arg::with_name("network")
-            .long("network")
-            .value_name("IP/PREFIX_LEN")
-            .required(true)
-            .help("Network configuration for the device"),
-    );
-    let sub_genkey = SubCommand::with_name("genkey").display_order(2);
-    let sub_pubkey = SubCommand::with_name("pubkey").display_order(3);
 
     let version = if !env!("GIT_HASH").is_empty() {
         concat!(clap::crate_version!(), "-", env!("GIT_HASH"))
@@ -70,70 +41,66 @@ fn main() -> Result<(), Error> {
     let app = App::new("titun")
         .version(version)
         .about(include_str!("copyright.txt"))
-        .setting(AppSettings::VersionlessSubcommands)
-        .setting(AppSettings::SubcommandRequiredElseHelp)
-        .subcommand(sub_tun)
-        .subcommand(sub_genkey)
-        .subcommand(sub_pubkey);
+        .arg(
+            Arg::with_name("dev")
+                .value_name("DEVICE_NAME")
+                .required(true)
+                .help("Device name"),
+        )
+        .arg(
+            Arg::with_name("foreground")
+                .short("f")
+                .long("foreground")
+                .help("Run in foreground (don't daemonize)"),
+        )
+        .arg(
+            Arg::with_name("exit-stdin-eof")
+                .long("exit-stdin-eof")
+                .help("Exit if stdin is closed"),
+        );
+    #[cfg(windows)]
+    let app = app.arg(
+        Arg::with_name("network")
+            .long("network")
+            .value_name("IP/PREFIX_LEN")
+            .required(true)
+            .help("Network configuration for the device"),
+    );
 
-    let matches = app.get_matches();
+    let m = app.get_matches();
 
-    match matches.subcommand() {
-        ("genkey", _) => {
-            println!("{}", encode(<X25519 as DH>::genkey().as_slice()));
+    info!("titun {}", version);
+    #[cfg(windows)]
+    let network = {
+        let network = m.value_of("network").unwrap();
+        let parts: Vec<_> = network.split('/').take(3).collect();
+        if parts.len() != 2 {
+            bail!("Invalid network: {}", network);
         }
-        ("pubkey", _) => {
-            let mut buffer = String::new();
-            stdin().read_to_string(&mut buffer)?;
-            let k = decode(buffer.trim()).context("failed to base64 decode private key")?;
-            if k.len() == 32 {
-                let k = <X25519 as DH>::Key::from_slice(&k);
-                let pk = <X25519 as DH>::pubkey(&k);
-                println!("{}", encode(pk.as_slice()));
-            } else {
-                bail!(
-                    "Expect base64 encoded X25519 secret key (32-byte long), got {} bytes",
-                    k.len()
-                );
-            }
+        let addr: ::std::net::Ipv4Addr = parts[0].parse()?;
+        let prefix = parts[1].parse()?;
+        if prefix > 32 {
+            bail!("Invalid network: {}", network);
         }
-        ("tun", Some(m)) => {
-            info!("titun {}", version);
-            #[cfg(windows)]
-            let network = {
-                let network = m.value_of("network").unwrap();
-                let parts: Vec<_> = network.split('/').take(3).collect();
-                if parts.len() != 2 {
-                    bail!("Invalid network: {}", network);
-                }
-                let addr: ::std::net::Ipv4Addr = parts[0].parse()?;
-                let prefix = parts[1].parse()?;
-                if prefix > 32 {
-                    bail!("Invalid network: {}", network);
-                }
-                (addr, prefix)
-            };
-            let config = Config {
-                dev_name: m.value_of("dev").unwrap().to_string(),
-                exit_stdin_eof: m.is_present("exit-stdin-eof"),
-                #[cfg(windows)]
-                network,
-            };
-            let threads = if let Ok(Ok(t)) = std::env::var("TITUN_THREADS").map(|t| t.parse()) {
-                t
-            } else {
-                std::cmp::min(2, num_cpus::get())
-            };
-            info!("Will spawn {} worker threads", threads);
-            let rt = tokio::runtime::Builder::new()
-                .core_threads(threads)
-                .build()?;
-            rt.block_on(run(config))?;
-        }
-        _ => {
-            unreachable!();
-        }
-    }
+        (addr, prefix)
+    };
+    let config = Config {
+        dev_name: m.value_of("dev").unwrap().to_string(),
+        exit_stdin_eof: m.is_present("exit-stdin-eof"),
+        #[cfg(windows)]
+        network,
+        daemonize: !m.is_present("foreground"),
+    };
+    let threads = if let Ok(Ok(t)) = std::env::var("TITUN_THREADS").map(|t| t.parse()) {
+        t
+    } else {
+        std::cmp::min(2, num_cpus::get())
+    };
+    info!("Will spawn {} worker threads", threads);
+    let rt = tokio::runtime::Builder::new()
+        .core_threads(threads)
+        .build()?;
+    rt.block_on(run(config))?;
 
     Ok(())
 }

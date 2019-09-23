@@ -27,6 +27,7 @@ pub struct Config {
     pub exit_stdin_eof: bool,
     #[cfg(windows)]
     pub network: (::std::net::Ipv4Addr, u32),
+    pub daemonize: bool,
 }
 
 fn schedule_force_shutdown() {
@@ -97,7 +98,7 @@ pub async fn run(c: Config) -> Result<(), Error> {
     scope0.clone().spawn_canceller(WgState::run(wg));
 
     scope0.clone().spawn_canceller(async move {
-        ipc_server(weak, &c.dev_name)
+        ipc_server(weak, &c.dev_name, c.daemonize)
             .await
             .unwrap_or_else(|e| error!("IPC server error: {}", e))
     });

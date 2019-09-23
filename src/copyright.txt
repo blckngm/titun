@@ -1,5 +1,5 @@
-A simple, WireGuard compatible IP tunnel.
+A simple and fast, WireGuard compatible IP tunnel written in Rust.
 
-Copyright 2017, 2018 Guanhao Yin <sopium@mysterious.site>
+Copyright 2017, 2018, 2019 Guanhao Yin <sopium@mysterious.site>
 
 This program comes with ABSOLUTELY NO WARRANTY.
