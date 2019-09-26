@@ -630,7 +630,7 @@ impl LessSafeKey {
 
 impl core::fmt::Debug for LessSafeKey {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
-        f.debug_struct("Key")
+        f.debug_struct("LessSafeKey")
             .field("algorithm", self.algorithm())
             .finish()
     }
