@@ -13,7 +13,7 @@
 [package]
 edition = "2018"
 name = "ring"
-version = "0.16.7"
+version = "0.16.9"
 authors = ["Brian Smith <brian@briansmith.org>"]
 build = "build.rs"
 links = "ring-asm"
@@ -59,7 +59,7 @@ slow_tests = []
 std = ["alloc"]
 test_logging = []
 [target."cfg(all(any(target_arch = \"aarch64\", target_arch = \"arm\", target_arch = \"x86\", target_arch = \"x86_64\"), not(target_os = \"ios\")))".dependencies.spin]
-version = "0.5.0"
+version = "0.5.2"
 default-features = false
 [target."cfg(all(target_arch = \"wasm32\", target_vendor = \"unknown\", target_os = \"unknown\", target_env = \"\"))".dependencies.web-sys]
 version = "0.3.25"
