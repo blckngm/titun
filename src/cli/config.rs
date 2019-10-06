@@ -68,6 +68,14 @@ pub struct Config {
 pub struct GeneralConfig {
     pub log: Option<String>,
 
+    // Change to this user.
+    #[cfg(unix)]
+    pub user: Option<String>,
+
+    // Change to this group.
+    #[cfg(unix)]
+    pub group: Option<String>,
+
     // Only command line option.
     #[serde(skip)]
     pub exit_stdin_eof: bool,
@@ -92,9 +100,10 @@ pub struct NetworkConfig {
 #[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct InterfaceConfig {
+    #[serde(default, with = "os_string_actually_string")]
     pub name: Option<OsString>,
 
-    #[serde(alias = "Key", with = "base64u8array")]
+    #[serde(alias = "Key", with = "base64_u8_array")]
     pub private_key: X25519Key,
 
     #[serde(alias = "Port")]
@@ -108,11 +117,11 @@ pub struct InterfaceConfig {
 #[serde(rename_all = "PascalCase", deny_unknown_fields)]
 pub struct PeerConfig {
     /// Peer public key.
-    #[serde(with = "base64u8array")]
+    #[serde(with = "base64_u8_array")]
     pub public_key: X25519Pubkey,
 
     /// Pre-shared key.
-    #[serde(alias = "PSK", default, with = "base64u8array_optional")]
+    #[serde(alias = "PSK", default, with = "base64_u8_array_optional")]
     pub preshared_key: Option<[u8; 32]>,
 
     /// Peer endpoint.
@@ -137,7 +146,26 @@ pub struct PeerConfig {
     pub keepalive: Option<NonZeroU16>,
 }
 
-mod base64u8array {
+mod os_string_actually_string {
+    use super::*;
+
+    pub fn serialize<S: Serializer>(v: &Option<OsString>, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::Error;
+
+        if let Some(ref v) = v {
+            s.serialize_some(v.to_str().ok_or_else(|| Error::custom("not utf-8"))?)
+        } else {
+            s.serialize_none()
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<OsString>, D::Error> {
+        let v: String = Deserialize::deserialize(d)?;
+        Ok(Some(v.into()))
+    }
+}
+
+mod base64_u8_array {
     use super::*;
     use noise_protocol::U8Array;
 
@@ -261,20 +289,22 @@ mod ip_prefix_len {
     }
 }
 
-mod base64u8array_optional {
+mod base64_u8_array_optional {
     use super::*;
     use noise_protocol::U8Array;
 
     pub fn serialize<T: U8Array, S: Serializer>(t: &Option<T>, s: S) -> Result<S::Ok, S::Error> {
         if let Some(x) = t.as_ref() {
-            super::base64u8array::serialize(x, s)
+            let mut result = [0u8; 64];
+            let len = base64::encode_config_slice(x.as_slice(), base64::STANDARD, &mut result[..]);
+            s.serialize_some(std::str::from_utf8(&result[..len]).unwrap())
         } else {
             s.serialize_none()
         }
     }
 
     pub fn deserialize<'de, T: U8Array, D: Deserializer<'de>>(d: D) -> Result<Option<T>, D::Error> {
-        super::base64u8array::deserialize(d).map(Some)
+        super::base64_u8_array::deserialize(d).map(Some)
     }
 }
 
@@ -284,6 +314,7 @@ mod tests {
     use noise_protocol::U8Array;
 
     const EXAMPLE_CONFIG: &str = r##"[Interface]
+Name = "tun7"
 ListenPort = 7777
 PrivateKey = "2BJtcgPUjHfKKN3yMvTiVQbJ/UgHj2tcZE6xU/4BdGM="
 FwMark = 33
@@ -308,7 +339,7 @@ PersistentKeepalive = 17
             Config {
                 general: GeneralConfig::default(),
                 interface: InterfaceConfig {
-                    name: None,
+                    name: Some("tun7".into()),
                     listen_port: Some(7777),
                     private_key: U8Array::from_slice(
                         &base64::decode("2BJtcgPUjHfKKN3yMvTiVQbJ/UgHj2tcZE6xU/4BdGM=").unwrap()

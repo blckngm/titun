@@ -22,6 +22,7 @@ use crate::ipc::parse::*;
 use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::{SetPeerCommand, WgState, WgStateOut};
 use failure::{Error, ResultExt};
+use futures::channel::oneshot::Sender;
 use hex::encode;
 use std::ffi::OsStr;
 use std::path::Path;
@@ -33,7 +34,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
 pub async fn ipc_server(
     wg: Weak<WgState>,
     dev_name: &OsStr,
-    _daemonize: bool,
+    ready: Sender<()>,
 ) -> Result<(), Error> {
     use crate::ipc::windows_named_pipe::*;
 
@@ -41,6 +42,7 @@ pub async fn ipc_server(
     path.set_extension("sock");
     let mut listener = AsyncPipeListener::bind(path)
         .with_context(|e| format!("failed to bind IPC socket: {}", e))?;
+    let _ = ready.send(());
     loop {
         let wg = wg.clone();
         let stream = listener.accept().await?;
@@ -53,7 +55,11 @@ pub async fn ipc_server(
 }
 
 #[cfg(not(windows))]
-pub async fn ipc_server(wg: Weak<WgState>, dev_name: &OsStr, daemonize: bool) -> Result<(), Error> {
+pub async fn ipc_server(
+    wg: Weak<WgState>,
+    dev_name: &OsStr,
+    ready: Sender<()>,
+) -> Result<(), Error> {
     use futures::future::{select, Either};
     use nix::sys::stat::{umask, Mode};
     use pin_utils::pin_mut;
@@ -70,13 +76,7 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &OsStr, daemonize: bool) ->
     let mut listener = UnixListener::bind(path.as_path())
         .with_context(|e| format!("failed to bind IPC socket: {}", e))?;
 
-    if daemonize {
-        daemonize::Daemonize::new().start()?;
-    } else {
-        crate::systemd::notify_ready().unwrap_or_else(|e| warn!("Failed to notify systemd: {}", e));
-    }
-
-    let deleted = super::wait_delete::wait_delete(&path);
+    let deleted = super::wait_delete::wait_delete(&path, ready);
     let accept_and_handle = async move {
         loop {
             let (stream, _) = listener.accept().await?;

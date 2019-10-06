@@ -54,13 +54,10 @@ struct Options {
     #[structopt(short, long, help = "Run in foreground (don't daemonize)")]
     foreground: bool,
 
-    #[structopt(long, help = "Set logging (env_logger)", env = "RUST_LOG")]
-    log: Option<String>,
-
-    #[structopt(short, long, help = "Load initial configuration from file")]
+    #[structopt(short, long, help = "Load initial configuration from TOML file")]
     config_file: Option<PathBuf>,
 
-    #[structopt(long, help = "Exit if stdin is closed")]
+    #[structopt(long, hidden = true, help = "Exit if stdin is closed")]
     exit_stdin_eof: bool,
 
     #[cfg(windows)]
@@ -72,8 +69,19 @@ struct Options {
     )]
     network: Option<(Ipv4Addr, u32)>,
 
+    #[structopt(long, help = "Set logging (env_logger)", env = "RUST_LOG")]
+    log: Option<String>,
+
     #[structopt(long, help = "Number of worker threads", env = "TITUN_THREADS")]
     threads: Option<usize>,
+
+    #[cfg(unix)]
+    #[structopt(long, help = "Change to user (drop privilege)")]
+    user: Option<String>,
+
+    #[cfg(unix)]
+    #[structopt(long, help = "Change to group")]
+    group: Option<String>,
 
     #[structopt(value_name = "DEVICE_NAME", help = "Device name", parse(from_os_str))]
     dev: Option<OsString>,
@@ -109,6 +117,17 @@ impl Options {
 
         if options.foreground {
             config.general.foreground = true;
+        }
+
+        #[cfg(unix)]
+        {
+            if options.user.is_some() {
+                config.general.user = options.user;
+            }
+
+            if options.group.is_some() {
+                config.general.group = options.group;
+            }
         }
 
         if let Some(log) = options.log.as_ref().or(config.general.log.as_ref()) {
@@ -235,6 +254,8 @@ fn real_main() -> Result<(), Error> {
     let matches = Options::clap()
         .about(include_str!("copyright.txt"))
         .version(version)
+        .setting(AppSettings::UnifiedHelpMessage)
+        .setting(AppSettings::DeriveDisplayOrder)
         .setting(AppSettings::VersionlessSubcommands)
         .setting(AppSettings::SubcommandsNegateReqs)
         .setting(AppSettings::ArgsNegateSubcommands)

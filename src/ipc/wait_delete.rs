@@ -17,6 +17,7 @@
 
 #![cfg(unix)]
 
+use futures::channel::oneshot::Sender;
 use std::path::Path;
 
 // Polling on BSD.
@@ -24,14 +25,38 @@ use std::path::Path;
 // It is not possible to use kqueue to watch delete events on a socket:
 // https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=170177
 #[cfg(not(target_os = "linux"))]
-pub async fn wait_delete(path: &Path) -> Result<(), failure::Error> {
+pub async fn wait_delete(path: &Path, ready: Sender<()>) -> Result<(), failure::Error> {
+    use nix::dir::Dir;
+    use nix::fcntl::OFlag;
+    use nix::sys::stat::Mode;
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    // Use nix dir because it can be rewind, so it works with privilege dropping.
+    let mut dir = Dir::open(
+        path.parent().unwrap(),
+        OFlag::O_DIRECTORY | OFlag::O_RDONLY,
+        Mode::empty(),
+    )?;
+    let file_name = path.file_name().unwrap().to_owned();
     let (tx, rx) = futures::channel::oneshot::channel();
-    let path = path.to_owned();
+    let _ = ready.send(());
     std::thread::spawn(move || {
         loop {
-            if !path.exists() {
+            let mut found = false;
+            for f in dir.iter() {
+                let f = f.unwrap();
+                let os_str = OsStr::from_bytes(f.file_name().to_bytes());
+                let f_name = Path::new(os_str);
+                if f_name == file_name {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
                 break;
             }
+
             std::thread::sleep(std::time::Duration::from_secs(2));
         }
         tx.send(Ok(())).unwrap();
@@ -40,20 +65,21 @@ pub async fn wait_delete(path: &Path) -> Result<(), failure::Error> {
 }
 
 #[cfg(target_os = "linux")]
-pub async fn wait_delete(p: &Path) -> Result<(), failure::Error> {
+pub async fn wait_delete(p: &Path, ready: Sender<()>) -> Result<(), failure::Error> {
     // Use inotify on linux.
     use futures::StreamExt;
-    use inotify::{Inotify, WatchMask};
+    use inotify::{EventMask, Inotify, WatchMask};
 
+    let file_name = p.file_name().unwrap().into();
+    let parent_dir = p.parent().unwrap();
     let mut inotify = Inotify::init()?;
-    // DELETE_SELF does not get triggered until all opened file descriptors
-    // are closed. So watch for ATTRIB as well.
-    inotify.add_watch(p, WatchMask::ATTRIB | WatchMask::DELETE_SELF)?;
+    inotify.add_watch(parent_dir, WatchMask::DELETE)?;
+    let _ = ready.send(());
     let buf = vec![0u8; 1024];
     let mut stream = inotify.event_stream(buf);
     loop {
-        let _event = stream.next().await.unwrap()?;
-        if !p.exists() {
+        let event = stream.next().await.unwrap()?;
+        if event.mask == EventMask::DELETE && event.name.as_ref() == Some(&file_name) {
             break;
         }
     }
@@ -66,21 +92,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_wait_delete() {
-        use crate::async_utils::*;
         use nix::unistd::{mkstemp, unlink};
-        use std::time::Duration;
 
+        let (ready_tx, ready_rx) = futures::channel::oneshot::channel();
         let mut file = std::env::temp_dir();
         file.push("test_wait_delete_XXXXXX");
         let (_, tmp_path) = mkstemp(&file).expect("mkstemp");
         {
             let tmp_path = tmp_path.clone();
             tokio::spawn(async move {
-                delay(Duration::from_millis(10)).await;
+                ready_rx.await.unwrap();
                 unlink(&tmp_path).expect("unlink");
             });
         }
-        wait_delete(&tmp_path).await.expect("wait delete");
+        wait_delete(&tmp_path, ready_tx).await.expect("wait delete");
         assert!(!tmp_path.exists());
     }
 }

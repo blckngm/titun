@@ -126,12 +126,41 @@ pub async fn run(c: Config) -> Result<(), Error> {
         }
     }
 
-    let daemonize = !c.general.foreground;
+    let (ready_tx, ready_rx) = futures::channel::oneshot::channel::<()>();
+
     scope0.clone().spawn_canceller(async move {
-        ipc_server(weak, &dev_name, daemonize)
+        ipc_server(weak, &dev_name, ready_tx)
             .await
             .unwrap_or_else(|e| error!("IPC server error: {}", e))
     });
+
+    if ready_rx.await.is_ok() {
+        #[cfg(unix)]
+        {
+            if c.general.group.is_some() || c.general.user.is_some() {
+                let p = privdrop::PrivDrop::default();
+                let p = if let Some(ref user) = c.general.user {
+                    p.user(user)
+                } else {
+                    p
+                };
+                let p = if let Some(ref group) = c.general.group {
+                    p.group(group)
+                } else {
+                    p
+                };
+                p.apply()
+                    .with_context(|e| format!("failed to change user and group: {}", e))?;
+            }
+
+            if c.general.foreground {
+                crate::systemd::notify_ready()
+                    .unwrap_or_else(|e| warn!("failed to notify systemd: {}", e));
+            } else {
+                daemonize::Daemonize::new().start()?;
+            }
+        }
+    }
 
     scope0.cancelled().await;
     schedule_force_shutdown();
