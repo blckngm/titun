@@ -1,7 +1,6 @@
 # TiTun
 
-Simple and fast, [WireGuard](https://www.wireguard.com/) compatible IP tunnel
-written in Rust.
+Simple, fast, and cross-platform IP tunnel written in Rust. [WireGuard](https://www.wireguard.com/) compatible.
 
 ## WARNING
 
@@ -9,18 +8,17 @@ This project is experimental and still under development. Use at your own risk.
 
 ## Build
 
-Install rust, and then
+Install rust[1], and then
 
 ```
 $ cargo build --release
 ```
 
-Debian package for amd64 can be built with `dpkg-deb`:
+to build a `titun` executable in `target/release`.
 
-```
-$ cd debian
-$ ./build-deb.sh
-```
+[1]: You need a recent nightly version until async-await is stable, but our
+  `rust-toolchain` file should take care of downloading and installing the
+  designated nightly automatically.
 
 ## CLI and Configuration
 
@@ -30,37 +28,62 @@ Use
 $ sudo titun -c tun0.toml -f tun0
 ```
 
-to run TiTun and open the tun device `tun0`. Here `-f` tells the program to run in foreground, i.e., not daemonize. The `-c tun0.toml` option tells the program to load configuration from the file `tun0.toml`.
+to run TiTun and open the tun device `tun0`. Here `-f` tells the program to run
+in foreground, i.e., not daemonize. The `-c tun0.toml` option tells the program
+to load configuration from the file `tun0.toml`.
 
-Configuration file is similar to what `wg` produces and expects, but in TOML format:
+Use `titun show` to show device status. (It's similar to `wg show`.) Use
+`titun help` to discover more CLI options.
+
+Configuration files are in TOML format:
 
 ```toml
+# All optional. NOT applied when reloading.
+[General]
+# Set logging. Override by the `--log` option or the `RUST_LOG` environment variable.
+Log = "info"
+# Switch to user after initialization to drop privilege. Override by `--user`.
+User = "nobody"
+# Switch to group.
+Group = "nogroup"
+# --foreground
+Foreground = true
+# Number of worker threads. Override by `--threads` or `TITUN_THREADS`.
+# Default is `min(2, number of cores)`.
+Threads = 2
+
 [Interface]
+# Optional. Override by command line argument. NOT applied when reloading.
+Name = "tun7"
+# Optiona. Alias: Port.
 ListenPort = 7777
+# Alias: Key.
 PrivateKey = "2BJtcgPUjHfKKN3yMvTiVQbJ/UgHj2tcZE6xU/4BdGM="
+# Alias: Mark.
 FwMark = 33
 
 [[Peer]]
 PublicKey = "Ck8P+fUguLIf17zmb3eWxxS7PqgN3+ciMFBlSwqRaw4="
+# Optional. Alias: PSK.
 PresharedKey = "w64eiHxoUHU8DcFexHWzqILOvbWx9U+dxxh8iQqJr+k="
+# Optional. Alias: Routes.
 AllowedIPs = ["192.168.77.0/24"]
+# Optional.
 Endpoint = "192.168.3.1:7777"
+# Optional. Range: 1 - 65535. Alias: Keepalive.
 PersistentKeepalive = 17
 ```
 
-A show subcommand is available to query device status (similar to `wg show`):
-
-```
-$ sudo titun show
-```
-
-After the program is running, use `ip` or `ifconfig` to configure IP addresses, routes, etc. And you are good to go!
-
-You can send a `SIGHUP` signal to reload configuration.
+If you are familiar with WireGuard tools, this format, excluding the optional
+`General` section, is very similar to `wg` or `wg-quick` configuration files.
+It's TOML, so you need to use `[[Peer]]` instead of `[Peer]`, quote non-numeric
+values, and put allowed IPs in an array.)
 
 ### systemd
 
-TiTun supports systemd. Here is an example template service definiation:
+On linux, this is the recommended way to run TiTun. Copy the `titun` binary to
+`/usr/local/bin`, and put this service file `titun@.service` at
+`/etc/systemd/system/`:
 
 ```systemd
 [Unit]
@@ -71,11 +94,11 @@ Type=notify
 Environment=RUST_LOG=warn
 Environment=RUST_BACKTRACE=1
 
-ExecStart=/usr/bin/titun -f -c /etc/titun/%I.conf %I
+ExecStart=/usr/local/bin/titun -f -c /etc/titun/%I.conf %I
 ExecStartPost=/bin/sh -c "if [ -x /etc/titun/%I.up.sh ]; then /etc/titun/%I.up.sh; fi"
 ExecStopPost=/bin/sh -c "if [ -x /etc/titun/%I.down.sh ]; then /etc/titun/%I.down.sh; fi"
 
-ExecReload=/usr/bin/titun check /etc/titun/%I.conf
+ExecReload=/usr/local/bin/titun check /etc/titun/%I.conf
 ExecReload=/bin/kill -HUP $MAINPID
 
 Restart=always
@@ -84,16 +107,20 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
-### WireGuard cross platform user interface
+Now if you want to run a TiTun device `tun0`, put its configuration at
+`/etc/titun/tun0.conf`, write a script `/etc/titun/tun0.up.sh` to configure IP
+address, routes, DNS etc., write a script `/etc/titun/tun0.down.sh` to reverse
+those changes, and use `systemctl (start|stop|reload|restart|status) titun@tun0`
+to manage the service.
+
+### Use with WireGuard tools
 
 On unix-like operating systems, the WireGuard [cross platform userspace
-interface](https://www.wireguard.com/xplatform/) is implmeneted. Use `wg` (from
-wireguard-tools) and `ip` (or `ifconfig`) to configure the interface. See
-[quickstart](https://www.wireguard.com/quickstart/) (Use `titun tun0` instead of
-`ip link add dev wg0 type wireguard`).
+interface](https://www.wireguard.com/xplatform/) is implemented. So you can use
+`wg` and `wg-quick` to configure TiTun devices.
 
-TiTun is compatible with `wg-quick`. Use the `WG_QUICK_USERSPACE_IMPLEMENTATION`
-environment variable to specify `titun` as the userspace implementation.
+To use `wg-quick`, specify the `WG_QUICK_USERSPACE_IMPLEMENTATION` environment
+variable to `titun`:
 
 ```sh
 $ sudo WG_QUICK_USERSPACE_IMPLEMENTATION=titun wg-quick ...
@@ -101,6 +128,15 @@ $ sudo WG_QUICK_USERSPACE_IMPLEMENTATION=titun wg-quick ...
 
 ## Operating Systems Support
 
-### Linux and FreeBSD
+### Linux
 
-Linux and FreeBSD are supported.
+Linux is supported.
+
+### FreeBSD
+
+FreeBSD is supported.
+
+### Windows
+
+Windows is semi-supported. (TODO: document driver, GUI, specific configuration,
+etc.)
