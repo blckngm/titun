@@ -23,13 +23,18 @@ use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::{SetPeerCommand, WgState, WgStateOut};
 use failure::{Error, ResultExt};
 use hex::encode;
+use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::{Arc, Weak};
 use std::time::SystemTime;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
 
 #[cfg(windows)]
-pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str, _daemonize: bool) -> Result<(), Error> {
+pub async fn ipc_server(
+    wg: Weak<WgState>,
+    dev_name: &OsStr,
+    _daemonize: bool,
+) -> Result<(), Error> {
     use crate::ipc::windows_named_pipe::*;
 
     let mut path = Path::new(r#"\\.\pipe\wireguard"#).join(dev_name);
@@ -48,7 +53,7 @@ pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str, _daemonize: bool) -> 
 }
 
 #[cfg(not(windows))]
-pub async fn ipc_server(wg: Weak<WgState>, dev_name: &str, daemonize: bool) -> Result<(), Error> {
+pub async fn ipc_server(wg: Weak<WgState>, dev_name: &OsStr, daemonize: bool) -> Result<(), Error> {
     use futures::future::{select, Either};
     use nix::sys::stat::{umask, Mode};
     use pin_utils::pin_mut;

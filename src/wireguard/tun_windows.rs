@@ -21,7 +21,7 @@
 
 use crate::async_utils::blocking;
 
-use std::ffi::CString;
+use std::ffi::{CString, OsStr, OsString};
 use std::fmt;
 use std::io::{self, Error, ErrorKind, Read, Write};
 use std::mem::zeroed;
@@ -71,7 +71,7 @@ impl Drop for AsyncTun {
 }
 
 impl AsyncTun {
-    pub fn open(alias: &str, network: NetworkConfig) -> io::Result<AsyncTun> {
+    pub fn open(alias: &OsStr, network: NetworkConfig) -> io::Result<AsyncTun> {
         let tun = Tun::open(alias, network)?;
         Ok(AsyncTun::new(tun))
     }
@@ -201,7 +201,7 @@ macro_rules! continue_on_error {
 }
 
 /// Get network interface GUID from alias.
-fn get_netcfg_instance_id(alias: &str) -> io::Result<String> {
+fn get_netcfg_instance_id(alias: &OsStr) -> io::Result<String> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let connections = hklm.open_subkey(
         r"SYSTEM\CurrentControlSet\Control\Network\{4D36E972-E325-11CE-BFC1-08002BE10318}",
@@ -210,7 +210,7 @@ fn get_netcfg_instance_id(alias: &str) -> io::Result<String> {
         // Could fail because \Connection does not exist, or because permission denied, continue.
         let guid = continue_on_error!(guid);
         let conn = continue_on_error!(connections.open_subkey(format!("{}\\Connection", guid)));
-        let name: String = continue_on_error!(conn.get_value("Name"));
+        let name: OsString = continue_on_error!(conn.get_value("Name"));
         if name == alias {
             return Ok(guid);
         }
@@ -276,7 +276,7 @@ impl Tun {
     /// * `alias` - e.g., `Local Area Network 2`.
     /// * `network` - Network configuration. Used in `TAP_IOCTL_CONFIG_TUN`.
     #[allow(non_snake_case)]
-    pub fn open(alias: &str, network: NetworkConfig) -> io::Result<Tun> {
+    pub fn open(alias: &OsStr, network: NetworkConfig) -> io::Result<Tun> {
         let instance_id = get_netcfg_instance_id(alias)?;
         check_interface_is_tap(&instance_id)
             .unwrap_or_else(|e| warn!("Error checking interface: {}", e));

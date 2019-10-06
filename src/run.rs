@@ -21,9 +21,10 @@ use crate::wireguard::re_exports::{DH, X25519};
 use crate::wireguard::*;
 use failure::{Error, ResultExt};
 use futures::prelude::*;
+use std::ffi::OsString;
 
 pub struct Config {
-    pub dev_name: String,
+    pub dev_name: OsString,
     pub exit_stdin_eof: bool,
     #[cfg(windows)]
     pub network: (::std::net::Ipv4Addr, u32),

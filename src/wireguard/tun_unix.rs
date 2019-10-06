@@ -26,6 +26,7 @@ use mio::{Poll as MioPoll, PollOpt, Ready, Token};
 use nix::fcntl::{open, OFlag};
 use nix::sys::stat::Mode;
 use nix::unistd::{close, read, write};
+use std::ffi::OsStr;
 use std::io::{self, Error as IOError, Read, Write};
 use std::mem;
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
@@ -59,15 +60,11 @@ pub struct AsyncTun {
 }
 
 impl AsyncTun {
-    pub fn open(name: impl AsRef<str>) -> Result<AsyncTun, Error> {
-        let tun = Tun::open(name.as_ref(), OFlag::O_NONBLOCK)?;
+    pub fn open(name: &OsStr) -> Result<AsyncTun, Error> {
+        let tun = Tun::open(name, OFlag::O_NONBLOCK)?;
         Ok(AsyncTun {
             io: PollEvented::new(tun),
         })
-    }
-
-    pub fn get_name(&self) -> &str {
-        self.io.get_ref().get_name()
     }
 
     fn poll_read(&self, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<Result<usize, IOError>> {
@@ -109,7 +106,6 @@ impl AsyncTun {
 #[derive(Debug)]
 struct Tun {
     fd: i32,
-    name: String,
 }
 
 /// The file descriptor will be closed when the Tun is dropped.
@@ -125,14 +121,15 @@ impl Tun {
 
     /// O_CLOEXEC, IFF_NO_PI.
     #[cfg(target_os = "linux")]
-    pub fn open(name: &str, extra_flags: OFlag) -> Result<Tun, Error> {
-        use std::ffi::{CStr, CString};
+    pub fn open(name: &OsStr, extra_flags: OFlag) -> Result<Tun, Error> {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
 
         if name.len() > 15 {
             bail!("Device name is too long.");
         }
 
-        let name = CString::new(name)?;
+        let name = CString::new(name.as_bytes())?;
         let name = name.as_bytes_with_nul();
 
         let fd = open(
@@ -143,10 +140,7 @@ impl Tun {
 
         // Make the `fd` owned by a `Tun`, so that if any
         // error occurs below, the `fd` is `close`d.
-        let mut tun = Tun {
-            fd,
-            name: "".to_string(),
-        };
+        let tun = Tun { fd };
 
         let mut ifr = ioctl::ifreq {
             name: [0; 16],
@@ -157,35 +151,32 @@ impl Tun {
 
         unsafe { ioctl::tunsetiff(fd, &mut ifr as *mut _ as _) }?;
 
-        let namelen = ifr.name.iter().position(|x| *x == 0).unwrap() + 1;
-
-        let name = CStr::from_bytes_with_nul(&ifr.name[..namelen])
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
-        tun.name = name;
         Ok(tun)
     }
 
     // BSD systems.
     #[cfg(not(target_os = "linux"))]
-    pub fn open(name: &str, extra_flags: OFlag) -> Result<Tun, Error> {
+    pub fn open(name: &OsStr, extra_flags: OFlag) -> Result<Tun, Error> {
         use std::path::Path;
 
-        let name = name.to_string();
-        if !name.starts_with("tun") || name[3..].parse::<u32>().is_err() {
-            bail!(
-                "Invalid tun device name {}: must be tunN where N is an integer.",
-                name
-            );
+        {
+            let name = name.to_str().ok_or_else(|| {
+                format_err!("invalid tun device name: {}", name.to_string_lossy())
+            })?;
+
+            if !name.starts_with("tun") || name[3..].parse::<u32>().is_err() {
+                bail!(
+                    "invalid tun device name: {}: must be tunN where N is an integer",
+                    name
+                );
+            }
         }
         let fd = open(
-            &Path::new("/dev").join(&name),
+            &Path::new("/dev").join(name),
             OFlag::O_CLOEXEC | OFlag::O_RDWR | extra_flags,
             Mode::empty(),
         )?;
-        let tun = Tun { fd, name };
+        let tun = Tun { fd };
 
         if cfg!(target_os = "freebsd") {
             unsafe {
@@ -195,12 +186,6 @@ impl Tun {
         }
 
         Ok(tun)
-    }
-
-    /// Get name of this device. Should be the same name if you have
-    /// passed one in when createing the device.
-    pub fn get_name(&self) -> &str {
-        self.name.as_str()
     }
 }
 

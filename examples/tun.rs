@@ -38,23 +38,26 @@ async fn main() -> Result<(), Error> {
 #[cfg(unix)]
 mod imp {
     use failure::Error;
+    use std::ffi::OsStr;
     use std::process::{Child, Command};
     use titun::wireguard::AsyncTun;
 
-    fn up_and_ping(name: &str) -> Result<Child, Error> {
-        Command::new("ifconfig").args(&[name, "up"]).output()?;
+    fn up_and_ping(name: &OsStr) -> Result<Child, Error> {
+        Command::new("ifconfig").arg(name).arg("up").output()?;
         // The network 192.0.2.0/24 is TEST-NET, suitable for use in
         // documentation and examples.
 
         // Linux.
         #[cfg(target_os = "linux")]
         Command::new("ip")
-            .args(&["addr", "add", "192.0.2.8", "peer", "192.0.2.7", "dev", name])
+            .args(&["addr", "add", "192.0.2.8", "peer", "192.0.2.7", "dev"])
+            .arg(name)
             .output()?;
         // BSD.
         #[cfg(not(target_os = "linux"))]
         Command::new("ifconfig")
-            .args(&[name, "192.0.2.8", "192.0.2.7"])
+            .arg(name)
+            .args(&["192.0.2.8", "192.0.2.7"])
             .output()?;
         Command::new("ping")
             .arg("192.0.2.7")
@@ -63,9 +66,9 @@ mod imp {
     }
 
     pub async fn main() -> Result<(), Error> {
-        let t = AsyncTun::open("tun7")?;
-
-        up_and_ping(t.get_name())?;
+        let dev = OsStr::new("tun7");
+        let t = AsyncTun::open(dev)?;
+        up_and_ping(dev)?;
 
         let mut buf = [0u8; 2048];
 

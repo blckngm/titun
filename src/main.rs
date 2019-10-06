@@ -19,6 +19,7 @@
 use failure::bail;
 use failure::Error;
 use log::info;
+use std::ffi::OsString;
 #[cfg(windows)]
 use std::net::Ipv4Addr;
 use structopt::{clap::crate_version, StructOpt};
@@ -63,8 +64,8 @@ struct Options {
     )]
     network: (Ipv4Addr, u32),
 
-    #[structopt(value_name = "DEVICE_NAME", help = "Device name")]
-    dev: String,
+    #[structopt(value_name = "DEVICE_NAME", help = "Device name", parse(from_os_str))]
+    dev: OsString,
 }
 
 fn real_main() -> Result<(), Error> {
