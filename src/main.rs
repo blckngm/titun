@@ -130,9 +130,13 @@ impl Options {
             }
         }
 
-        if let Some(log) = options.log.as_ref().or(config.general.log.as_ref()) {
-            std::env::set_var("RUST_LOG", log);
-        }
+        let log = options
+            .log
+            .as_ref()
+            .map(|x| x.as_str())
+            .or(config.general.log.as_ref().map(|x| x.as_str()))
+            .unwrap_or("warn");
+        std::env::set_var("RUST_LOG", log);
         env_logger::init();
 
         if options.exit_stdin_eof {

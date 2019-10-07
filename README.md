@@ -91,7 +91,6 @@ Description=TiTun instance %I
 
 [Service]
 Type=notify
-Environment=RUST_LOG=warn
 Environment=RUST_BACKTRACE=1
 
 ExecStart=/usr/local/bin/titun -f -c /etc/titun/%I.conf %I
