@@ -26,6 +26,7 @@ use std::fmt;
 use std::io::{self, Error, ErrorKind, Read, Write};
 use std::mem::zeroed;
 use std::net::Ipv4Addr;
+use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::ptr::null_mut;
 use std::sync::Arc;
 
@@ -211,6 +212,9 @@ fn get_netcfg_instance_id(alias: &OsStr) -> io::Result<String> {
         let guid = continue_on_error!(guid);
         let conn = continue_on_error!(connections.open_subkey(format!("{}\\Connection", guid)));
         let name: OsString = continue_on_error!(conn.get_value("Name"));
+        // Strip trailing NULL.
+        let name: Vec<u16> = name.encode_wide().collect();
+        let name = OsString::from_wide(&name[..name.len() - 1]);
         if name == alias {
             return Ok(guid);
         }
