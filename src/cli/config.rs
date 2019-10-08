@@ -2,6 +2,7 @@ use crate::wireguard::{X25519Key, X25519Pubkey};
 use failure::{Error, ResultExt};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::fs::{File, OpenOptions};
@@ -65,7 +66,7 @@ pub fn load_config_from_file(mut file: &File) -> Result<Config, Error> {
         }
         for &route in &p.allowed_ips {
             if !previous_routes.insert(route) {
-                warn!("Allowed IP {}/{} appeared multiple times", route.0, route.1)
+                warn!("allowed IP {}/{} appeared multiple times", route.0, route.1)
             }
         }
     }
@@ -193,7 +194,7 @@ pub struct PeerConfig {
         default,
         with = "ip_prefix_len"
     )]
-    pub allowed_ips: Vec<(IpAddr, u32)>,
+    pub allowed_ips: BTreeSet<(IpAddr, u32)>,
 
     /// Persistent keep-alive interval.
     /// Valid values: 1 - 0xfffe.
@@ -248,7 +249,7 @@ mod base64_u8_array {
 mod ip_prefix_len {
     use super::*;
 
-    pub fn serialize<S: Serializer>(t: &[(IpAddr, u32)], s: S) -> Result<S::Ok, S::Error> {
+    pub fn serialize<S: Serializer>(t: &BTreeSet<(IpAddr, u32)>, s: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeSeq;
 
         let mut seq = s.serialize_seq(t.len().into())?;
@@ -277,7 +278,9 @@ mod ip_prefix_len {
         seq.end()
     }
 
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<(IpAddr, u32)>, D::Error> {
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        d: D,
+    ) -> Result<BTreeSet<(IpAddr, u32)>, D::Error> {
         use serde::de::{Error, SeqAccess, Visitor};
         use std::fmt;
 
@@ -305,7 +308,7 @@ mod ip_prefix_len {
         }
 
         impl<'de> Visitor<'de> for AllowedIPsVisitor {
-            type Value = Vec<(IpAddr, u32)>;
+            type Value = BTreeSet<(IpAddr, u32)>;
 
             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(
@@ -319,22 +322,20 @@ mod ip_prefix_len {
                 E: Error,
             {
                 let v = Self::parse(v)?;
-                Ok(vec![v])
+                let mut r = BTreeSet::new();
+                r.insert(v);
+                Ok(r)
             }
 
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, <A as SeqAccess<'de>>::Error>
             where
                 A: SeqAccess<'de>,
             {
-                let mut result = if let Some(l) = seq.size_hint() {
-                    Vec::with_capacity(l)
-                } else {
-                    Vec::new()
-                };
+                let mut result = BTreeSet::new();
                 while let Some(v) = seq.next_element()? {
                     let v: Cow<'_, str> = v;
                     let p = Self::parse(&v)?;
-                    result.push(p);
+                    result.insert(p);
                 }
                 Ok(result)
             }
@@ -414,7 +415,10 @@ PersistentKeepalive = 17
                         &base64::decode("w64eiHxoUHU8DcFexHWzqILOvbWx9U+dxxh8iQqJr+k=").unwrap()
                     )),
                     endpoint: Some("192.168.3.1:7777".parse().unwrap()),
-                    allowed_ips: vec![("192.168.77.1".parse().unwrap(), 32)],
+                    allowed_ips: [("192.168.77.1".parse().unwrap(), 32)]
+                        .iter()
+                        .cloned()
+                        .collect(),
                     keepalive: NonZeroU16::new(17),
                 }],
             }

@@ -236,6 +236,7 @@ mod tests {
     use super::*;
     use rand::prelude::*;
     use rand::rngs::OsRng;
+    use std::collections::BTreeSet;
 
     #[test]
     fn wg_handshake_init_responde() {
@@ -257,7 +258,7 @@ mod tests {
             public_key: Clone::clone(resp.pubkey()),
             psk: None,
             endpoint: None,
-            allowed_ips: vec![],
+            allowed_ips: BTreeSet::new(),
             keepalive: None,
             roaming: true,
         };
@@ -302,7 +303,7 @@ mod tests {
             public_key: *resp.pubkey(),
             psk: Some(psk),
             endpoint: None,
-            allowed_ips: vec![],
+            allowed_ips: BTreeSet::new(),
             keepalive: None,
             roaming: true,
         };
@@ -344,7 +345,7 @@ mod tests {
             public_key: *resp.pubkey(),
             psk: None,
             endpoint: None,
-            allowed_ips: vec![],
+            allowed_ips: BTreeSet::new(),
             keepalive: None,
             roaming: true,
         };
@@ -376,7 +377,7 @@ mod tests {
             public_key: *resp.pubkey(),
             psk: None,
             endpoint: None,
-            allowed_ips: vec![],
+            allowed_ips: BTreeSet::new(),
             keepalive: None,
             roaming: true,
         };
@@ -413,7 +414,7 @@ mod tests {
             public_key: *resp.pubkey(),
             psk: None,
             endpoint: None,
-            allowed_ips: vec![],
+            allowed_ips: BTreeSet::new(),
             keepalive: None,
             roaming: true,
         };
@@ -454,7 +455,7 @@ mod tests {
             public_key: *resp.pubkey(),
             psk: None,
             endpoint: None,
-            allowed_ips: vec![],
+            allowed_ips: BTreeSet::new(),
             keepalive: None,
             roaming: true,
         };

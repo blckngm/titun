@@ -117,6 +117,7 @@ pub async fn run(c: Config, notify: Option<NotifyHandle>) -> Result<(), Error> {
     let tun =
         AsyncTun::open(&dev_name).with_context(|e| format!("failed to open tun device: {}", e))?;
 
+    info!("setting port, fwmark and private key");
     let info = WgInfo {
         port: c.interface.listen_port.unwrap_or(0),
         fwmark: c.interface.fwmark.unwrap_or(0),

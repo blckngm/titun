@@ -19,6 +19,7 @@ use crate::crypto::noise_crypto_impls::X25519;
 use noise_protocol::DH;
 use rand::prelude::*;
 use rand::rngs::OsRng;
+use std::collections::BTreeSet;
 use std::net::{IpAddr, SocketAddr, SocketAddrV6};
 use std::num::NonZeroU16;
 use std::ops::Deref;
@@ -39,7 +40,7 @@ pub struct PeerInfo {
     /// Peer endpoint.
     pub endpoint: Option<SocketAddrV6>,
     /// Allowed source IPs.
-    pub allowed_ips: Vec<(IpAddr, u32)>,
+    pub allowed_ips: BTreeSet<(IpAddr, u32)>,
     /// Persistent keep-alive interval in seconds.
     /// Valid values: 1 - 0xfffe.
     pub keepalive: Option<NonZeroU16>,
@@ -93,7 +94,7 @@ pub struct PeerStateOut {
     /// Zero value means persistent keepalive is not enabled.
     pub persistent_keepalive_interval: u16,
     /// Allowed IP addresses.
-    pub allowed_ips: Vec<(IpAddr, u32)>,
+    pub allowed_ips: BTreeSet<(IpAddr, u32)>,
 }
 
 /// Sender index or receiver index.

@@ -29,6 +29,7 @@ use parking_lot::{Mutex, RwLock};
 use pin_utils::pin_mut;
 use rand::prelude::*;
 use rand::rngs::OsRng;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::sync::atomic::Ordering;
@@ -586,7 +587,7 @@ pub struct SetPeerCommand {
     pub keepalive: Option<u16>,
     pub replace_allowed_ips: bool,
     /// Replace if `replace_allowed_ips`, append otherwise.
-    pub allowed_ips: Vec<(IpAddr, u32)>,
+    pub allowed_ips: BTreeSet<(IpAddr, u32)>,
 }
 
 impl WgState {
@@ -825,46 +826,65 @@ impl WgState {
             }
         }
 
-        if command.replace_allowed_ips || !command.allowed_ips.is_empty() {
-            debug!("setting peer allowed IPs");
-            // Lock rt4.
-            let mut rt4 = self.rt4.write();
-            // Lock rt6.
-            let mut rt6 = self.rt6.write();
+        // We should not take locks of other peers when we are holding `rt4` and
+        // `rt6` locks, that would violate our lock order. So remove them later.
+        let mut to_remove_others: Vec<(SharedPeerState, (IpAddr, u32))> = Vec::new();
 
-            if command.replace_allowed_ips {
-                for &(a, m) in &peer.info.allowed_ips {
-                    let p = match a {
-                        IpAddr::V4(a) => rt4.remove(a, m),
-                        IpAddr::V6(a) => rt6.remove(a, m),
-                    }
-                    .unwrap();
-                    assert!(Arc::ptr_eq(&p, &peer0));
-                }
-                peer.info.allowed_ips.clear();
+        // Lock rt4.
+        let mut rt4 = self.rt4.write();
+        // Lock rt6.
+        let mut rt6 = self.rt6.write();
+        if command.replace_allowed_ips {
+            for &(a, m) in peer.info.allowed_ips.difference(&command.allowed_ips) {
+                debug!("removing allowed ip {}/{}", a, m);
+                match a {
+                    IpAddr::V4(a) => rt4.remove(a, m),
+                    IpAddr::V6(a) => rt6.remove(a, m),
+                };
             }
-            for (a, m) in command.allowed_ips {
+
+            for &(a, m) in command.allowed_ips.difference(&peer.info.allowed_ips) {
+                debug!("adding allowed ip {}/{}", a, m);
                 let old_peer = match a {
                     IpAddr::V4(a) => rt4.insert(a, m, peer0.clone()),
                     IpAddr::V6(a) => rt6.insert(a, m, peer0.clone()),
                 };
-                let should_add = if let Some(old_peer) = old_peer {
-                    if !Arc::ptr_eq(&old_peer, &peer0) {
-                        let his_allowed_ips = &mut old_peer.write().info.allowed_ips;
-                        let i = his_allowed_ips.iter().position(|x| *x == (a, m)).unwrap();
-                        his_allowed_ips.remove(i);
-                        true
-                    } else {
-                        false
+                if let Some(old_peer) = old_peer {
+                    to_remove_others.push((old_peer, (a, m)));
+                }
+            }
+
+            peer.info.allowed_ips = command.allowed_ips;
+        } else {
+            for (a, m) in command.allowed_ips {
+                if !peer.info.allowed_ips.contains(&(a, m)) {
+                    debug!("adding allowed ip {}/{}", a, m);
+                    let old_peer = match a {
+                        IpAddr::V4(a) => rt4.insert(a, m, peer0.clone()),
+                        IpAddr::V6(a) => rt6.insert(a, m, peer0.clone()),
+                    };
+                    if let Some(old_peer) = old_peer {
+                        to_remove_others.push((old_peer, (a, m)));
                     }
-                } else {
-                    true
-                };
-                if should_add {
-                    peer.info.allowed_ips.push((a, m));
+                    peer.info.allowed_ips.insert((a, m));
                 }
             }
         }
+
+        drop(rt4);
+        drop(rt6);
+
+        for (old_peer, (a, m)) in to_remove_others {
+            let mut old_peer = old_peer.write();
+            debug!(
+                "removing allowed ip {}/{} from old peer: {}",
+                a,
+                m,
+                base64::encode(&old_peer.info.public_key)
+            );
+            assert!(old_peer.info.allowed_ips.remove(&(a, m)));
+        }
+
         Ok(())
     }
 

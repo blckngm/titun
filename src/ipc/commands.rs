@@ -16,6 +16,7 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::wireguard::X25519Key;
+use std::collections::BTreeSet;
 use std::net::{IpAddr, SocketAddr};
 
 #[derive(Debug, Eq, PartialEq)]
@@ -41,5 +42,5 @@ pub struct WgSetPeerCommand {
     pub endpoint: Option<SocketAddr>,
     pub persistent_keepalive_interval: Option<u16>,
     pub replace_allowed_ips: bool,
-    pub allowed_ips: Vec<(IpAddr, u32)>,
+    pub allowed_ips: BTreeSet<(IpAddr, u32)>,
 }

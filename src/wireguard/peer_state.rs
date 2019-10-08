@@ -245,7 +245,7 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Resul
             endpoint: None,
             keepalive: None,
             psk: None,
-            allowed_ips: vec![],
+            allowed_ips: Default::default(),
             roaming: true,
         },
         last_handshake: None,

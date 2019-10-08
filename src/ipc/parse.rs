@@ -22,6 +22,7 @@ use crate::wireguard::{PeerStateOut, WgStateOut};
 use failure::Error;
 use futures::prelude::*;
 use hex::decode;
+use std::collections::BTreeSet;
 use std::io;
 use std::time::{Duration, SystemTime};
 use tokio::io::AsyncRead;
@@ -113,7 +114,7 @@ where
         endpoint: None,
         persistent_keepalive_interval: None,
         replace_allowed_ips: false,
-        allowed_ips: vec![],
+        allowed_ips: BTreeSet::new(),
     };
 
     loop {
@@ -156,7 +157,7 @@ where
                 if prefix_len > if ip.is_ipv4() { 32 } else { 128 } {
                     bail!("Invalid prefix length: {}", prefix_len);
                 }
-                peer.allowed_ips.push((ip, prefix_len));
+                peer.allowed_ips.insert((ip, prefix_len));
             }
             _ => break,
         }
@@ -293,7 +294,7 @@ where
         preshared_key: None,
         endpoint: None,
         persistent_keepalive_interval: 0,
-        allowed_ips: vec![],
+        allowed_ips: BTreeSet::new(),
         last_handshake_time: None,
         rx_bytes: 0,
         tx_bytes: 0,
@@ -349,7 +350,7 @@ where
                 if prefix_len > if ip.is_ipv4() { 32 } else { 128 } {
                     bail!("Invalid prefix length: {}", prefix_len);
                 }
-                peer.allowed_ips.push((ip, prefix_len));
+                peer.allowed_ips.insert((ip, prefix_len));
             }
             _ => break,
         }
