@@ -30,7 +30,37 @@ fn schedule_force_shutdown() {
     });
 }
 
+#[cfg(unix)]
+async fn do_reload(mut file: &std::fs::File, wg: &std::sync::Arc<WgState>) -> Result<(), Error> {
+    use std::io::{Seek, SeekFrom};
+
+    file.seek(SeekFrom::Start(0))?;
+    let new_config = super::load_config_from_file(file)?;
+    crate::cli::reload(wg, new_config).await
+}
+
+#[cfg(unix)]
+async fn reload_on_sighup(
+    file: Option<std::fs::File>,
+    weak: std::sync::Weak<WgState>,
+) -> Result<(), Error> {
+    use tokio_net::signal::unix::{signal, SignalKind};
+    while let Some(_) = signal(SignalKind::hangup())?.next().await {
+        if let Some(ref file) = file {
+            if let Some(wg) = weak.upgrade() {
+                info!("reloading");
+                do_reload(file, &wg)
+                    .await
+                    .unwrap_or_else(|e| warn!("error in reloading: {}", e));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub async fn run(c: Config) -> Result<(), Error> {
+    #[cfg(unix)]
+    let mut c = c;
     let scope0 = AsyncScope::new();
 
     scope0.clone().spawn_canceller(async move {
@@ -109,21 +139,12 @@ pub async fn run(c: Config) -> Result<(), Error> {
     #[cfg(unix)]
     {
         let weak1 = weak.clone();
-        if let Some(path) = c.general.config_file_path.clone() {
-            scope0.clone().spawn_canceller(async move {
-                use tokio_net::signal::unix::{signal, SignalKind};
-                while let Some(_) = signal(SignalKind::hangup()).unwrap().next().await {
-                    info!("reloading");
-                    if let Some(wg) = weak1.upgrade() {
-                        match super::load_config_from_file(&path) {
-                            Err(e) => Err(e),
-                            Ok(config) => crate::cli::reload(&wg, config).await,
-                        }
-                        .unwrap_or_else(|e| warn!("error in reloading: {}", e));
-                    }
-                }
-            });
-        }
+        let file = c.general.config_file.take();
+        scope0.clone().spawn_canceller(async move {
+            reload_on_sighup(file, weak1)
+                .await
+                .unwrap_or_else(|e| warn!("error in reload_on_sighup: {}", e))
+        });
     }
 
     let (ready_tx, ready_rx) = futures::channel::oneshot::channel::<()>();

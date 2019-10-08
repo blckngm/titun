@@ -97,7 +97,7 @@ impl Options {
         let options = self;
 
         let mut config = if let Some(ref p) = options.config_file {
-            cli::load_config_from_file(&p)?
+            cli::load_config_from_path(&p)?
         } else {
             cli::Config {
                 #[cfg(windows)]
@@ -112,8 +112,6 @@ impl Options {
                 peers: Vec::new(),
             }
         };
-
-        config.general.config_file_path = options.config_file;
 
         if options.foreground {
             config.general.foreground = true;
@@ -210,7 +208,7 @@ impl Cmd {
                 }
             }
             Cmd::Check { config_file: p } => {
-                cli::load_config_from_file(&p)?;
+                cli::load_config_from_path(&p)?;
             }
             Cmd::Genpsk => {
                 let mut k = [0u8; 32];

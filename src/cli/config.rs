@@ -4,12 +4,50 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::ffi::OsString;
+use std::fs::{File, OpenOptions};
+use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroU16;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-pub fn load_config_from_file(p: &Path) -> Result<Config, Error> {
-    let file_content = std::fs::read_to_string(p)
+pub fn load_config_from_path(p: &Path) -> Result<Config, Error> {
+    let file = OpenOptions::new()
+        .read(true)
+        .open(p)
+        .with_context(|e| format!("failed to open config file: {}", e))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        match file.metadata() {
+            Err(_) => (),
+            Ok(m) => {
+                if m.mode() & 0o004 != 0 {
+                    // env-logger is not initialized yet. Fake it.
+                    eprintln!("[WARN  titun::cli::config] configuration file is world readable");
+                }
+            }
+        }
+    }
+    let config = load_config_from_file(&file)?;
+    #[cfg(unix)]
+    let mut config = config;
+    #[cfg(unix)]
+    {
+        use std::io::{Seek, SeekFrom};
+
+        // Store the file handle for reloading.
+        match (&file).seek(SeekFrom::Start(0)) {
+            // Unless the file does not support seeking.
+            Err(_) => (),
+            Ok(_) => config.general.config_file = Some(file),
+        }
+    }
+    Ok(config)
+}
+
+pub fn load_config_from_file(mut file: &File) -> Result<Config, Error> {
+    let mut file_content = String::new();
+    file.read_to_string(&mut file_content)
         .with_context(|e| format!("failed to read config file: {}", e))?;
     let config: Config = toml::from_str(&file_content)
         .with_context(|e| format!("failed to parse config file: {}", e))?;
@@ -63,7 +101,7 @@ pub struct Config {
     pub peers: Vec<PeerConfig>,
 }
 
-#[derive(Debug, Eq, PartialEq, Deserialize, Serialize, Default)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct GeneralConfig {
     pub log: Option<String>,
@@ -81,12 +119,29 @@ pub struct GeneralConfig {
     pub exit_stdin_eof: bool,
 
     #[serde(skip)]
-    pub config_file_path: Option<PathBuf>,
+    pub config_file: Option<File>,
 
     #[serde(default)]
     pub foreground: bool,
 
     pub threads: Option<usize>,
+}
+
+impl Eq for GeneralConfig {}
+
+impl PartialEq<GeneralConfig> for GeneralConfig {
+    /// config_file is ignored in comparison.
+    fn eq(&self, other: &GeneralConfig) -> bool {
+        #[cfg(unix)]
+        let ug = self.user == other.user && self.group == other.group;
+        #[cfg(not(unix))]
+        let ug = true;
+        self.log == other.log
+            && ug
+            && self.exit_stdin_eof == other.exit_stdin_eof
+            && self.foreground == other.foreground
+            && self.threads == other.threads
+    }
 }
 
 #[cfg(windows)]
