@@ -16,11 +16,16 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::async_utils::AsyncScope;
+#[cfg(unix)]
+use crate::cli::daemonize::NotifyHandle;
 use crate::cli::Config;
 use crate::ipc::ipc_server;
 use crate::wireguard::*;
 use failure::{Error, ResultExt};
 use futures::prelude::*;
+
+#[cfg(not(unix))]
+type NotifyHandle = ();
 
 fn schedule_force_shutdown() {
     std::thread::spawn(|| {
@@ -58,7 +63,7 @@ async fn reload_on_sighup(
     Ok(())
 }
 
-pub async fn run(c: Config) -> Result<(), Error> {
+pub async fn run(c: Config, notify: Option<NotifyHandle>) -> Result<(), Error> {
     #[cfg(unix)]
     let mut c = c;
     let scope0 = AsyncScope::new();
@@ -178,9 +183,15 @@ pub async fn run(c: Config) -> Result<(), Error> {
                 crate::systemd::notify_ready()
                     .unwrap_or_else(|e| warn!("failed to notify systemd: {}", e));
             } else {
-                daemonize::Daemonize::new().start()?;
+                notify
+                    .unwrap()
+                    .notify(0)
+                    .context("failed to notify grand parent")?;
             }
         }
+        // So rustc does not warn about unused.
+        #[cfg(not(unix))]
+        drop(notify);
     }
 
     scope0.cancelled().await;

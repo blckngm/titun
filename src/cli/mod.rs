@@ -1,5 +1,7 @@
 mod config;
 #[cfg(unix)]
+pub mod daemonize;
+#[cfg(unix)]
 mod reload;
 mod run;
 #[cfg(unix)]

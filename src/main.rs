@@ -168,11 +168,22 @@ impl Options {
 
         info!("titun {}", version);
         info!("Will spawn {} worker threads", threads);
+        #[cfg(unix)]
+        let notify = if config.general.foreground {
+            None
+        } else {
+            Some(
+                cli::daemonize::daemonize()
+                    .with_context(|e| format!("failed to daemonize: {}", e))?,
+            )
+        };
+        #[cfg(not(unix))]
+        let notify = None;
         let rt = tokio::runtime::Builder::new()
             .core_threads(threads)
             .panic_handler(|e| std::panic::resume_unwind(e))
             .build()?;
-        rt.block_on(cli::run(config))
+        rt.block_on(cli::run(config, notify))
     }
 }
 
