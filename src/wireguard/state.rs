@@ -688,7 +688,11 @@ impl WgState {
     }
 
     fn check_handshake_load(&self) -> bool {
-        self.load_monitor.lock().check()
+        if std::env::var("TITUN_INTEROPE_TEST").is_ok() {
+            true
+        } else {
+            self.load_monitor.lock().check()
+        }
     }
 
     fn get_cookie_secret(&self) -> [u8; 32] {
