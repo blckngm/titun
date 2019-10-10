@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::async_utils::{delay, AsyncScope};
+use crate::async_utils::AsyncScope;
 use crate::crypto::noise_crypto_impls::ChaCha20Poly1305;
 use crate::wireguard::*;
 use noise_protocol::Cipher;
@@ -24,6 +24,7 @@ use std::convert::TryInto;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::timer::delay_for;
 
 // That is, 2 ^ 64 - 2 ^ 16 - 1;
 const REKEY_AFTER_MESSAGES: u64 = 0xffff_ffff_fffe_ffff;
@@ -90,7 +91,7 @@ impl Transport {
 
         let weak = Arc::downgrade(&transport);
         transport.scope.spawn_async(async move {
-            delay(Duration::from_secs(handshake_after)).await;
+            delay_for(Duration::from_secs(handshake_after)).await;
             if let Some(t) = weak.upgrade() {
                 t.should_handshake.store(true, Ordering::Relaxed);
             }
@@ -98,7 +99,7 @@ impl Transport {
 
         let weak = Arc::downgrade(&transport);
         transport.scope.spawn_async(async move {
-            delay(Duration::from_secs(REJECT_AFTER_TIME)).await;
+            delay_for(Duration::from_secs(REJECT_AFTER_TIME)).await;
             if let Some(t) = weak.upgrade() {
                 t.not_too_old.store(false, Ordering::Relaxed);
             }

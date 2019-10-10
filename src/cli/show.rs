@@ -1,7 +1,7 @@
 use crate::wireguard::re_exports::{DH, X25519};
 use ansi_term::{Color, Style};
+use anyhow::{Context, Error};
 use base64;
-use failure::{Error, ResultExt};
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
 use std::time::Duration;
@@ -12,10 +12,11 @@ use tokio::net::unix::UnixStream;
 pub async fn show(devices: Vec<OsString>) -> Result<(), Error> {
     let mut is_first = true;
     if devices.is_empty() {
-        for sock in Path::new("/var/run/wireguard")
-            .read_dir()
-            .with_context(|e| format!("failed to find existing devices: {}", e))?
-        {
+        let read_dir = match Path::new("/var/run/wireguard").read_dir() {
+            Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            r => r?,
+        };
+        for sock in read_dir {
             let path = sock?.path();
             if path.extension() != Some(OsStr::new("sock")) {
                 continue;
@@ -27,7 +28,7 @@ pub async fn show(devices: Vec<OsString>) -> Result<(), Error> {
                 .unwrap_or_else(|e| Err(e.into()))
                 .map(|_| true)
                 .unwrap_or_else(|e| {
-                    if let Some(io_error) = e.find_root_cause().downcast_ref::<std::io::Error>() {
+                    if let Some(io_error) = e.root_cause().downcast_ref::<std::io::Error>() {
                         if io_error.kind() == std::io::ErrorKind::ConnectionRefused {
                             // Ignore connection refused errors.
                             return false;
@@ -72,12 +73,12 @@ async fn get_and_print_status(dev_name: &OsStr, is_first: bool) -> Result<(), Er
         .with_extension("sock");
     let mut stream = UnixStream::connect(&path)
         .await
-        .with_context(|e| format!("failed to connect to socket: {}", e))?;
+        .context("failed to connect to socket")?;
     stream.write_all(b"get=1\n\n").await?;
 
     let state_or_errno = crate::ipc::parse::parse_get_response_io(stream)
         .await
-        .with_context(|e| format!("failed to read or parse response: {}", e))?;
+        .context("failed to read or parse response")?;
 
     match state_or_errno {
         Err(errno) => {

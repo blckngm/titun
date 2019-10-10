@@ -19,7 +19,7 @@ use crate::ipc::commands::*;
 use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::X25519Key;
 use crate::wireguard::{PeerStateOut, WgStateOut};
-use failure::Error;
+use anyhow::Error;
 use futures::prelude::*;
 use hex::decode;
 use std::collections::BTreeSet;

@@ -17,7 +17,7 @@
 
 #![cfg(not(windows))]
 
-pub fn notify_ready() -> Result<(), failure::Error> {
+pub fn notify_ready() -> Result<(), anyhow::Error> {
     use std::env::var_os;
     use std::os::unix::net::UnixDatagram;
 

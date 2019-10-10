@@ -1,4 +1,4 @@
-use failure::{Error, ResultExt};
+use anyhow::{Context, Error};
 use nix;
 use nix::sys::stat::{umask, Mode};
 use nix::unistd::*;
@@ -24,7 +24,7 @@ impl Drop for NotifyHandle {
 
 macro_rules! ctx {
     ($e:expr) => {
-        $e.with_context(|e| format!("{}: {}", stringify!($e), e))
+        $e.context(stringify!($e))
     };
 }
 

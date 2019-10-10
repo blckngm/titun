@@ -17,7 +17,7 @@
 
 #![cfg(unix)]
 
-use failure::Error;
+use anyhow::Error;
 use futures::future::poll_fn;
 use futures::ready;
 use mio::event::Evented;
@@ -160,9 +160,9 @@ impl Tun {
         use std::path::Path;
 
         {
-            let name = name.to_str().ok_or_else(|| {
-                format_err!("invalid tun device name: {}", name.to_string_lossy())
-            })?;
+            let name = name
+                .to_str()
+                .ok_or_else(|| anyhow!("invalid tun device name: {}", name.to_string_lossy()))?;
 
             if !name.starts_with("tun") || name[3..].parse::<u32>().is_err() {
                 bail!(

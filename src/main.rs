@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use failure::{bail, Error, ResultExt};
+use anyhow::{bail, Context, Error};
 use log::info;
 use rand::{rngs::OsRng, RngCore};
 use std::ffi::OsString;
@@ -29,7 +29,7 @@ use titun::wireguard::re_exports::{U8Array, DH, X25519};
 
 fn main() {
     real_main().unwrap_or_else(|e| {
-        eprintln!("Error: {}", e);
+        eprint!("Error: {:?}", e);
         std::process::exit(1);
     });
 }
@@ -172,10 +172,7 @@ impl Options {
         let notify = if config.general.foreground {
             None
         } else {
-            Some(
-                cli::daemonize::daemonize()
-                    .with_context(|e| format!("failed to daemonize: {}", e))?,
-            )
+            Some(cli::daemonize::daemonize().context("failed to daemonize")?)
         };
         #[cfg(not(unix))]
         let notify = None;
@@ -213,9 +210,7 @@ impl Cmd {
                 #[cfg(not(unix))]
                 {
                     drop(devices);
-                    Err(failure::format_err!(
-                        "the show command is not implemented on this platform"
-                    ))?;
+                    anyhow::bail!("the show command is not implemented on this platform");
                 }
             }
             Cmd::Check { config_file: p } => {

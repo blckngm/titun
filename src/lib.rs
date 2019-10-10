@@ -21,7 +21,7 @@
 extern crate test;
 
 #[macro_use]
-extern crate failure;
+extern crate anyhow;
 #[macro_use]
 extern crate log;
 

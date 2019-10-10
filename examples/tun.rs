@@ -28,7 +28,7 @@
 // Got packet: 84 bytes
 // ...
 
-use failure::Error;
+use anyhow::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -37,7 +37,7 @@ async fn main() -> Result<(), Error> {
 
 #[cfg(unix)]
 mod imp {
-    use failure::Error;
+    use anyhow::Error;
     use std::ffi::OsStr;
     use std::process::{Child, Command};
     use titun::wireguard::AsyncTun;
@@ -81,7 +81,7 @@ mod imp {
 
 #[cfg(windows)]
 mod imp {
-    use failure::Error;
+    use anyhow::Error;
 
     pub async fn main() -> Result<(), Error> {
         Ok(())

@@ -21,7 +21,7 @@ use crate::ipc::commands::*;
 use crate::ipc::parse::*;
 use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::{SetPeerCommand, WgState, WgStateOut};
-use failure::{Error, ResultExt};
+use anyhow::{Context, Error};
 use futures::channel::oneshot::Sender;
 use hex::encode;
 use std::ffi::OsStr;
@@ -40,8 +40,7 @@ pub async fn ipc_server(
 
     let mut path = Path::new(r#"\\.\pipe\wireguard"#).join(dev_name);
     path.set_extension("sock");
-    let mut listener = AsyncPipeListener::bind(path)
-        .with_context(|e| format!("failed to bind IPC socket: {}", e))?;
+    let mut listener = AsyncPipeListener::bind(path).context("failed to bind IPC socket")?;
     let _ = ready.send(());
     loop {
         let wg = wg.clone();
@@ -68,13 +67,11 @@ pub async fn ipc_server(
 
     umask(Mode::from_bits(0o077).unwrap());
     let dir = Path::new(r#"/var/run/wireguard"#);
-    create_dir_all(&dir)
-        .with_context(|e| format!("failed to create directory /var/run/wireguard: {}", e))?;
+    create_dir_all(&dir).context("failed to create directory /var/run/wireguard")?;
     let mut path = dir.join(dev_name);
     path.set_extension("sock");
     let _ = remove_file(path.as_path());
-    let mut listener = UnixListener::bind(path.as_path())
-        .with_context(|e| format!("failed to bind IPC socket: {}", e))?;
+    let mut listener = UnixListener::bind(path.as_path()).context("failed to bind IPC socket")?;
 
     let deleted = super::wait_delete::wait_delete(&path, ready);
     let accept_and_handle = async move {

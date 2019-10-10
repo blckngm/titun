@@ -25,7 +25,7 @@ use std::path::Path;
 // It is not possible to use kqueue to watch delete events on a socket:
 // https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=170177
 #[cfg(not(target_os = "linux"))]
-pub async fn wait_delete(path: &Path, ready: Sender<()>) -> Result<(), failure::Error> {
+pub async fn wait_delete(path: &Path, ready: Sender<()>) -> Result<(), anyhow::Error> {
     use nix::dir::Dir;
     use nix::fcntl::OFlag;
     use nix::sys::stat::Mode;
@@ -65,7 +65,7 @@ pub async fn wait_delete(path: &Path, ready: Sender<()>) -> Result<(), failure::
 }
 
 #[cfg(target_os = "linux")]
-pub async fn wait_delete(p: &Path, ready: Sender<()>) -> Result<(), failure::Error> {
+pub async fn wait_delete(p: &Path, ready: Sender<()>) -> Result<(), anyhow::Error> {
     // Use inotify on linux.
     use futures::StreamExt;
     use inotify::{EventMask, Inotify, WatchMask};

@@ -15,10 +15,10 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::async_utils::{delay, AsyncScope};
+use crate::async_utils::AsyncScope;
 use crate::wireguard::*;
+use anyhow::Error;
 use arrayvec::ArrayVec;
-use failure::Error;
 use parking_lot::{Mutex, RwLock};
 use rand::{thread_rng, Rng};
 use std::collections::VecDeque;
@@ -28,6 +28,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use tai64::TAI64N;
+use tokio::timer::delay_for;
 
 pub type SharedPeerState = Arc<RwLock<PeerState>>;
 
@@ -411,7 +412,7 @@ pub fn do_handshake(wg: &Arc<WgState>, peer0: &SharedPeerState) {
                 break 'inner;
             }
             let delay_ms = thread_rng().gen_range(5_000, 5_300);
-            delay(Duration::from_millis(delay_ms)).await;
+            delay_for(Duration::from_millis(delay_ms)).await;
         }
     });
 }

@@ -25,7 +25,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::Duration;
 
 /// Manage a group of tasks.
 pub struct AsyncScope {
@@ -110,13 +109,6 @@ impl Future for YieldOnce {
             Poll::Ready(())
         }
     }
-}
-
-pub async fn delay(duration: Duration) {
-    use tokio::clock::now;
-    use tokio::timer::delay;
-
-    delay(now() + duration).await;
 }
 
 #[cfg(windows)]

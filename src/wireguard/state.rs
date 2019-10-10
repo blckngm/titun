@@ -15,10 +15,10 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::async_utils::{delay, yield_once, AsyncScope};
+use crate::async_utils::{yield_once, AsyncScope};
 use crate::udp_socket::*;
 use crate::wireguard::*;
-use failure::Error;
+use anyhow::Error;
 use fnv::FnvHashMap;
 use futures::channel::mpsc::*;
 use futures::future::{select, Either};
@@ -35,6 +35,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
+use tokio::timer::delay_for;
 
 // Some Constants.
 
@@ -619,7 +620,7 @@ impl WgState {
             let wg = wg.clone();
             scope.spawn_async(async move {
                 loop {
-                    delay(Duration::from_secs(120)).await;
+                    delay_for(Duration::from_secs(120)).await;
                     let mut cookie = wg.cookie_secret.write();
                     OsRng.fill_bytes(&mut cookie[..]);
                 }
@@ -799,7 +800,7 @@ impl WgState {
     pub fn set_peer(&self, command: SetPeerCommand) -> Result<(), Error> {
         let peer0 = self
             .find_peer_by_pubkey(&command.public_key)
-            .ok_or_else(|| format_err!("Peer not found"))?;
+            .ok_or_else(|| anyhow::anyhow!("Peer not found"))?;
 
         // Lock peer.
         let mut peer = peer0.write();

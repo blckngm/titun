@@ -30,7 +30,7 @@ use std::task::Poll;
 use std::time::Duration;
 use tokio::clock::now;
 use tokio::sync::oneshot::{channel, Sender};
-use tokio::timer::{delay, Delay};
+use tokio::timer::{delay_for, Delay};
 
 struct TimerOptions {
     activated: AtomicBool,
@@ -50,7 +50,7 @@ where
     let (tx, mut rx) = channel();
     let options0 = Arc::new(TimerOptions {
         activated: AtomicBool::new(false),
-        delay: Mutex::new(delay(now())),
+        delay: Mutex::new(delay_for(Duration::from_secs(0))),
     });
     let options = options0.clone();
     tokio::spawn(async move {
@@ -114,8 +114,8 @@ impl TimerHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::async_utils::delay;
     use std::time::Duration;
+    use tokio::timer::delay_for;
 
     #[tokio::test]
     async fn smoke() {
@@ -129,7 +129,7 @@ mod tests {
         };
 
         t.adjust_and_activate(Duration::from_millis(10));
-        delay(Duration::from_millis(30)).await;
+        delay_for(Duration::from_millis(30)).await;
         assert!(run.load(SeqCst));
     }
 
@@ -147,22 +147,22 @@ mod tests {
         t.adjust_and_activate(Duration::from_millis(10));
         t.adjust_and_activate(Duration::from_millis(100));
 
-        delay(Duration::from_millis(20)).await;
+        delay_for(Duration::from_millis(20)).await;
         assert!(!run.load(SeqCst));
-        delay(Duration::from_millis(120)).await;
+        delay_for(Duration::from_millis(120)).await;
         assert!(run.load(SeqCst));
 
         run.store(false, SeqCst);
 
         t.adjust_and_activate(Duration::from_millis(10));
         t.de_activate();
-        delay(Duration::from_millis(20)).await;
+        delay_for(Duration::from_millis(20)).await;
         assert!(!run.load(SeqCst));
 
         t.adjust_and_activate(Duration::from_millis(10));
         t.de_activate();
         t.adjust_and_activate(Duration::from_millis(15));
-        delay(Duration::from_millis(30)).await;
+        delay_for(Duration::from_millis(30)).await;
         assert!(run.load(SeqCst));
     }
 

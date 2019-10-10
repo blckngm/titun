@@ -1,5 +1,5 @@
 use crate::wireguard::{X25519Key, X25519Pubkey};
-use failure::{Error, ResultExt};
+use anyhow::{Context, Error};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -15,7 +15,7 @@ pub fn load_config_from_path(p: &Path) -> Result<Config, Error> {
     let file = OpenOptions::new()
         .read(true)
         .open(p)
-        .with_context(|e| format!("failed to open config file: {}", e))?;
+        .context("failed to open config file")?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
@@ -49,9 +49,8 @@ pub fn load_config_from_path(p: &Path) -> Result<Config, Error> {
 pub fn load_config_from_file(mut file: &File) -> Result<Config, Error> {
     let mut file_content = String::new();
     file.read_to_string(&mut file_content)
-        .with_context(|e| format!("failed to read config file: {}", e))?;
-    let config: Config = toml::from_str(&file_content)
-        .with_context(|e| format!("failed to parse config file: {}", e))?;
+        .context("failed to read config file")?;
+    let config: Config = toml::from_str(&file_content).context("failed to parse config file")?;
 
     // Verify that there are no duplicated peers. And warn about duplicated routes.
     let mut previous_peers = HashSet::new();

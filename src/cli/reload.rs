@@ -1,6 +1,6 @@
 use super::{Config, PeerConfig};
 use crate::wireguard::{SetPeerCommand, WgState};
-use failure::Error;
+use anyhow::Error;
 use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroU16;
 use std::sync::Arc;

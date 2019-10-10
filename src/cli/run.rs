@@ -21,7 +21,7 @@ use crate::cli::daemonize::NotifyHandle;
 use crate::cli::Config;
 use crate::ipc::ipc_server;
 use crate::wireguard::*;
-use failure::{Error, ResultExt};
+use anyhow::{Context, Error};
 use futures::prelude::*;
 
 #[cfg(not(unix))]
@@ -112,10 +112,9 @@ pub async fn run(c: Config, notify: Option<NotifyHandle>) -> Result<(), Error> {
         &dev_name,
         c.network.map(|n| (n.address, n.prefix_len)).unwrap(),
     )
-    .with_context(|e| format!("failed to open tun device: {}", e))?;
+    .context("failed to open tun device")?;
     #[cfg(unix)]
-    let tun =
-        AsyncTun::open(&dev_name).with_context(|e| format!("failed to open tun device: {}", e))?;
+    let tun = AsyncTun::open(&dev_name).context("failed to open tun device")?;
 
     info!("setting port, fwmark and private key");
     let info = WgInfo {
@@ -176,8 +175,7 @@ pub async fn run(c: Config, notify: Option<NotifyHandle>) -> Result<(), Error> {
                 } else {
                     p
                 };
-                p.apply()
-                    .with_context(|e| format!("failed to change user and group: {}", e))?;
+                p.apply().context("failed to change user and group")?;
             }
 
             if c.general.foreground {
