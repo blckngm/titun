@@ -22,13 +22,13 @@ use crate::ipc::parse::*;
 use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::{SetPeerCommand, WgState, WgStateOut};
 use anyhow::{Context, Error};
-use futures::channel::oneshot::Sender;
 use hex::encode;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::{Arc, Weak};
 use std::time::SystemTime;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
+use tokio::sync::oneshot::Sender;
 
 #[cfg(windows)]
 pub async fn ipc_server(

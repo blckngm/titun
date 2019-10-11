@@ -30,10 +30,10 @@ use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::ptr::null_mut;
 use std::sync::Arc;
 
-use futures::channel::mpsc::{channel, Receiver, Sender};
-use futures::lock::Mutex as AsyncMutex;
 use futures::prelude::*;
 use parking_lot::Mutex;
+use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::Mutex as AsyncMutex;
 use winapi::shared::winerror::ERROR_IO_PENDING;
 use winapi::um::fileapi::{CreateFileA, ReadFile, WriteFile, OPEN_EXISTING};
 use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};

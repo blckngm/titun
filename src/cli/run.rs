@@ -152,7 +152,7 @@ pub async fn run(c: Config, notify: Option<NotifyHandle>) -> Result<(), Error> {
         });
     }
 
-    let (ready_tx, ready_rx) = futures::channel::oneshot::channel::<()>();
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
 
     scope0.clone().spawn_canceller(async move {
         ipc_server(weak, &dev_name, ready_tx)

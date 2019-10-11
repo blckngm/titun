@@ -27,8 +27,7 @@
 
 #![cfg(windows)]
 
-use futures::channel::mpsc::{channel, Receiver};
-use futures::{SinkExt, StreamExt};
+use futures::StreamExt;
 use std::borrow::Cow;
 use std::ffi::OsString;
 use std::io::{self, Read, Write};
@@ -37,6 +36,7 @@ use std::path::Path;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::sync::mpsc::{channel, Receiver};
 use winapi::shared::minwindef::{DWORD, LPCVOID, LPVOID};
 use winapi::shared::winerror::{ERROR_PIPE_CONNECTED, ERROR_PIPE_NOT_CONNECTED};
 use winapi::um::fileapi::{CreateFileW, FlushFileBuffers, ReadFile, WriteFile, OPEN_EXISTING};

@@ -17,8 +17,8 @@
 
 #![cfg(unix)]
 
-use futures::channel::oneshot::Sender;
 use std::path::Path;
+use tokio::sync::oneshot::Sender;
 
 // Polling on BSD.
 //
@@ -39,7 +39,7 @@ pub async fn wait_delete(path: &Path, ready: Sender<()>) -> Result<(), anyhow::E
         Mode::empty(),
     )?;
     let file_name = path.file_name().unwrap().to_owned();
-    let (tx, rx) = futures::channel::oneshot::channel();
+    let (tx, rx) = tokio::sync::oneshot::channel();
     let _ = ready.send(());
     std::thread::spawn(move || {
         loop {
@@ -94,7 +94,7 @@ mod tests {
     async fn test_wait_delete() {
         use nix::unistd::{mkstemp, unlink};
 
-        let (ready_tx, ready_rx) = futures::channel::oneshot::channel();
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
         let mut file = std::env::temp_dir();
         file.push("test_wait_delete_XXXXXX");
         let (_, tmp_path) = mkstemp(&file).expect("mkstemp");

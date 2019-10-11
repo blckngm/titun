@@ -16,7 +16,6 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use futures::future::poll_fn;
-use futures::lock::Mutex;
 use futures::ready;
 use mio::net::UdpSocket as MioUdpSocket;
 use std::io;
@@ -24,6 +23,7 @@ use std::net::SocketAddr;
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
 use std::task::{Context, Poll};
+use tokio::sync::Mutex;
 use tokio_net::util::PollEvented;
 
 /// Like tokio UdpSocket, but can be used from multiple tasks concurrently.

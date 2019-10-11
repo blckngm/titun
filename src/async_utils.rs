@@ -15,7 +15,6 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use futures::channel::oneshot::*;
 use futures::future::select;
 use futures::future::Shared;
 use futures::prelude::*;
@@ -25,10 +24,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use tokio::sync::oneshot::*;
 
 /// Manage a group of tasks.
 pub struct AsyncScope {
-    receiver: Shared<Receiver<()>>,
+    receiver: Shared<Pin<Box<dyn Future<Output = ()> + Send>>>,
     sender: Mutex<Option<Sender<()>>>,
 }
 
@@ -36,13 +36,17 @@ impl AsyncScope {
     pub fn new() -> Arc<Self> {
         let (sender, receiver) = channel();
         Arc::new(AsyncScope {
-            receiver: receiver.shared(),
+            receiver: async move {
+                let _ = receiver.await;
+            }
+                .boxed()
+                .shared(),
             sender: Mutex::new(Some(sender)),
         })
     }
 
     pub fn cancelled(&self) -> impl Future<Output = ()> + Send + Unpin {
-        self.receiver.clone().unwrap_or_else(|_| ())
+        self.receiver.clone()
     }
 
     pub fn cancel(&self) {
@@ -79,7 +83,7 @@ impl AsyncScope {
     where
         T: Future<Output = ()> + Send + 'static,
     {
-        let cancelled = self.receiver.clone();
+        let cancelled = self.cancelled();
         tokio::spawn(async move {
             pin_mut!(future);
 

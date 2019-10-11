@@ -20,7 +20,6 @@ use crate::udp_socket::*;
 use crate::wireguard::*;
 use anyhow::Error;
 use fnv::FnvHashMap;
-use futures::channel::mpsc::*;
 use futures::future::{select, Either};
 use futures::prelude::*;
 use ip_lookup_trie::IpLookupTable;
@@ -35,6 +34,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
+use tokio::sync::mpsc::*;
 use tokio::timer::delay_for;
 
 // Some Constants.
