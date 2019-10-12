@@ -626,7 +626,7 @@ impl WgState {
                 }
             });
         }
-        let (sender, receiver) = channel(0);
+        let (sender, receiver) = channel(1);
         *wg.socket_sender.lock() = Some(sender);
         scope.spawn_async(udp_processing(wg.clone(), receiver));
         scope.spawn_async(tun_packet_processing(wg));

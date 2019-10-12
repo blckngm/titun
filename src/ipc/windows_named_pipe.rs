@@ -56,7 +56,7 @@ pub struct AsyncPipeListener {
 
 impl AsyncPipeListener {
     pub fn bind<P: Into<Cow<'static, Path>>>(path: P) -> io::Result<Self> {
-        let (mut tx, rx) = channel(0);
+        let (mut tx, rx) = channel(1);
         let mut listener = PipeListener::bind(path)?;
         std::thread::spawn(move || {
             futures::executor::block_on(async move {
