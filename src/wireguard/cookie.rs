@@ -20,7 +20,7 @@ use crate::wireguard::{Id, X25519Pubkey};
 use blake2s_simd::{Hash, Params, State};
 use rand::prelude::*;
 use rand::rngs::OsRng;
-use ring::constant_time::verify_slices_are_equal;
+use std::convert::TryInto;
 
 pub type Cookie = [u8; 16];
 
@@ -126,9 +126,10 @@ pub fn cookie_verify(m: &[u8], cookie: &Cookie) -> bool {
     }
     let (m, mac2) = m.split_at(m.len() - 16);
     let mac2_ = blake2s(16, cookie, m);
-    verify_slices_are_equal(mac2_.as_bytes(), mac2)
-        .map(|_| true)
-        .unwrap_or(false)
+    crate::crypto::constant_time_eq_16(
+        mac2_.as_bytes().try_into().unwrap(),
+        mac2.try_into().unwrap(),
+    )
 }
 
 #[cfg(test)]

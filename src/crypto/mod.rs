@@ -15,6 +15,9 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
+mod constant_time_eq;
 pub mod noise_crypto_impls;
 mod simd;
 pub mod xchacha20poly1305;
+
+pub use constant_time_eq::constant_time_eq_16;

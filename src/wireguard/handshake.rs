@@ -20,7 +20,6 @@ use crate::wireguard::*;
 use blake2s_simd::{Params, State};
 use noise_protocol::patterns::noise_ik_psk2;
 use noise_protocol::*;
-use ring::constant_time::verify_slices_are_equal;
 use std::convert::TryInto;
 use tai64::TAI64N;
 
@@ -226,9 +225,7 @@ pub fn verify_mac1(wg: &WgInfo, msg: &[u8]) -> bool {
 
     let key = hash!(LABEL_MAC1, wg.pubkey());
     let expected_mac1 = mac(key.as_ref(), &[m]);
-    verify_slices_are_equal(&expected_mac1, mac1)
-        .map(|_| true)
-        .unwrap_or(false)
+    crate::crypto::constant_time_eq_16(&expected_mac1, mac1.try_into().unwrap())
 }
 
 #[cfg(test)]
