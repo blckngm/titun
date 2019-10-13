@@ -6,6 +6,7 @@ mod reload;
 mod run;
 #[cfg(unix)]
 mod show;
+pub mod transform;
 
 pub use config::*;
 #[cfg(unix)]

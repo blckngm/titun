@@ -12,19 +12,13 @@ ip -n titun-test-1 addr add 192.168.3.1/24 dev eth1
 ip -n titun-test-2 link set eth2 up mtu 9000
 ip -n titun-test-2 addr add 192.168.3.2/24 dev eth2
 
-ip netns exec titun-test-1 taskset -c 0 titun tun1
+ip netns exec titun-test-1 taskset -c 0 titun -c tun1.conf tun1
 # ip netns exec titun-test-1 ip link add tun1 type wireguard
 
-ip netns exec titun-test-2 taskset -c 2 titun tun2
+ip netns exec titun-test-2 taskset -c 2 titun -c tun2.conf tun2
 # ip netns exec titun-test-2 ip link add tun2 type wireguard
 
 sleep 1
-
-wg setconf tun1 tun1.conf
-wg setconf tun2 tun2.conf
-
-# ip netns exec titun-test-1 wg setconf tun1 tun1.conf
-# ip netns exec titun-test-2 wg setconf tun2 tun2.conf
 
 ip -n titun-test-1 link set tun1 up mtu 59000
 ip -n titun-test-1 addr add 192.168.77.1/24 dev tun1

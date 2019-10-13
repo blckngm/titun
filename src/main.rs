@@ -199,6 +199,13 @@ enum Cmd {
     Pubkey,
     #[structopt(about = "Generate preshared key")]
     Genpsk,
+    #[structopt(about = "Transform wg config files to TOML")]
+    Transform {
+        #[structopt(long)]
+        overwrite: bool,
+        #[structopt(help = "Config file to read. Read from stdin if not present")]
+        config_file: Option<PathBuf>,
+    },
 }
 
 impl Cmd {
@@ -239,6 +246,39 @@ impl Cmd {
                         "Expect base64 encoded X25519 secret key (32-byte long), got {} bytes",
                         k.len()
                     );
+                }
+            }
+            Cmd::Transform {
+                overwrite,
+                config_file,
+            } => {
+                use std::io::{Seek, SeekFrom, Write};
+
+                if let Some(config_file) = config_file {
+                    let mut o = std::fs::OpenOptions::new();
+                    o.read(true);
+                    if overwrite {
+                        o.write(true);
+                    }
+                    let mut f = o.open(config_file).context("open")?;
+                    let mut content = String::new();
+                    f.read_to_string(&mut content).context("read_to_string")?;
+                    let transformed = titun::cli::transform::maybe_transform(content);
+                    if overwrite {
+                        f.seek(SeekFrom::Start(0)).context("seek")?;
+                        f.set_len(0).context("set_len")?;
+                        f.write_all(transformed.as_bytes()).context("write")?;
+                        f.sync_all().context("sync")?;
+                    } else {
+                        print!("{}", transformed);
+                    }
+                } else {
+                    let mut content = String::new();
+                    std::io::stdin()
+                        .read_to_string(&mut content)
+                        .context("read_to_string")?;
+                    let transformed = titun::cli::transform::maybe_transform(content);
+                    print!("{}", transformed);
                 }
             }
         }

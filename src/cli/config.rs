@@ -50,6 +50,7 @@ pub fn load_config_from_file(mut file: &File) -> Result<Config, Error> {
     let mut file_content = String::new();
     file.read_to_string(&mut file_content)
         .context("failed to read config file")?;
+    file_content = super::transform::maybe_transform(file_content);
     let config: Config = toml::from_str(&file_content).context("failed to parse config file")?;
 
     // Verify that there are no duplicated peers. And warn about duplicated routes.
@@ -65,7 +66,10 @@ pub fn load_config_from_file(mut file: &File) -> Result<Config, Error> {
         }
         for &route in &p.allowed_ips {
             if !previous_routes.insert(route) {
-                warn!("allowed IP {}/{} appeared multiple times", route.0, route.1)
+                eprintln!(
+                    "[WARN  titun::cli::config] allowed IP {}/{} appeared multiple times",
+                    route.0, route.1
+                );
             }
         }
     }

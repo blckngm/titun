@@ -35,7 +35,8 @@ to load configuration from the file `tun0.toml`.
 Use `titun show` to show device status. (It's similar to `wg show`.) Use
 `titun help` to discover more CLI options.
 
-Configuration files are in TOML format:
+It is recommended to use the TOML format, but the format used by `wg` is also
+accepted.
 
 ```toml
 # All optional. NOT applied when reloading.
@@ -73,11 +74,6 @@ Endpoint = "192.168.3.1:7777"
 # Optional. Range: 1 - 65535. Alias: Keepalive.
 PersistentKeepalive = 17
 ```
-
-If you are familiar with WireGuard tools, this format, excluding the optional
-`General` section, is very similar to `wg` or `wg-quick` configuration files.
-It's TOML, so you need to use `[[Peer]]` instead of `[Peer]`, quote non-numeric
-values, and put allowed IPs in an array.)
 
 ### systemd
 
