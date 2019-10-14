@@ -214,32 +214,3 @@ mod tests {
         assert!(decrypt(&k, &n, &ad, &out, &mut out1).is_err());
     }
 }
-
-#[cfg(all(feature = "bench", test))]
-mod benches {
-    use super::*;
-
-    #[bench]
-    fn hchacha(b: &mut crate::test::Bencher) {
-        let key = hex::decode("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
-            .unwrap();
-        let nonce = hex::decode("000000090000004a0000000031415927").unwrap();
-        let key = &key[..].try_into().unwrap();
-        let nonce = &nonce[..].try_into().unwrap();
-
-        b.iter(|| super::hchacha(key, nonce));
-    }
-
-    #[bench]
-    fn bench_encrypt(b: &mut crate::test::Bencher) {
-        let k = [0u8; 32];
-        let n = [1u8; 24];
-        let ad = [2u8; 16];
-        let data = [3u8; 16];
-        let mut out = [0u8; 32];
-
-        b.iter(|| {
-            encrypt(&k, &n, &ad, &data, &mut out);
-        });
-    }
-}

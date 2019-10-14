@@ -165,28 +165,4 @@ mod tests {
         delay_for(Duration::from_millis(30)).await;
         assert!(run.load(SeqCst));
     }
-
-    #[cfg(feature = "bench")]
-    #[bench]
-    fn bench_timer_adjust_and_activate(b0: &mut crate::test::Bencher) {
-        // Workaround lifetime issues.
-        let b1 = Arc::new(Mutex::new(b0.clone()));
-        let b = b1.clone();
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async move {
-            let run = Arc::new(AtomicBool::new(false));
-            let t = {
-                let run = run.clone();
-                create_timer_async(move || {
-                    run.store(true, SeqCst);
-                    async { () }
-                })
-            };
-
-            b.lock().iter(|| {
-                t.adjust_and_activate(Duration::from_secs(10));
-            });
-        });
-        *b0 = b1.lock().clone();
-    }
 }

@@ -18,24 +18,30 @@
 //! WireGuard protocol implementation.
 
 /// Anti-Replay algorithm.
-mod anti_replay;
+#[doc(hidden)]
+pub mod anti_replay;
 /// Cookie reply messages generation and parsing.
-mod cookie;
+#[doc(hidden)]
+pub mod cookie;
 /// Handshake messages generation and parsing.
-mod handshake;
+#[doc(hidden)]
+pub mod handshake;
 /// IP packet parsing.
 mod ip;
 /// Determine load.
-mod load_monitor;
+#[doc(hidden)]
+pub mod load_monitor;
 /// Peer state.
 mod peer_state;
 /// The timer state machine, and actual IO stuff.
 mod state;
-mod timer;
+#[doc(hidden)]
+pub mod timer;
 /// Transport, i.e., sessions.
 mod transport;
 /// Common types.
-mod types;
+#[doc(hidden)]
+pub mod types;
 
 /// Tun device support on linux and BSDs.
 mod tun_unix;

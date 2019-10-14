@@ -197,29 +197,3 @@ impl Cipher for ChaCha20Poly1305 {
         k.open(n, aad, ciphertext, out).map_err(|_| ())
     }
 }
-
-#[cfg(all(test, feature = "bench"))]
-mod benches {
-    use super::*;
-
-    #[bench]
-    fn chacha20poly1305(b: &mut crate::test::Bencher) {
-        let mut rng = OsRng;
-
-        const MSG_LEN: usize = 1400;
-        let mut key = [0u8; 32];
-        rng.fill_bytes(&mut key);
-        let key = Sensitive(key);
-        let mut data = [0u8; MSG_LEN];
-        rng.fill_bytes(&mut data);
-        let mut nonce = 0;
-        let mut out = [0u8; MSG_LEN + 16];
-
-        b.bytes = MSG_LEN as u64;
-
-        b.iter(|| {
-            <ChaCha20Poly1305 as Cipher>::encrypt(&key, nonce, &[], &data, &mut out);
-            nonce = nonce + 1;
-        })
-    }
-}

@@ -147,40 +147,4 @@ mod tests {
             assert!(!ar.check(i));
         }
     }
-
-    #[cfg(feature = "bench")]
-    #[bench]
-    fn bench_anti_replay_sequential(b: &mut crate::test::Bencher) {
-        let mut ar = AntiReplay::new();
-        let mut seq = 0;
-
-        b.iter(|| {
-            assert!(ar.check_and_update(seq));
-            seq += 1;
-        });
-    }
-
-    #[cfg(feature = "bench")]
-    #[bench]
-    fn bench_anti_replay_old(b: &mut crate::test::Bencher) {
-        let mut ar = AntiReplay::new();
-        ar.check_and_update(12345);
-        ar.check_and_update(11234);
-
-        b.iter(|| {
-            assert!(!ar.check_and_update(11234));
-        });
-    }
-
-    #[cfg(feature = "bench")]
-    #[bench]
-    fn bench_anti_replay_large_skip(b: &mut crate::test::Bencher) {
-        let mut ar = AntiReplay::new();
-        let mut seq = 0;
-
-        b.iter(|| {
-            assert!(ar.check_and_update(seq));
-            seq += 30000;
-        });
-    }
 }

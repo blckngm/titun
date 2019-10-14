@@ -156,27 +156,4 @@ mod tests {
 
         assert_eq!(&cookie, &cookie1);
     }
-
-    #[cfg(feature = "bench")]
-    #[bench]
-    fn bench_cookie_reply(b: &mut crate::test::Bencher) {
-        let mut rng = OsRng;
-
-        let mut pk = [0u8; 32];
-        rng.fill_bytes(&mut pk);
-
-        let mut mac1 = [0u8; 16];
-        rng.fill_bytes(&mut mac1);
-
-        let mut secret = [0u8; 32];
-        rng.fill_bytes(&mut secret);
-
-        b.iter(|| {
-            let cookie = calc_cookie(&secret, b"1.2.3.4");
-
-            let reply = cookie_reply(&pk, &cookie, Id::gen(), &mac1);
-
-            reply
-        });
-    }
 }

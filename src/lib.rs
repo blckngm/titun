@@ -15,11 +15,6 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-#![cfg_attr(feature = "bench", feature(test))]
-
-#[cfg(feature = "bench")]
-extern crate test;
-
 #[macro_use]
 extern crate anyhow;
 #[macro_use]

@@ -10,13 +10,34 @@ version = "0.0.6-preview"
 members = ["ip-lookup-trie"]
 exclude = ["patched"]
 
+[lib]
+bench = false
+
 [[bin]]
 doc = false
 name = "titun"
 path = "src/main.rs"
+bench = false
 
-[features]
-bench = []
+[[bench]]
+name = "handshake"
+harness = false
+
+[[bench]]
+name = "crypto"
+harness = false
+
+[[bench]]
+name = "timer"
+harness = false
+
+[[bench]]
+name = "anti_replay"
+harness = false
+
+[[bench]]
+name = "load_monitor"
+harness = false
 
 [dependencies]
 arrayvec = "0.5.1"
@@ -70,6 +91,9 @@ inotify = { git = "https://github.com/sopium/inotify.git" }
 
 [target.'cfg(not(any(target_arch = "x86", target_arch = "x86_64")))'.dependencies]
 packed_simd = { version = "0.3.3", features = ["into_bits"] }
+
+[dev-dependencies]
+criterion = "0.3.0"
 
 [profile.release]
 lto = true
