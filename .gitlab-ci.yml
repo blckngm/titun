@@ -12,6 +12,7 @@ test:
   script:
   - cargo test --locked --all --verbose --jobs 1 -- --nocapture
   - cargo test --locked --all --verbose --jobs 1 --features=bench -- --nocapture
+  - cd fuzz && cargo check --locked
 
 aarch64:
   variables:
@@ -32,3 +33,4 @@ fmt:
   script:
   - rustup component add rustfmt
   - cargo fmt -- --check
+  - cd fuzz && cargo fmt -- --check

@@ -10,7 +10,8 @@ edition = "2018"
 cargo-fuzz = true
 
 [dependencies]
-futures-preview = "0.3.0-alpha.18"
+futures-preview = "0.3.0-alpha.19"
+toml = "0.5.3"
 
 [dependencies.titun]
 path = ".."
@@ -28,3 +29,11 @@ path = "fuzz_targets/ipc-parsing.rs"
 [[bin]]
 name = "hchacha"
 path = "fuzz_targets/hchacha.rs"
+
+[[bin]]
+name = "config-parsing"
+path = "fuzz_targets/config-parsing.rs"
+
+[[bin]]
+name = "config-transform"
+path = "fuzz_targets/config-transform.rs"
