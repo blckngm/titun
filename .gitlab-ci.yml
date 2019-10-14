@@ -10,9 +10,18 @@ before_script:
 
 test:
   script:
+  # Tests.
   - cargo test --locked --all --jobs 1 -- --nocapture
+  # Make sure benches are OK.
   - cargo test --benches --locked --all --jobs 1
-  - cd fuzz && cargo check --locked
+  # Make sure fuzz is OK.
+  - cd fuzz && cargo check --locked && cd ..
+  # Integration test.
+  - apt-get install -yqq iproute2 iputils-ping
+  - cargo build
+  - cp target/debug/titun /usr/bin
+  - cd ns-test
+  - ./smoke.sh
 
 aarch64:
   variables:
