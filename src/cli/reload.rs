@@ -9,6 +9,8 @@ use std::sync::Arc;
 ///
 /// Most errors are handled. Shouldn't really return `Err`.
 pub async fn reload(wg: &Arc<WgState>, new_config: Config) -> Result<(), Error> {
+    let _state_change = wg.state_change_advisory.lock().await;
+
     let current_state = wg.get_state();
 
     if new_config.interface.private_key != current_state.private_key {

@@ -1,4 +1,4 @@
-// Copyright 2017 Guanhao Yin <sopium@mysterious.site>
+// Copyright 2017, 2018, 2019 Guanhao Yin <sopium@mysterious.site>
 
 // This file is part of TiTun.
 
@@ -55,7 +55,7 @@ pub const QUEUE_SIZE: usize = 16;
 const HANDSHAKES_PER_SEC: u32 = 250;
 
 // Locking order:
-//
+//   state_change_advisory >
 //   info > pubkey_map > any peers > id_map > anything else
 //   any peers > rt4 > rt6
 
@@ -76,6 +76,9 @@ pub struct WgState {
     pub(crate) socket: Mutex<Arc<UdpSocket>>,
     pub(crate) socket_sender: Mutex<Option<Sender<UdpSocket>>>,
     pub(crate) tun: AsyncTun,
+
+    // An advisory lock to prevent possible races between reloading and multiple IPC set requests.
+    pub(crate) state_change_advisory: tokio::sync::Mutex<()>,
 }
 
 impl Drop for WgState {
@@ -610,6 +613,7 @@ impl WgState {
             socket: Mutex::new(Arc::new(socket)),
             socket_sender: Mutex::new(None),
             tun,
+            state_change_advisory: ().into(),
         });
         Ok(wg)
     }

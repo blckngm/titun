@@ -162,6 +162,8 @@ async fn write_error(
 
 async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) -> Result<(), std::io::Error> {
     info!("processing a set request");
+    let _state_change = wg.state_change_advisory.lock().await;
+
     if let Some(key) = command.private_key {
         info!("set private key");
         wg.set_key(key);
