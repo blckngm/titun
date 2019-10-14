@@ -115,54 +115,53 @@ impl TimerHandle {
 mod tests {
     use super::*;
     use std::time::Duration;
-    use tokio::timer::delay_for;
+    use tokio::future::FutureExt;
+    use tokio::sync::mpsc::channel;
 
     #[tokio::test]
     async fn smoke() {
-        let run = Arc::new(AtomicBool::new(false));
-        let t = {
-            let run = run.clone();
-            create_timer_async(move || {
-                run.store(true, SeqCst);
-                async { () }
-            })
-        };
+        let (tx, mut rx) = channel(1);
+        let t = create_timer_async(move || {
+            let mut tx = tx.clone();
+            async move {
+                tx.send(()).await.unwrap();
+            }
+        });
 
         t.adjust_and_activate(Duration::from_millis(10));
-        delay_for(Duration::from_millis(30)).await;
-        assert!(run.load(SeqCst));
+        rx.next().await.unwrap();
     }
 
     #[tokio::test]
     async fn adjust_activate_de_activate() {
-        let run = Arc::new(AtomicBool::new(false));
+        let (tx, mut rx) = channel(1);
+
         let t = {
-            let run = run.clone();
             create_timer_async(move || {
-                run.store(true, SeqCst);
-                async { () }
+                let mut tx = tx.clone();
+                async move {
+                    tx.send(()).await.unwrap();
+                }
             })
         };
 
+        let t0 = now();
         t.adjust_and_activate(Duration::from_millis(10));
         t.adjust_and_activate(Duration::from_millis(100));
-
-        delay_for(Duration::from_millis(20)).await;
-        assert!(!run.load(SeqCst));
-        delay_for(Duration::from_millis(120)).await;
-        assert!(run.load(SeqCst));
-
-        run.store(false, SeqCst);
+        rx.next().await.unwrap();
+        assert!(t0.elapsed() >= Duration::from_millis(90));
 
         t.adjust_and_activate(Duration::from_millis(10));
         t.de_activate();
-        delay_for(Duration::from_millis(20)).await;
-        assert!(!run.load(SeqCst));
+
+        assert!(rx.next().timeout(Duration::from_millis(20)).await.is_err());
 
         t.adjust_and_activate(Duration::from_millis(10));
         t.de_activate();
         t.adjust_and_activate(Duration::from_millis(15));
-        delay_for(Duration::from_millis(30)).await;
-        assert!(run.load(SeqCst));
+
+        rx.next().await.unwrap();
+
+        assert!(rx.next().timeout(Duration::from_millis(100)).await.is_err());
     }
 }

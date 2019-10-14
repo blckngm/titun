@@ -107,7 +107,7 @@ after_build:
   - ps: $env:APPVEYOR_SAVE_CACHE_ON_ERROR = "true"
 
 test_script:
-  - cargo test --all --locked --release
+  - cargo test --all --locked
 
 artifacts:
   - path: titun-windows-gui\installer\Output\titun-setup.exe
