@@ -89,9 +89,6 @@ privdrop = "0.3.3"
 [target.'cfg(target_os = "linux")'.dependencies]
 inotify = { git = "https://github.com/sopium/inotify.git" }
 
-[target.'cfg(not(any(target_arch = "x86", target_arch = "x86_64")))'.dependencies]
-packed_simd = { version = "0.3.3", features = ["into_bits"] }
-
 [dev-dependencies]
 criterion = "0.3.0"
 

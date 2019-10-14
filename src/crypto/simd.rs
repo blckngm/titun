@@ -18,10 +18,8 @@
 //! Portable SIMD vectors that works on stable rust and
 //! works with runtime CPU feature detection.
 
-#[cfg(all(
-    any(target_arch = "x86", target_arch = "x86_64"),
-    target_feature = "sse2"
-))]
+// sse2 should imply x86/x86_64.
+#[cfg(target_feature = "sse2")]
 mod simd_x86 {
     #[cfg(target_arch = "x86")]
     use std::arch::x86::*;
@@ -295,7 +293,7 @@ mod simd_x86 {
     }
 }
 
-#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+#[cfg(not(target_feature = "sse2"))]
 mod simd_fallback {
     pub trait Machine: Copy {}
 
@@ -310,17 +308,15 @@ mod simd_fallback {
 
     impl Machine for BaselineMachine {}
 
-    #[repr(transparent)]
+    #[repr(align(16))]
     #[allow(non_camel_case_types)]
     #[derive(Copy, Clone)]
-    pub struct u32x4(packed_simd::u32x4);
+    pub struct u32x4([u32; 4]);
 
     impl std::fmt::Debug for u32x4 {
         #[allow(clippy::many_single_char_names)]
         fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-            let mut arr = [0u32; 4];
-            self.0.write_to_slice_unaligned(&mut arr);
-            let [a, b, c, d] = arr;
+            let [a, b, c, d] = self.0;
             write!(f, "(0x{:08x}, 0x{:08x}, 0x{:08x}, 0x{:08x})", a, b, c, d)?;
             Ok(())
         }
@@ -329,36 +325,45 @@ mod simd_fallback {
     impl u32x4 {
         #[inline(always)]
         pub fn new(a: u32, b: u32, c: u32, d: u32) -> Self {
-            u32x4(packed_simd::u32x4::new(a, b, c, d))
+            Self([a, b, c, d])
         }
 
         #[inline(always)]
         pub fn load_le(addr: &[u8; 16]) -> Self {
-            use packed_simd::IntoBits;
-            let v = packed_simd::u8x16::from_slice_unaligned(addr).into_bits();
-            u32x4(packed_simd::u32x4::from_le(v))
+            use core::convert::TryInto;
+
+            let mut result = [0u32; 4];
+            for i in 0..4 {
+                let bytes: &[u8; 4] = addr[(i * 4)..(i * 4 + 4)].try_into().unwrap();
+                result[i] = u32::from_le_bytes(*bytes);
+            }
+            Self(result)
         }
 
         #[inline(always)]
         pub fn store_le(self, addr: &mut [u8; 16]) {
-            use packed_simd::IntoBits;
-
-            let v: packed_simd::u8x16 = self.0.to_le().into_bits();
-            v.write_to_slice_unaligned(addr);
+            for i in 0..4 {
+                addr[(i * 4)..(i * 4 + 4)].copy_from_slice(&self.0[i].to_le_bytes());
+            }
         }
 
         #[inline(always)]
         pub fn rotate_left_const<M>(self, amt: u32, _: M) -> Self {
-            u32x4(self.0.rotate_left(packed_simd::u32x4::splat(amt)))
+            Self([
+                self.0[0].rotate_left(amt),
+                self.0[1].rotate_left(amt),
+                self.0[2].rotate_left(amt),
+                self.0[3].rotate_left(amt),
+            ])
         }
 
         #[inline(always)]
         pub fn shuffle_left(self, amt: u32) -> Self {
-            use packed_simd::shuffle;
+            let [a, b, c, d] = self.0;
             match amt {
-                1 => u32x4(shuffle!(self.0, [1, 2, 3, 0])),
-                2 => u32x4(shuffle!(self.0, [2, 3, 0, 1])),
-                3 => u32x4(shuffle!(self.0, [3, 0, 1, 2])),
+                1 => Self([b, c, d, a]),
+                2 => Self([c, d, a, b]),
+                3 => Self([d, a, b, c]),
                 _ => unreachable!(),
             }
         }
@@ -374,7 +379,12 @@ mod simd_fallback {
 
         #[inline(always)]
         fn add(self, other: u32x4) -> u32x4 {
-            u32x4(self.0 + other.0)
+            u32x4([
+                self.0[0].wrapping_add(other.0[0]),
+                self.0[1].wrapping_add(other.0[1]),
+                self.0[2].wrapping_add(other.0[2]),
+                self.0[3].wrapping_add(other.0[3]),
+            ])
         }
     }
 
@@ -389,7 +399,12 @@ mod simd_fallback {
         type Output = u32x4;
         #[inline(always)]
         fn bitxor(self, other: u32x4) -> u32x4 {
-            u32x4(self.0 ^ other.0)
+            u32x4([
+                self.0[0] ^ other.0[0],
+                self.0[1] ^ other.0[1],
+                self.0[2] ^ other.0[2],
+                self.0[3] ^ other.0[3],
+            ])
         }
     }
 
@@ -404,12 +419,17 @@ mod simd_fallback {
         type Output = u32x4;
         #[inline(always)]
         fn bitor(self, other: u32x4) -> u32x4 {
-            u32x4(self.0 | other.0)
+            u32x4([
+                self.0[0] | other.0[0],
+                self.0[1] | other.0[1],
+                self.0[2] | other.0[2],
+                self.0[3] | other.0[3],
+            ])
         }
     }
 }
 
-#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+#[cfg(not(target_feature = "sse2"))]
 pub use simd_fallback::*;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_feature = "sse2")]
 pub use simd_x86::*;
