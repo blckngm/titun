@@ -176,11 +176,18 @@ impl Options {
         };
         #[cfg(not(unix))]
         let notify = None;
-        let rt = tokio::runtime::Builder::new()
-            .core_threads(threads)
-            .panic_handler(|e| std::panic::resume_unwind(e))
-            .build()?;
-        rt.block_on(cli::run(config, notify))
+        // On windows we make use `tokio_executor::threadpool::blocking`, so it
+        // must use the threadpool runtime.
+        if threads > 1 || cfg!(windows) {
+            let rt = tokio::runtime::Builder::new()
+                .core_threads(threads)
+                .panic_handler(|e| std::panic::resume_unwind(e))
+                .build()?;
+            rt.block_on(cli::run(config, notify))
+        } else {
+            let mut rt = tokio::runtime::current_thread::Runtime::new()?;
+            rt.block_on(cli::run(config, notify))
+        }
     }
 }
 

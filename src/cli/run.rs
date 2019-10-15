@@ -39,6 +39,8 @@ fn schedule_force_shutdown() {
 async fn do_reload(mut file: &std::fs::File, wg: &std::sync::Arc<WgState>) -> Result<(), Error> {
     use std::io::{Seek, SeekFrom};
 
+    // XXX: seek and read may block. Switch to use `tokio::fs::File` when it
+    // supports seeking.
     file.seek(SeekFrom::Start(0))?;
     let new_config = super::load_config_from_file(file)?;
     crate::cli::reload(wg, new_config).await
