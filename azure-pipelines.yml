@@ -1,0 +1,94 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- staging
+- trying
+
+pr: [master]
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+jobs:
+# Check formatting
+- job: rustfmt
+  displayName: Check foramtting
+  pool:
+    vmImage: ubuntu-16.04
+  steps:
+    - template: ci/azure-install-rust.yml
+      parameters:
+        rust_version: beta
+    - script: |
+        rustup component add rustfmt
+        cargo fmt --version
+      displayName: Install rustfmt
+    - script: |
+        cargo fmt --all -- --check
+        cd fuzz && cargo fmt -- --check
+      displayName: Check formatting
+
+- job: test
+  displayName: Test
+  pool:
+    vmImage: ubuntu-16.04
+  steps:
+    - template: ci/azure-install-rust.yml
+      parameters:
+        rust_version: beta
+    - script: |
+        # Tests.
+        cargo test --locked --all --jobs 1 -- --nocapture
+        # Make sure benches are OK.
+        cargo test --benches --locked --all --jobs 1
+        # Make sure fuzz is OK.
+        cd fuzz && cargo check --locked && cd ..
+        # Integration test.
+      displayName: Run tests
+
+- job: integration_test
+  displayName: Integration Test
+  pool:
+    vmImage: ubuntu-16.04
+  steps:
+    - template: ci/azure-install-rust.yml
+      parameters:
+        rust_version: beta
+    - script: |
+        cargo build
+        sudo cp target/debug/titun /usr/local/bin
+        cd ns-test
+        sudo ./smoke.sh
+      displayName: Integration tests
+
+- job: cross_test_aarch64
+  displayName: Cross test for aarch64
+  pool:
+    vmImage: ubuntu-16.04
+  steps:
+    - template: ci/azure-install-rust.yml
+      parameters:
+        rust_version: beta
+    - script: |
+        rustup target add aarch64-unknown-linux-gnu
+        sudo apt-get install -yqq gcc-aarch64-linux-gnu qemu-user-static
+        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER='qemu-aarch64-static -L /usr/aarch64-linux-gnu'
+        cargo test --target aarch64-unknown-linux-gnu --locked --all --jobs 1
+      displayName: Run tests
+
+- job: cross_check_freebsd
+  displayName: Cross check for freebsd
+  pool:
+    vmImage: ubuntu-16.04
+  steps:
+    - template: ci/azure-install-rust.yml
+      parameters:
+        rust_version: beta
+    - script: |
+        rustup target add x86_64-unknown-freebsd
+        cargo check --target x86_64-unknown-freebsd --locked --all --tests --jobs 1
+      displayName: Check
