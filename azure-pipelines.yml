@@ -23,11 +23,11 @@ jobs:
       parameters:
         rust_version: beta
     - script: |
-        rustup component add rustfmt
+        rustup component add rustfmt &&
         cargo fmt --version
       displayName: Install rustfmt
     - script: |
-        cargo fmt --all -- --check
+        cargo fmt --all -- --check &&
         cd fuzz && cargo fmt -- --check
       displayName: Check formatting
 
@@ -39,15 +39,12 @@ jobs:
     - template: ci/azure-install-rust.yml
       parameters:
         rust_version: beta
-    - script: |
-        # Tests.
-        cargo test --locked --all --jobs 1 -- --nocapture
-        # Make sure benches are OK.
-        cargo test --benches --locked --all --jobs 1
-        # Make sure fuzz is OK.
-        cd fuzz && cargo check --locked && cd ..
-        # Integration test.
+    - script: cargo test --locked --all -- --nocapture
       displayName: Run tests
+    - script: cargo test --benches --locked --all
+      displayName: Run benches as tests
+    - script: cd fuzz && cargo check --locked
+      displayName: Check fuzz
 
 - job: integration_test
   displayName: Integration Test
@@ -58,9 +55,9 @@ jobs:
       parameters:
         rust_version: beta
     - script: |
-        cargo build
-        sudo cp target/debug/titun /usr/local/bin
-        cd ns-test
+        cargo build &&
+        sudo cp target/debug/titun /usr/local/bin &&
+        cd ns-test &&
         sudo ./smoke.sh
       displayName: Integration tests
 
@@ -73,11 +70,11 @@ jobs:
       parameters:
         rust_version: beta
     - script: |
-        rustup target add aarch64-unknown-linux-gnu
-        sudo apt-get install -yqq gcc-aarch64-linux-gnu qemu-user-static
-        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
-        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER='qemu-aarch64-static -L /usr/aarch64-linux-gnu'
-        cargo test --target aarch64-unknown-linux-gnu --locked --all --jobs 1
+        rustup target add aarch64-unknown-linux-gnu &&
+        sudo apt-get install -yqq gcc-aarch64-linux-gnu qemu-user-static &&
+        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc &&
+        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER='qemu-aarch64-static -L /usr/aarch64-linux-gnu' &&
+        cargo test --target aarch64-unknown-linux-gnu --locked --all
       displayName: Run tests
 
 - job: cross_check_freebsd
@@ -89,6 +86,6 @@ jobs:
       parameters:
         rust_version: beta
     - script: |
-        rustup target add x86_64-unknown-freebsd
-        cargo check --target x86_64-unknown-freebsd --locked --all --tests --jobs 1
+        rustup target add x86_64-unknown-freebsd &&
+        cargo check --target x86_64-unknown-freebsd --locked --all --tests
       displayName: Check
