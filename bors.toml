@@ -1,0 +1,4 @@
+status = [
+    "CI / %",
+    "continuous-integration/appveyor/branch",
+]

@@ -1,3 +1,8 @@
+branches:
+  only:
+    - staging
+    - trying
+
 version: '{build}.{branch}'
 
 clone_folder: c:\titun
