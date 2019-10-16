@@ -1,4 +1,4 @@
 status = [
-    "CI / %",
-    "continuous-integration/appveyor/branch",
+    "ci-%",
 ]
+timeout_sec = 90
