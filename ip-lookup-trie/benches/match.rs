@@ -15,23 +15,23 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-#![feature(test)]
-
-extern crate test;
-use crate::test::Bencher;
-
+use criterion::{criterion_group, criterion_main, Criterion};
 use ip_lookup_trie::IpLookupTable;
 use std::net::Ipv4Addr;
 
-#[bench]
-fn bench_match(b: &mut Bencher) {
-    let mut t = IpLookupTable::new();
-    t.insert(Ipv4Addr::new(192, 168, 9, 233), 32, 99);
-    t.insert(Ipv4Addr::new(192, 168, 9, 0), 24, 1);
-    t.insert(Ipv4Addr::new(192, 168, 1, 0), 16, 2);
-    t.insert(Ipv4Addr::new(10, 0, 77, 3), 8, 3);
+criterion_group!(benches, register_benches,);
+criterion_main!(benches);
 
-    let a = Ipv4Addr::new(192, 168, 9, 233);
+fn register_benches(c: &mut Criterion) {
+    c.bench_function("timer adjust and activate", |b| {
+        let mut t = IpLookupTable::new();
+        t.insert(Ipv4Addr::new(192, 168, 9, 233), 32, 99);
+        t.insert(Ipv4Addr::new(192, 168, 9, 0), 24, 1);
+        t.insert(Ipv4Addr::new(192, 168, 1, 0), 16, 2);
+        t.insert(Ipv4Addr::new(10, 0, 77, 3), 8, 3);
 
-    b.iter(|| t.longest_match(a));
+        let a = Ipv4Addr::new(192, 168, 9, 233);
+
+        b.iter(|| t.longest_match(a));
+    });
 }
