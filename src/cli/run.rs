@@ -36,30 +36,34 @@ fn schedule_force_shutdown() {
 }
 
 #[cfg(unix)]
-async fn do_reload(mut file: &std::fs::File, wg: &std::sync::Arc<WgState>) -> Result<(), Error> {
+async fn do_reload(
+    file: std::sync::Arc<std::fs::File>,
+    wg: &std::sync::Arc<WgState>,
+) -> Result<(), Error> {
     use std::io::{Seek, SeekFrom};
 
-    // XXX: seek and read may block. Switch to use `tokio::fs::File` when it
-    // supports seeking.
-    file.seek(SeekFrom::Start(0))?;
-    let new_config = super::load_config_from_file(file)?;
+    let new_config = tokio_executor::blocking::run(move || {
+        let mut file: &std::fs::File = &file;
+        file.seek(SeekFrom::Start(0))?;
+        super::load_config_from_file(file)
+    })
+    .await?;
     crate::cli::reload(wg, new_config).await
 }
 
 #[cfg(unix)]
 async fn reload_on_sighup(
-    file: Option<std::fs::File>,
+    file: std::fs::File,
     weak: std::sync::Weak<WgState>,
 ) -> Result<(), Error> {
     use tokio_net::signal::unix::{signal, SignalKind};
+    let file = std::sync::Arc::new(file);
     while let Some(_) = signal(SignalKind::hangup())?.next().await {
-        if let Some(ref file) = file {
-            if let Some(wg) = weak.upgrade() {
-                info!("reloading");
-                do_reload(file, &wg)
-                    .await
-                    .unwrap_or_else(|e| warn!("error in reloading: {}", e));
-            }
+        if let Some(wg) = weak.upgrade() {
+            info!("reloading");
+            do_reload(file.clone(), &wg)
+                .await
+                .unwrap_or_else(|e| warn!("error in reloading: {}", e));
         }
     }
     Ok(())
@@ -146,12 +150,13 @@ pub async fn run(c: Config, notify: Option<NotifyHandle>) -> Result<(), Error> {
     #[cfg(unix)]
     {
         let weak1 = weak.clone();
-        let file = c.general.config_file.take();
-        scope0.clone().spawn_canceller(async move {
-            reload_on_sighup(file, weak1)
-                .await
-                .unwrap_or_else(|e| warn!("error in reload_on_sighup: {}", e))
-        });
+        if let Some(file) = c.general.config_file.take() {
+            scope0.clone().spawn_canceller(async move {
+                reload_on_sighup(file, weak1)
+                    .await
+                    .unwrap_or_else(|e| warn!("error in reload_on_sighup: {}", e))
+            });
+        }
     }
 
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
