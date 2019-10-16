@@ -1,5 +1,8 @@
 # TiTun
 
+[![](https://github.com/sopium/titun/workflows/Tests/badge.svg)](https://github.com/sopium/titun/actions?workflow=Tests)
+[![Build status](https://ci.appveyor.com/api/projects/status/9nh6131kx4657f0h?svg=true)](https://ci.appveyor.com/project/sopium/titun)
+
 Simple, fast, and cross-platform IP tunnel written in Rust. [WireGuard](https://www.wireguard.com/) compatible.
 
 ## WARNING

@@ -1,0 +1,63 @@
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: Run tests
+      run: cargo test --all --locked
+    - name: Run benches as tests
+      run: cargo test --benches --locked --jobs 1
+
+  check-fuzz:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: Check fuzz
+      run: cd fuzz && cargo check --locked && cd ..
+
+  cross-test-aarch64:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER: qemu-aarch64-static -L /usr/aarch64-linux-gnu
+    steps:
+      - uses: actions/checkout@v1
+      - name: Add target
+        run: rustup target add aarch64-unknown-linux-gnu
+      - name: Install cross compiler and qemu-user-static
+        run: sudo apt-get update && sudo apt-get install -yqq gcc-aarch64-linux-gnu qemu-user-static
+      - name: Run tests
+        run: cargo test --target aarch64-unknown-linux-gnu --locked --all --jobs 1
+
+  cross-check-freebsd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - name: Add target freebsd
+        run: rustup target add x86_64-unknown-freebsd
+      - name: Check
+        run: cargo check --target x86_64-unknown-freebsd --locked --all --tests --jobs 1
+
+  integration-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: Build
+      run: cargo build --locked && sudo cp target/debug/titun /usr/local/bin/
+    - name: Run
+      run: cd ns-test && sudo ./smoke.sh
+
+  check-fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - name: Install rustfmt
+        run: rustup component add rustfmt
+      - name: Check fmt
+        run: cargo fmt -- --check
+      - name: Check fmt for fuzz
+        run: cd fuzz && cargo fmt -- --check
