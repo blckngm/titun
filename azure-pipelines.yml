@@ -29,6 +29,8 @@ jobs:
         cargo fmt --all -- --check
         cd fuzz && cargo fmt -- --check
       displayName: Check formatting
+    - script: cargo run --example check-copyright
+      displayName: Check copyright headers
 
 - job: test
   displayName: Test

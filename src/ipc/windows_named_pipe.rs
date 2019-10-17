@@ -1,6 +1,3 @@
-// Based on https://gitlab.com/dgriffen/windows-named-pipe,
-// Modified to impl Read for &PipeStream.
-
 // Copyright (c) 2017, Daniel Griffen <daniel@griffen.io>
 // All rights reserved.
 
@@ -24,6 +21,9 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+// Based on https://gitlab.com/dgriffen/windows-named-pipe,
+// Modified to impl Read for &PipeStream.
 
 #![cfg(windows)]
 
