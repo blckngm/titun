@@ -20,11 +20,13 @@ jobs:
       parameters:
         rust_version: beta
     - script: |
-        rustup component add rustfmt &&
+        set -ex
+        rustup component add rustfmt
         cargo fmt --version
       displayName: Install rustfmt
     - script: |
-        cargo fmt --all -- --check &&
+        set -ex
+        cargo fmt --all -- --check
         cd fuzz && cargo fmt -- --check
       displayName: Check formatting
 
@@ -76,13 +78,14 @@ jobs:
     - script: cargo build --release
       displayName: Build TiTun
     - bash: |
-        cp target/release/titun.exe titun-windows-gui/titun.exe &&
+        set -ex
+        cp target/release/titun.exe titun-windows-gui/titun.exe
         iscc titun-windows-gui/installer/titun.iss
       displayName: Build Installer
     - task: PublishBuildArtifacts@1
       inputs:
-        pathToPublish: titun-windows-gui\installer\Output\
-        artifactName: installer
+        pathToPublish: titun-windows-gui\installer\Output\titun-setup.exe
+        artifactName: titun-setup.exe
 
 - job: integration_test
   displayName: Integration Test
@@ -93,9 +96,10 @@ jobs:
       parameters:
         rust_version: beta
     - script: |
-        cargo build &&
-        sudo cp target/debug/titun /usr/local/bin &&
-        cd ns-test &&
+        set -ex
+        cargo build
+        sudo cp target/debug/titun /usr/local/bin
+        cd ns-test
         sudo ./smoke.sh
       displayName: Integration tests
 
@@ -108,11 +112,13 @@ jobs:
       parameters:
         rust_version: beta
     - script: |
-        rustup target add aarch64-unknown-linux-gnu &&
-        sudo apt-get install -yqq gcc-aarch64-linux-gnu qemu-user-static &&
-        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc &&
-        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER='qemu-aarch64-static -L /usr/aarch64-linux-gnu' &&
+        set -ex
+        rustup target add aarch64-unknown-linux-gnu
+        sudo apt-get install -yqq gcc-aarch64-linux-gnu qemu-user-static
         cargo test --target aarch64-unknown-linux-gnu --locked --all
+      env:
+        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER: qemu-aarch64-static -L /usr/aarch64-linux-gnu
       displayName: Run tests
 
 - job: cross_check_freebsd
@@ -124,6 +130,7 @@ jobs:
       parameters:
         rust_version: beta
     - script: |
-        rustup target add x86_64-unknown-freebsd &&
+        set -ex
+        rustup target add x86_64-unknown-freebsd
         cargo check --target x86_64-unknown-freebsd --locked --all --tests
       displayName: Check
