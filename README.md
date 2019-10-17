@@ -43,6 +43,9 @@ accepted.
 # Set logging. Override by the `--log` option or the `RUST_LOG` environment variable.
 Log = "info"
 # Switch to user after initialization to drop privilege. Override by `--user`.
+#
+# If you use this option, and want to reload configuration, the configuration file
+# must be readable by this user.
 User = "nobody"
 # Switch to group.
 Group = "nogroup"
