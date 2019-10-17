@@ -11,7 +11,11 @@ use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroU16;
 use std::path::Path;
 
-pub fn load_config_from_path(p: &Path) -> Result<Config, Error> {
+/// Read and parse configuration from the file at the specified path.
+///
+/// `print_warnings`: Print warnings to stderr directly instead of go through
+/// the logger.
+pub fn load_config_from_path(p: &Path, print_warnings: bool) -> Result<Config, Error> {
     let file = OpenOptions::new()
         .read(true)
         .open(p)
@@ -23,13 +27,18 @@ pub fn load_config_from_path(p: &Path) -> Result<Config, Error> {
             Err(_) => (),
             Ok(m) => {
                 if m.mode() & 0o004 != 0 {
-                    // env-logger is not initialized yet. Fake it.
-                    eprintln!("[WARN  titun::cli::config] configuration file is world readable");
+                    if print_warnings {
+                        eprintln!(
+                            "[WARN  titun::cli::config] configuration file is world readable"
+                        );
+                    } else {
+                        warn!("configuration file is world readable");
+                    }
                 }
             }
         }
     }
-    let config = load_config_from_file(&file)?;
+    let config = load_config_from_file(&file, print_warnings)?;
     #[cfg(unix)]
     let mut config = config;
     #[cfg(unix)]
@@ -46,7 +55,11 @@ pub fn load_config_from_path(p: &Path) -> Result<Config, Error> {
     Ok(config)
 }
 
-pub fn load_config_from_file(mut file: &File) -> Result<Config, Error> {
+/// Read and parse configuration from file.
+///
+/// `print_warnings`: Print warnings to stderr directly instead of go through
+/// the logger.
+pub fn load_config_from_file(mut file: &File, print_warnings: bool) -> Result<Config, Error> {
     let mut file_content = String::new();
     file.read_to_string(&mut file_content)
         .context("failed to read config file")?;
@@ -66,10 +79,14 @@ pub fn load_config_from_file(mut file: &File) -> Result<Config, Error> {
         }
         for &route in &p.allowed_ips {
             if !previous_routes.insert(route) {
-                eprintln!(
-                    "[WARN  titun::cli::config] allowed IP {}/{} appeared multiple times",
-                    route.0, route.1
-                );
+                if print_warnings {
+                    eprintln!(
+                        "[WARN  titun::cli::config] allowed IP {}/{} appeared multiple times",
+                        route.0, route.1
+                    );
+                } else {
+                    warn!("allowed IP {}/{} appeared multiple time", route.0, route.1);
+                }
             }
         }
     }
