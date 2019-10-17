@@ -45,7 +45,7 @@ async fn do_reload(
     let new_config = tokio_executor::blocking::run(move || {
         let mut file: &std::fs::File = &file;
         file.seek(SeekFrom::Start(0))?;
-        super::load_config_from_file(file)
+        super::load_config_from_file(file, false)
     })
     .await?;
     crate::cli::reload(wg, new_config).await
