@@ -1,1 +1,2 @@
 status = ["sopium.titun"]
+delete_merged_branches = true
