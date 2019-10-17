@@ -43,7 +43,7 @@ harness = false
 arrayvec = "0.5.1"
 base64 = "0.10.1"
 blake2s_simd = "0.5.8"
-env_logger = { version = "0.7.0", default-features = false }
+env_logger = { version = "0.7.1", default-features = false }
 fnv = "1.0.6"
 futures-preview = "0.3.0-alpha.19"
 hex = "0.4.0"
