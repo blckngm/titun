@@ -7,10 +7,7 @@ trigger:
 - staging
 - trying
 
-pr: [master]
-
-pool:
-  vmImage: 'ubuntu-latest'
+pr: none
 
 jobs:
 # Check formatting
@@ -45,6 +42,47 @@ jobs:
       displayName: Run benches as tests
     - script: cd fuzz && cargo check --locked
       displayName: Check fuzz
+
+- job: windows_test
+  displayName: Test on Windows
+  pool:
+    vmImage: vs2017-win2016
+  steps:
+    - template: ci/azure-install-rust.yml
+      parameters:
+        rust_version: beta
+    - script: cargo test --locked --all -- --nocapture
+      displayName: Run tests
+    - script: cargo test --benches --locked --all
+      displayName: Run benches as tests
+
+# TODO: x86 build
+- job: windows_gui
+  displayName: Build Windows GUI Installer
+  pool:
+    vmImage: vs2017-win2016
+  steps:
+    - task: NuGetCommand@2
+      inputs:
+        solution: titun-windows-gui/titun-windows-gui.sln
+        command: restore
+    - task: MSBuild@1
+      inputs:
+        solution: titun-windows-gui/titun-windows-gui.sln
+        configuration: release
+    - template: ci/azure-install-rust.yml
+      parameters:
+        rust_version: beta
+    - script: cargo build --release
+      displayName: Build TiTun
+    - bash: |
+        cp target/release/titun.exe titun-windows-gui/titun.exe &&
+        iscc titun-windows-gui/installer/titun.iss
+      displayName: Build Installer
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: titun-windows-gui\installer\Output\
+        artifactName: installer
 
 - job: integration_test
   displayName: Integration Test
