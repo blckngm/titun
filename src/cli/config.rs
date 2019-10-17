@@ -26,7 +26,7 @@ use std::fs::{File, OpenOptions};
 use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroU16;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Read and parse configuration from the file at the specified path.
 ///
@@ -60,14 +60,7 @@ pub fn load_config_from_path(p: &Path, print_warnings: bool) -> Result<Config, E
     let mut config = config;
     #[cfg(unix)]
     {
-        use std::io::{Seek, SeekFrom};
-
-        // Store the file handle for reloading.
-        match (&file).seek(SeekFrom::Start(0)) {
-            // Unless the file does not support seeking.
-            Err(_) => (),
-            Ok(_) => config.general.config_file = Some(file),
-        }
+        config.general.config_file_path = Some(p.into());
     }
     Ok(config)
 }
@@ -76,7 +69,7 @@ pub fn load_config_from_path(p: &Path, print_warnings: bool) -> Result<Config, E
 ///
 /// `print_warnings`: Print warnings to stderr directly instead of go through
 /// the logger.
-pub fn load_config_from_file(mut file: &File, print_warnings: bool) -> Result<Config, Error> {
+fn load_config_from_file(mut file: &File, print_warnings: bool) -> Result<Config, Error> {
     let mut file_content = String::new();
     file.read_to_string(&mut file_content)
         .context("failed to read config file")?;
@@ -157,7 +150,7 @@ pub struct GeneralConfig {
     pub exit_stdin_eof: bool,
 
     #[serde(skip)]
-    pub config_file: Option<File>,
+    pub config_file_path: Option<PathBuf>,
 
     #[serde(default)]
     pub foreground: bool,

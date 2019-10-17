@@ -37,15 +37,11 @@ fn schedule_force_shutdown() {
 
 #[cfg(unix)]
 async fn do_reload(
-    file: std::sync::Arc<std::fs::File>,
+    config_file_path: std::path::PathBuf,
     wg: &std::sync::Arc<WgState>,
 ) -> Result<(), Error> {
-    use std::io::{Seek, SeekFrom};
-
     let new_config = tokio_executor::blocking::run(move || {
-        let mut file: &std::fs::File = &file;
-        file.seek(SeekFrom::Start(0))?;
-        super::load_config_from_file(file, false)
+        super::load_config_from_path(&config_file_path, false)
     })
     .await?;
     crate::cli::reload(wg, new_config).await
@@ -53,15 +49,14 @@ async fn do_reload(
 
 #[cfg(unix)]
 async fn reload_on_sighup(
-    file: std::fs::File,
+    config_file_path: std::path::PathBuf,
     weak: std::sync::Weak<WgState>,
 ) -> Result<(), Error> {
     use tokio_net::signal::unix::{signal, SignalKind};
-    let file = std::sync::Arc::new(file);
     while let Some(_) = signal(SignalKind::hangup())?.next().await {
         if let Some(wg) = weak.upgrade() {
             info!("reloading");
-            do_reload(file.clone(), &wg)
+            do_reload(config_file_path.clone(), &wg)
                 .await
                 .unwrap_or_else(|e| warn!("error in reloading: {}", e));
         }
@@ -150,9 +145,9 @@ pub async fn run(c: Config, notify: Option<NotifyHandle>) -> Result<(), Error> {
     #[cfg(unix)]
     {
         let weak1 = weak.clone();
-        if let Some(file) = c.general.config_file.take() {
+        if let Some(config_file_path) = c.general.config_file_path.take() {
             scope0.clone().spawn_canceller(async move {
-                reload_on_sighup(file, weak1)
+                reload_on_sighup(config_file_path, weak1)
                     .await
                     .unwrap_or_else(|e| warn!("error in reload_on_sighup: {}", e))
             });
