@@ -32,7 +32,7 @@ use std::path::{Path, PathBuf};
 ///
 /// `print_warnings`: Print warnings to stderr directly instead of go through
 /// the logger.
-pub fn load_config_from_path(p: &Path, print_warnings: bool) -> Result<Config, Error> {
+pub fn load_config_from_path(p: &Path, print_warnings: bool) -> Result<Config<SocketAddr>, Error> {
     let file = OpenOptions::new()
         .read(true)
         .open(p)
@@ -69,12 +69,16 @@ pub fn load_config_from_path(p: &Path, print_warnings: bool) -> Result<Config, E
 ///
 /// `print_warnings`: Print warnings to stderr directly instead of go through
 /// the logger.
-fn load_config_from_file(mut file: &File, print_warnings: bool) -> Result<Config, Error> {
+fn load_config_from_file(
+    mut file: &File,
+    print_warnings: bool,
+) -> Result<Config<SocketAddr>, Error> {
     let mut file_content = String::new();
     file.read_to_string(&mut file_content)
         .context("failed to read config file")?;
     file_content = super::transform::maybe_transform(file_content);
-    let config: Config = toml::from_str(&file_content).context("failed to parse config file")?;
+    let config: Config<String> =
+        toml::from_str(&file_content).context("failed to parse config file")?;
 
     // Verify that there are no duplicated peers. And warn about duplicated routes.
     let mut previous_peers = HashSet::new();
@@ -114,12 +118,15 @@ fn load_config_from_file(mut file: &File, print_warnings: bool) -> Result<Config
         }
     }
 
-    Ok(config)
+    Ok(config.resolve_addresses(print_warnings)?)
 }
 
+// Endpoint is the type of peer endpoints. It is expected to be either `String`
+// or `SocketAddr`. First we parse config using `String`, then we parse and/or
+// resolve the endpoints, and turn it into `SocketAddr`.
 #[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "PascalCase")]
-pub struct Config {
+pub struct Config<Endpoint> {
     #[serde(default)]
     pub general: GeneralConfig,
 
@@ -129,7 +136,7 @@ pub struct Config {
     pub network: Option<NetworkConfig>,
 
     #[serde(default, rename = "Peer")]
-    pub peers: Vec<PeerConfig>,
+    pub peers: Vec<PeerConfig<Endpoint>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -201,7 +208,7 @@ pub struct InterfaceConfig {
 
 #[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "PascalCase", deny_unknown_fields)]
-pub struct PeerConfig {
+pub struct PeerConfig<Endpoint> {
     /// Peer public key.
     #[serde(with = "base64_u8_array")]
     pub public_key: X25519Pubkey,
@@ -211,7 +218,7 @@ pub struct PeerConfig {
     pub preshared_key: Option<[u8; 32]>,
 
     /// Peer endpoint.
-    pub endpoint: Option<SocketAddr>,
+    pub endpoint: Option<Endpoint>,
 
     /// Allowed source IPs.
     #[serde(
@@ -230,6 +237,51 @@ pub struct PeerConfig {
     /// Valid values: 1 - 0xfffe.
     #[serde(alias = "PersistentKeepalive")]
     pub keepalive: Option<NonZeroU16>,
+}
+
+impl Config<String> {
+    fn resolve_addresses(self, print_warnings: bool) -> Result<Config<SocketAddr>, Error> {
+        let mut peers = Vec::with_capacity(self.peers.len());
+        for p in self.peers {
+            let endpoint = if let Some(endpoint) = p.endpoint {
+                use std::net::ToSocketAddrs;
+                match endpoint.to_socket_addrs() {
+                    Ok(mut addrs) => Some(addrs.next().unwrap()),
+                    Err(e) => {
+                        // Reject invalid syntax, but warn and ignore resolution failures.
+                        if e.kind() == std::io::ErrorKind::InvalidInput {
+                            bail!("Invalid endpoint: {}", endpoint);
+                        }
+                        if print_warnings {
+                            eprintln!(
+                                "[WARN  titun::cli::config] failed to resolve endpoint {}: {}",
+                                endpoint, e
+                            );
+                        } else {
+                            warn!("failed to resolve {}: {}", endpoint, e);
+                        }
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+            peers.push(PeerConfig {
+                public_key: p.public_key,
+                preshared_key: p.preshared_key,
+                endpoint,
+                allowed_ips: p.allowed_ips,
+                keepalive: p.keepalive,
+            });
+        }
+        Ok(Config {
+            general: self.general,
+            #[cfg(windows)]
+            network: self.network,
+            interface: self.interface,
+            peers,
+        })
+    }
 }
 
 mod os_string_actually_string {
@@ -419,7 +471,8 @@ PersistentKeepalive = 17
 
     #[test]
     fn deserialization() {
-        let config: Config = toml::from_str(EXAMPLE_CONFIG).unwrap();
+        let config: Config<String> = toml::from_str(EXAMPLE_CONFIG).unwrap();
+        let config = config.resolve_addresses(true).unwrap();
         assert_eq!(
             config,
             Config {
