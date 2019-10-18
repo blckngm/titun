@@ -6,6 +6,6 @@ use titun::cli::Config;
 
 fuzz_target!(|data: &[u8]| {
     if let Ok(data) = std::str::from_utf8(data) {
-        let _: Result<Config, _> = toml::from_str(data);
+        let _: Result<Config<String>, _> = toml::from_str(data);
     }
 });

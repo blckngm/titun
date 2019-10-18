@@ -72,6 +72,9 @@ PresharedKey = "w64eiHxoUHU8DcFexHWzqILOvbWx9U+dxxh8iQqJr+k="
 # Optional. Alias: Routes.
 AllowedIPs = ["192.168.77.0/24"]
 # Optional.
+#
+# Host names can be used. If name resolution fails, a warning is emitted and
+# the field is ignored.
 Endpoint = "192.168.3.1:7777"
 # Optional. Range: 1 - 65535. Alias: Keepalive.
 PersistentKeepalive = 17

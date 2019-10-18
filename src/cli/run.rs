@@ -23,6 +23,7 @@ use crate::ipc::ipc_server;
 use crate::wireguard::*;
 use anyhow::{Context, Error};
 use futures::prelude::*;
+use std::net::SocketAddr;
 
 #[cfg(not(unix))]
 type NotifyHandle = ();
@@ -64,7 +65,7 @@ async fn reload_on_sighup(
     Ok(())
 }
 
-pub async fn run(c: Config, notify: Option<NotifyHandle>) -> Result<(), Error> {
+pub async fn run(c: Config<SocketAddr>, notify: Option<NotifyHandle>) -> Result<(), Error> {
     #[cfg(unix)]
     let mut c = c;
     let scope0 = AsyncScope::new();
