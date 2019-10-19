@@ -313,3 +313,58 @@ impl Evented for Tun {
         EventedFd(&self.fd).deregister(poll)
     }
 }
+
+#[cfg(all(test, feature = "sudo-tests"))]
+mod tests {
+    use super::*;
+    use anyhow::Error;
+    use std::time::Duration;
+    use tokio::future::FutureExt;
+    use tokio::net::process::Command;
+
+    const SELF_IP: &str = "10.33.178.2";
+    const PEER_IP: &str = "10.33.178.1";
+
+    #[tokio::test]
+    async fn test_tun_ping_and_read() -> Result<(), Error> {
+        let name = OsStr::new("tun7");
+        let t = AsyncTun::open(name)?;
+
+        Command::new("ifconfig")
+            .arg(name)
+            .arg("up")
+            .output()
+            .await?;
+
+        // Linux.
+        #[cfg(target_os = "linux")]
+        Command::new("ip")
+            .args(&["addr", "add", SELF_IP, "peer", PEER_IP, "dev"])
+            .arg(name)
+            .output()
+            .await?;
+        // BSD.
+        #[cfg(not(target_os = "linux"))]
+        Command::new("ifconfig")
+            .arg(name)
+            .args(&[SELF_IP, PEER_IP])
+            .output()
+            .await?;
+        let _ping = Command::new("ping")
+            .stdout(std::process::Stdio::null())
+            .args(&["-f", "-c", "5", PEER_IP])
+            .spawn()?;
+
+        let mut buf = [0u8; 2048];
+
+        async {
+            for _ in 0..5 {
+                t.read(&mut buf).await?;
+            }
+            Ok(()) as Result<(), Error>
+        }
+            .timeout(Duration::from_secs(2))
+            .await??;
+        Ok(())
+    }
+}
