@@ -39,6 +39,12 @@ harness = false
 name = "load_monitor"
 harness = false
 
+[features]
+# Enable tests that need root privilege, i.e. unit test for tun devices.
+# Run with:
+# export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER='sudo -E'
+sudo-tests = []
+
 [dependencies]
 arrayvec = "0.5.1"
 base64 = "0.10.1"
@@ -77,6 +83,7 @@ features = [
     "rt-full",
     "timer",
     "uds",
+    "process",
 ]
 
 [target.'cfg(windows)'.dependencies]

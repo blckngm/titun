@@ -40,9 +40,11 @@ jobs:
     - template: ci/azure-install-rust.yml
       parameters:
         rust_version: beta
-    - script: cargo test --locked --all -- --nocapture
+    - script: cargo test --locked --all --features=sudo-tests
+      env:
+        CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E
       displayName: Run tests
-    - script: cargo test --benches --locked --all
+    - script: cargo test --locked --all --benches
       displayName: Run benches as tests
     - script: cd fuzz && cargo check --locked
       displayName: Check fuzz
