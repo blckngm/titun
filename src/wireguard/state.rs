@@ -22,7 +22,7 @@ use anyhow::Error;
 use fnv::FnvHashMap;
 use futures::future::{select, Either};
 use futures::prelude::*;
-use ip_lookup_trie::IpLookupTable;
+use ip_lookup_trie::{Address, IpLookupTable};
 use noise_protocol::U8Array;
 use parking_lot::{Mutex, RwLock};
 use pin_utils::pin_mut;
@@ -618,10 +618,10 @@ impl WgState {
         Ok(wg)
     }
 
-    pub async fn run(wg: Arc<WgState>) {
+    pub async fn run(self: Arc<WgState>) {
         let scope = AsyncScope::new();
         {
-            let wg = wg.clone();
+            let wg = self.clone();
             scope.spawn_async(async move {
                 loop {
                     delay_for(Duration::from_secs(120)).await;
@@ -631,9 +631,9 @@ impl WgState {
             });
         }
         let (sender, receiver) = channel(1);
-        *wg.socket_sender.lock() = Some(sender);
-        scope.spawn_async(udp_processing(wg.clone(), receiver));
-        scope.spawn_async(tun_packet_processing(wg));
+        *self.socket_sender.lock() = Some(sender);
+        scope.spawn_async(udp_processing(self.clone(), receiver));
+        scope.spawn_async(tun_packet_processing(self));
         scope.cancelled().await;
     }
 
@@ -779,8 +779,13 @@ impl WgState {
             return Ok(());
         }
         let new_socket = WgState::prepare_socket(&mut new_port, self.info.read().fwmark)?;
-        let mut sender = self.socket_sender.lock().as_ref().unwrap().clone();
-        sender.send(new_socket).await.unwrap();
+        // XXX: possible race condition between this and `run`.
+        let sender = self.socket_sender.lock().as_ref().map(|s| s.clone());
+        if let Some(mut sender) = sender {
+            sender.send(new_socket).await.unwrap();
+        } else {
+            *self.socket.lock() = new_socket.into();
+        }
         self.info.write().port = new_port;
         Ok(())
     }
@@ -799,9 +804,60 @@ impl WgState {
         Ok(())
     }
 
+    /// A self check.
+    ///
+    /// Check that peer allowed_ips are consistent with routing tables.
+    pub fn check_route_consistency(&self) -> Result<(), Error> {
+        use std::collections::HashSet;
+
+        let rt4 = self.rt4.read();
+        let rt6 = self.rt6.read();
+
+        let mut exist_in_rt4_or_rt6: HashSet<([u8; 32], IpAddr, u32)> = HashSet::new();
+
+        for (ip, prefix_len, peer) in rt4.iter() {
+            let peer = peer.read();
+            if !peer.info.allowed_ips.contains(&(ip.into(), prefix_len)) {
+                bail!(
+                    "Route {}/{} points to peer {}, but the peer does not think so",
+                    ip,
+                    prefix_len,
+                    base64::encode(&peer.info.public_key),
+                );
+            }
+            exist_in_rt4_or_rt6.insert((peer.info.public_key, ip.into(), prefix_len));
+        }
+        for (ip, prefix_len, peer) in rt6.iter() {
+            let peer = peer.read();
+            if !peer.info.allowed_ips.contains(&(ip.into(), prefix_len)) {
+                bail!(
+                    "Route {}/{} points to peer {}, but the peer does not think so",
+                    ip,
+                    prefix_len,
+                    base64::encode(&peer.info.public_key),
+                );
+            }
+            exist_in_rt4_or_rt6.insert((peer.info.public_key, ip.into(), prefix_len));
+        }
+        for p in self.pubkey_map.read().values() {
+            let peer = p.read();
+            for &(ip, prefix_len) in &peer.info.allowed_ips {
+                if !exist_in_rt4_or_rt6.contains(&(peer.info.public_key, ip.into(), prefix_len)) {
+                    bail!(
+                        "Peer {} has route {}/{}, but it's not in rt4/rt6",
+                        base64::encode(&peer.info.public_key),
+                        ip,
+                        prefix_len
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Change configuration of a peer. Will return error if the peer does not
     /// exist.
-    pub fn set_peer(&self, command: SetPeerCommand) -> Result<(), Error> {
+    pub fn set_peer(&self, mut command: SetPeerCommand) -> Result<(), Error> {
         let peer0 = self
             .find_peer_by_pubkey(&command.public_key)
             .ok_or_else(|| anyhow::anyhow!("Peer not found"))?;
@@ -834,6 +890,15 @@ impl WgState {
                 }
             }
         }
+
+        command.allowed_ips = command
+            .allowed_ips
+            .into_iter()
+            .map(|(a, l)| match a {
+                IpAddr::V4(ip) => (ip.masked(l).into(), l),
+                IpAddr::V6(ip) => (ip.masked(l).into(), l),
+            })
+            .collect();
 
         // We should not take locks of other peers when we are holding `rt4` and
         // `rt6` locks, that would violate our lock order. So remove them later.
@@ -945,4 +1010,84 @@ where
 fn set_fwmark<T>(_s: &T, _fwmark: u32) -> Result<(), std::io::Error> {
     warn!("fwmark is not supported on this platform.");
     Ok(())
+}
+
+#[cfg(all(test, feature = "sudo-tests"))]
+mod tests {
+    use super::*;
+    use crate::wireguard::peer_state::wg_add_peer;
+    use crate::wireguard::re_exports::{DH, X25519};
+    use std::ffi::OsStr;
+
+    #[tokio::test]
+    async fn wg_state_tests() -> Result<(), Error> {
+        let info = WgInfo {
+            key: X25519::genkey(),
+            fwmark: 0,
+            port: 0,
+        };
+        let state = WgState::new(info, AsyncTun::open(OsStr::new("tun37"))?)?;
+
+        // `set_port` should work.
+        state.set_port(0).await?;
+
+        // `set_port` should fail if the port is in use.
+        let socket = tokio::net::UdpSocket::bind("[::]:0").await?;
+        let in_use_port = socket.local_addr()?.port();
+
+        assert!(state.set_port(in_use_port).await.is_err());
+
+        // `set_fwmark` should work.
+        state.set_fwmark(7)?;
+
+        // `add_peer` should work.
+        let peer0_key = X25519::genkey();
+        let peer0_pubkey = X25519::pubkey(&peer0_key);
+
+        let peer1_key = X25519::genkey();
+        let peer1_pubkey = X25519::pubkey(&peer1_key);
+
+        wg_add_peer(&state, &peer0_pubkey)?;
+        wg_add_peer(&state, &peer1_pubkey)?;
+        // `add_peer` should fail when already exists.
+        assert!(wg_add_peer(&state, &peer0_pubkey).is_err());
+
+        // `set_peer` should work.
+        let mut previous_allowed_ips: Vec<(IpAddr, u32)> = Vec::new();
+        let mut rng = thread_rng();
+        for _ in 0..100 {
+            let peer_key = X25519::genkey();
+            let public_key = X25519::pubkey(&peer_key);
+
+            wg_add_peer(&state, &public_key)?;
+            let mut allowed_ips = BTreeSet::new();
+            for _ in 0..8 {
+                let ip: Ipv4Addr = rng.next_u32().into();
+                let r = (ip.into(), rng.gen_range(0, 33));
+                allowed_ips.insert(r);
+                previous_allowed_ips.push(r);
+            }
+            allowed_ips.extend(previous_allowed_ips.choose_multiple(&mut rng, 8));
+            let endpoint = if rng.gen() {
+                Some((Ipv4Addr::from(rng.next_u32()), rng.gen()).into())
+            } else {
+                None
+            };
+            state.set_peer(SetPeerCommand {
+                public_key,
+                preshared_key: rng.gen(),
+                endpoint,
+                replace_allowed_ips: rng.gen(),
+                allowed_ips,
+                keepalive: rng.gen(),
+            })?;
+            state.check_route_consistency()?;
+        }
+
+        // `remove_all_peers` should work.
+        state.remove_all_peers();
+        state.check_route_consistency()?;
+
+        Ok(())
+    }
 }
