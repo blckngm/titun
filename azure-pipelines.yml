@@ -36,18 +36,41 @@ jobs:
   displayName: Test
   pool:
     vmImage: ubuntu-16.04
+  variables:
+    # Use kcov to collect coverage.
+    RUSTFLAGS: -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code
+    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E kcov --verify --exclude-pattern=/usr/lib,/.cargo,patched/ring coverage
   steps:
     - template: ci/azure-install-rust.yml
       parameters:
         rust_version: beta
+    - script: |
+        set -ex
+        sudo apt-get install -yqq libcurl4-openssl-dev libelf-dev libdw-dev cmake gcc binutils-dev libiberty-dev
+        wget https://github.com/SimonKagstrom/kcov/archive/master.tar.gz
+        tar xzf master.tar.gz
+        cd kcov-master
+        mkdir build
+        cd build
+        cmake ..
+        make
+        sudo make install
+        cd ../..
+        rm -rf kcov-master
+      displayName: Install kcov
     - script: cargo test --locked --all --features=sudo-tests
-      env:
-        CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E
       displayName: Run tests
     - script: cargo test --locked --all --benches
       displayName: Run benches as tests
-    - script: cd fuzz && cargo check --locked
-      displayName: Check fuzz
+    - script: |
+        set -ex
+        cargo build
+        sudo cp target/debug/titun /usr/local/bin
+        cd ns-test
+        sudo ./smoke.sh
+      displayName: Run Integration Test
+    - script: bash <(curl -s https://codecov.io/bash)
+      displayName: Upload code coverage info to codecov.io
 
 - job: windows_test
   displayName: Test on Windows
@@ -91,21 +114,16 @@ jobs:
         pathToPublish: titun-windows-gui\installer\Output\titun-setup.exe
         artifactName: titun-setup.exe
 
-- job: integration_test
-  displayName: Integration Test
+- job: check_fuzz
+  displayName: Check Fuzz
   pool:
     vmImage: ubuntu-16.04
   steps:
     - template: ci/azure-install-rust.yml
       parameters:
         rust_version: beta
-    - script: |
-        set -ex
-        cargo build
-        sudo cp target/debug/titun /usr/local/bin
-        cd ns-test
-        sudo ./smoke.sh
-      displayName: Integration tests
+    - script: cd fuzz && cargo check --locked
+      displayName: Check fuzz
 
 - job: cross_test_aarch64
   displayName: Cross test for aarch64
