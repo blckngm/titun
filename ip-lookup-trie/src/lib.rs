@@ -319,7 +319,7 @@ where
 ///
 /// Most notably, [`Ipv4Addr`](std::net::Ipv4Addr) and
 /// [`Ipv6Addr`](std::net::Ipv6Addr).
-pub trait Address {
+pub trait Address: Sized {
     /// The integer type that this type is equivalent to.
     type U: Unsigned + PrimInt + LowerHex;
 
@@ -328,6 +328,12 @@ pub trait Address {
 
     /// Convert from the integer type.
     fn from_integer(x: Self::U) -> Self;
+
+    /// Zero out bits after prefix_len.
+    fn masked(self, prefix_len: u32) -> Self {
+        let mask = to_mask(prefix_len);
+        Self::from_integer(self.into_integer() & mask)
+    }
 }
 
 impl Address for Ipv4Addr {

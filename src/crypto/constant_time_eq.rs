@@ -49,3 +49,21 @@ pub fn constant_time_eq_16(a: &[u8; 16], b: &[u8; 16]) -> bool {
 pub fn constant_time_eq_16(a: &[u8; 16], b: &[u8; 16]) -> bool {
     constant_time_ne_16(a, b) == 0
 }
+
+#[cfg(test)]
+#[test]
+fn test_constant_time_eq_16() {
+    use rand::prelude::*;
+
+    let mut a = [0u8; 16];
+    thread_rng().fill_bytes(&mut a);
+    let b = a;
+
+    assert!(constant_time_eq_16(&a, &b));
+
+    for i in 0..16 {
+        let mut c = b;
+        c[i] = c[i].wrapping_add(1);
+        assert!(!constant_time_eq_16(&a, &c));
+    }
+}
