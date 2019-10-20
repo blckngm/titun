@@ -1,5 +1,11 @@
 # TiTun
 
+ [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Bors enabled](https://bors.tech/images/badge_small.svg)](https://app.bors.tech/repositories/21087)
+[![Dependabot enabled](https://badgen.net/dependabot/sopium/titun/?icon=dependabot)](https://dependabot.com)
+[![azure-pipelines](https://dev.azure.com/sopium/titun/_apis/build/status/sopium.titun?branchName=staging)](https://dev.azure.com/sopium/titun/_build?definitionId=1)
+[![codecov](https://codecov.io/gh/sopium/titun/branch/master/graph/badge.svg)](https://codecov.io/gh/sopium/titun)
+
 Simple, fast, and cross-platform IP tunnel written in Rust. [WireGuard](https://www.wireguard.com/) compatible.
 
 ## WARNING
