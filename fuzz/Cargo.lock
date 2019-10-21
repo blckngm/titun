@@ -419,7 +419,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "libfuzzer-sys"
 version = "0.1.0"
-source = "git+https://github.com/rust-fuzz/libfuzzer-sys.git#4a413199b5cb1bbed6a1d157b2342b925f8464ac"
+source = "git+https://github.com/rust-fuzz/libfuzzer-sys.git#4ad88ec54fa2e7a0c877b6477cc86ea0de14a90d"
 dependencies = [
  "arbitrary 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "cc 1.0.45 (registry+https://github.com/rust-lang/crates.io-index)",
