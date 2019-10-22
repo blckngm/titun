@@ -65,9 +65,8 @@ jobs:
     - script: |
         set -ex
         cargo build
-        sudo cp target/debug/titun /usr/local/bin
         cd ns-test
-        sudo ./smoke.sh
+        sudo ./integration-test.sh
       displayName: Run Integration Test
     - script: bash <(curl -s https://codecov.io/bash)
       displayName: Upload code coverage info to codecov.io
