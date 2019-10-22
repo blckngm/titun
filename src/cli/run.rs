@@ -50,16 +50,18 @@ async fn do_reload(
 
 #[cfg(unix)]
 async fn reload_on_sighup(
-    config_file_path: std::path::PathBuf,
+    config_file_path: Option<std::path::PathBuf>,
     weak: std::sync::Weak<WgState>,
 ) -> Result<(), Error> {
     use tokio_net::signal::unix::{signal, SignalKind};
     while let Some(_) = signal(SignalKind::hangup())?.next().await {
-        if let Some(wg) = weak.upgrade() {
-            info!("reloading");
-            do_reload(config_file_path.clone(), &wg)
-                .await
-                .unwrap_or_else(|e| warn!("error in reloading: {}", e));
+        if let Some(ref config_file_path) = config_file_path {
+            if let Some(wg) = weak.upgrade() {
+                info!("reloading");
+                do_reload(config_file_path.clone(), &wg)
+                    .await
+                    .unwrap_or_else(|e| warn!("error in reloading: {}", e));
+            }
         }
     }
     Ok(())
@@ -146,13 +148,12 @@ pub async fn run(c: Config<SocketAddr>, notify: Option<NotifyHandle>) -> Result<
     #[cfg(unix)]
     {
         let weak1 = weak.clone();
-        if let Some(config_file_path) = c.general.config_file_path.take() {
-            scope0.clone().spawn_canceller(async move {
-                reload_on_sighup(config_file_path, weak1)
-                    .await
-                    .unwrap_or_else(|e| warn!("error in reload_on_sighup: {}", e))
-            });
-        }
+        let config_file_path = c.general.config_file_path.take();
+        scope0.clone().spawn_canceller(async move {
+            reload_on_sighup(config_file_path, weak1)
+                .await
+                .unwrap_or_else(|e| warn!("error in reload_on_sighup: {}", e))
+        });
     }
 
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
