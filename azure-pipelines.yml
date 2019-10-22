@@ -48,8 +48,8 @@ jobs:
         set -ex
         sudo apt-add-repository -y ppa:wireguard/wireguard
         sudo apt-get update
-        sudo apt-get install -yqq wireguard-tools
-      displayName: Install WireGuard Tools
+        sudo apt-get install -yqq wireguard-dkms wireguard-tools
+      displayName: Install WireGuard DKMS and Tools
     - script: |
         set -ex
         sudo apt-get install -yqq libcurl4-openssl-dev libelf-dev libdw-dev cmake gcc binutils-dev libiberty-dev
@@ -73,6 +73,7 @@ jobs:
         cargo build
         cd ns-test
         sudo ./integration-test.sh
+        sudo ./interop-test.sh
       displayName: Run Integration Test
     - script: bash <(curl -s https://codecov.io/bash)
       displayName: Upload code coverage info to codecov.io
