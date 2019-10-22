@@ -72,7 +72,7 @@ ansi_term = "0.12.1"
 atty = "0.2.13"
 serde = { version = "1.0.101", features = ["derive"] }
 toml = "0.5.3"
-anyhow = "1.0.16"
+anyhow = "1.0.17"
 
 [dependencies.tokio]
 version = "0.2.0-alpha.6"
