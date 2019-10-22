@@ -46,6 +46,12 @@ jobs:
         rust_version: beta
     - script: |
         set -ex
+        sudo apt-add-repository -y ppa:wireguard/wireguard
+        sudo apt-get update
+        sudo apt-get install -yqq wireguard-tools
+      displayName: Install WireGuard Tools
+    - script: |
+        set -ex
         sudo apt-get install -yqq libcurl4-openssl-dev libelf-dev libdw-dev cmake gcc binutils-dev libiberty-dev
         wget https://github.com/SimonKagstrom/kcov/archive/master.tar.gz
         tar xzf master.tar.gz
