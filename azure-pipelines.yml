@@ -64,11 +64,6 @@ jobs:
         cd ../..
         rm -rf kcov-master
       displayName: Install kcov
-    - task: CacheBeta@0
-      inputs:
-        key: '"cargo" | "rust-1.39.0-beta.6" | Cargo.lock'
-        path: target/debug/
-      displayName: Caching Dependencies
     - script: cargo test --locked --all --features=sudo-tests
       displayName: Run tests
     - script: cargo test --locked --all --benches
@@ -113,11 +108,6 @@ jobs:
     - template: ci/azure-install-rust.yml
       parameters:
         rust_version: beta
-    - task: CacheBeta@0
-      inputs:
-        key: '"cargo" | "rust-1.39.0-beta.6" | Cargo.lock'
-        path: target/release/
-      displayName: Caching Dependencies
     - script: cargo build --release
       displayName: Build TiTun
     - bash: |
