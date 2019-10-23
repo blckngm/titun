@@ -31,7 +31,7 @@ use rand::rngs::OsRng;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 use tokio::sync::mpsc::*;
@@ -76,6 +76,7 @@ pub struct WgState {
     pub(crate) socket: Mutex<Arc<UdpSocket>>,
     pub(crate) socket_sender: Mutex<Option<Sender<UdpSocket>>>,
     pub(crate) tun: AsyncTun,
+    pub(crate) mtu: AtomicU32,
 
     // An advisory lock to prevent possible races between reloading and multiple IPC set requests.
     pub(crate) state_change_advisory: tokio::sync::Mutex<()>,
@@ -471,35 +472,43 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
     }
 }
 
-// Packets >= MAX_PADDING won't be padded.
-// 1280 should be a reasonable conservative choice.
-const MAX_PADDING: usize = 1280;
-
-const PADDING_MASK: usize = 0b1111;
-
-fn pad_len(len: usize) -> usize {
-    if len >= MAX_PADDING {
-        len
-    } else {
-        // Next multiply of 16.
-        (len & !PADDING_MASK) + if len & PADDING_MASK == 0 { 0 } else { 16 }
+/// Calculate padded length, i.e., next multiple of 16.
+///
+/// The length will be at most `mtu`.
+fn pad_len(len: usize, mtu: usize) -> usize {
+    if len >= mtu {
+        return len;
     }
+
+    const PADDING_MASK: usize = 0b1111;
+
+    std::cmp::min(
+        mtu,
+        (len & !PADDING_MASK) + if len & PADDING_MASK == 0 { 0 } else { 16 },
+    )
 }
 
 #[cfg(test)]
 #[test]
 fn padding() {
-    assert_eq!(pad_len(0), 0);
+    let mtu = 1283;
+    assert_eq!(pad_len(0, mtu), 0);
     for i in 1..16 {
-        assert_eq!(pad_len(i), 16);
+        assert_eq!(pad_len(i, mtu), 16);
     }
 
     for i in 17..32 {
-        assert_eq!(pad_len(i), 32);
+        assert_eq!(pad_len(i, mtu), 32);
     }
 
     for i in 1265..1280 {
-        assert_eq!(pad_len(i), 1280);
+        assert_eq!(pad_len(i, mtu), 1280);
+    }
+    for i in 1281..1283 {
+        assert_eq!(pad_len(i, mtu), 1283);
+    }
+    for i in 1284..1300 {
+        assert_eq!(pad_len(i, mtu), i);
     }
 }
 
@@ -511,7 +520,7 @@ async fn tun_packet_processing(wg: Arc<WgState>) {
         for _ in 0..1024 {
             let len = wg.tun.read(&mut pkt).await.unwrap();
 
-            let padded_len = pad_len(len);
+            let padded_len = pad_len(len, wg.mtu.load(Ordering::Relaxed) as usize);
             // Do not leak other packets' data!
             for b in &mut pkt[len..padded_len] {
                 *b = 0;
@@ -601,6 +610,13 @@ impl WgState {
         OsRng.fill_bytes(&mut cookie);
 
         let socket = WgState::prepare_socket(&mut info.port, info.fwmark)?;
+        #[cfg(not(windows))]
+        use anyhow::Context;
+        #[cfg(not(windows))]
+        let mtu = tun.get_mtu().context("failed to get mtu")?.into();
+        // TODO: Implement get MTU on Windows.
+        #[cfg(windows)]
+        let mtu = 1280.into();
 
         let wg = Arc::new(WgState {
             info: RwLock::new(info),
@@ -613,6 +629,7 @@ impl WgState {
             socket: Mutex::new(Arc::new(socket)),
             socket_sender: Mutex::new(None),
             tun,
+            mtu,
             state_change_advisory: ().into(),
         });
         Ok(wg)
@@ -620,6 +637,25 @@ impl WgState {
 
     pub async fn run(self: Arc<WgState>) {
         let scope = AsyncScope::new();
+        #[cfg(not(windows))]
+        {
+            let wg = self.clone();
+            scope.spawn_async(async move {
+                loop {
+                    delay_for(Duration::from_secs(10)).await;
+                    match wg.tun.get_mtu() {
+                        Ok(mtu) => {
+                            let old_mtu = wg.mtu.load(Ordering::Relaxed);
+                            if mtu != old_mtu {
+                                info!("device mtu is now {}", mtu);
+                                wg.mtu.store(mtu, Ordering::Relaxed);
+                            }
+                        }
+                        Err(e) => warn!("failed to get mtu: {}", e),
+                    }
+                }
+            });
+        }
         {
             let wg = self.clone();
             scope.spawn_async(async move {

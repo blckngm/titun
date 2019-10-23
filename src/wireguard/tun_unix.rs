@@ -17,25 +17,28 @@
 
 #![cfg(unix)]
 
-use anyhow::Error;
+use anyhow::{Context as _, Error};
 use futures::future::poll_fn;
 use futures::ready;
 use mio::event::Evented;
 use mio::unix::{EventedFd, UnixReady};
 use mio::{Poll as MioPoll, PollOpt, Ready, Token};
 use nix::fcntl::{open, OFlag};
+use nix::libc::{if_indextoname, if_nametoindex, IF_NAMESIZE};
 use nix::sys::stat::Mode;
 use nix::unistd::{close, read, write};
+use std::ffi::CString;
 use std::ffi::OsStr;
 use std::io::{self, Error as IOError, Read, Write};
 use std::mem;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
 use std::task::{Context, Poll};
 use tokio_net::util::PollEvented;
 
 #[allow(unused)]
 mod ioctl {
-    use nix::libc::c_short;
+    use nix::libc::{c_int, c_short};
     use nix::*;
 
     // Linux.
@@ -49,6 +52,17 @@ mod ioctl {
         pub name: [u8; 16], // Use u8 becuase that's what CString and CStr wants.
         pub flags: c_short,
     }
+
+    #[repr(C)]
+    pub struct ifreq_mtu {
+        pub name: [u8; 16],
+        pub mtu: c_int,
+    }
+
+    #[cfg(target_os = "linux")]
+    ioctl_readwrite_bad!(siocgifmtu, nix::libc::SIOCGIFMTU, ifreq_mtu);
+    #[cfg(target_os = "freebsd")]
+    ioctl_readwrite_bad!(siocgifmtu, 3223349555, ifreq_mtu);
 
     // FreeBSD.
     ioctl_write_ptr!(tunsifhead, b't', 96, i32);
@@ -91,6 +105,35 @@ impl AsyncTun {
         }
     }
 
+    pub fn get_mtu(&self) -> Result<u32, IOError> {
+        use nix::sys::socket::*;
+        unsafe {
+            let mut req: ioctl::ifreq_mtu = mem::zeroed();
+            assert_eq!(IF_NAMESIZE, 16);
+            if if_indextoname(self.io.get_ref().index, req.name.as_mut_ptr() as *mut _).is_null() {
+                return Err(io::Error::last_os_error());
+            }
+            let socket = socket(
+                AddressFamily::Inet,
+                SockType::Datagram,
+                SockFlag::SOCK_CLOEXEC,
+                None,
+            )
+            .map_err(|_| io::Error::last_os_error())?;
+            match ioctl::siocgifmtu(socket, &mut req) {
+                Ok(_) => {
+                    let _ = close(socket);
+                    Ok(req.mtu as u32)
+                }
+                Err(_) => {
+                    let e = io::Error::last_os_error();
+                    let _ = close(socket);
+                    Err(e)
+                }
+            }
+        }
+    }
+
     // Should be used from only one task.
     pub async fn read<'a>(&'a self, buf: &'a mut [u8]) -> Result<usize, IOError> {
         poll_fn(|cx| self.poll_read(cx, buf)).await
@@ -106,6 +149,8 @@ impl AsyncTun {
 #[derive(Debug)]
 struct Tun {
     fd: i32,
+    /// Interface index.
+    index: u32,
 }
 
 /// The file descriptor will be closed when the Tun is dropped.
@@ -122,15 +167,12 @@ impl Tun {
     /// O_CLOEXEC, IFF_NO_PI.
     #[cfg(target_os = "linux")]
     pub fn open(name: &OsStr, extra_flags: OFlag) -> Result<Tun, Error> {
-        use std::ffi::CString;
-        use std::os::unix::ffi::OsStrExt;
-
         if name.len() > 15 {
             bail!("Device name is too long.");
         }
 
-        let name = CString::new(name.as_bytes())?;
-        let name = name.as_bytes_with_nul();
+        let name_cstring = CString::new(name.as_bytes())?;
+        let name_c_bytes = name_cstring.as_bytes_with_nul();
 
         let fd = open(
             "/dev/net/tun",
@@ -140,16 +182,27 @@ impl Tun {
 
         // Make the `fd` owned by a `Tun`, so that if any
         // error occurs below, the `fd` is `close`d.
-        let tun = Tun { fd };
+        let mut tun = Tun { fd, index: 0 };
 
         let mut ifr = ioctl::ifreq {
             name: [0; 16],
             flags: ioctl::IFF_TUN | ioctl::IFF_NO_PI,
         };
 
-        ifr.name[..name.len()].copy_from_slice(name);
+        ifr.name[..name_c_bytes.len()].copy_from_slice(name_c_bytes);
 
         unsafe { ioctl::tunsetiff(fd, &mut ifr as *mut _ as _) }?;
+        // XXX: possible race if another process changes the name before we get
+        // the index.
+        tun.index = unsafe {
+            let r = if_nametoindex(name_c_bytes.as_ptr() as *const _);
+            if r > 0 {
+                Ok(r)
+            } else {
+                Err(io::Error::last_os_error())
+            }
+        }
+        .context("get interface index")?;
 
         Ok(tun)
     }
@@ -176,7 +229,21 @@ impl Tun {
             OFlag::O_CLOEXEC | OFlag::O_RDWR | extra_flags,
             Mode::empty(),
         )?;
-        let tun = Tun { fd };
+        let mut tun = Tun { fd, index: 0 };
+
+        let name_cstring = CString::new(name.as_bytes())?;
+        let name_c_bytes = name_cstring.as_bytes_with_nul();
+
+        // XXX: this will fail the interface has previously been created and renamed.
+        tun.index = unsafe {
+            let r = if_nametoindex(name_c_bytes.as_ptr() as *const _);
+            if r > 0 {
+                Ok(r)
+            } else {
+                Err(io::Error::last_os_error())
+            }
+        }
+        .context("get interface index")?;
 
         if cfg!(target_os = "freebsd") {
             unsafe {
@@ -365,6 +432,45 @@ mod tests {
         }
             .timeout(Duration::from_secs(2))
             .await??;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_mtu() -> Result<(), Error> {
+        let name = OsStr::new("tun10");
+        let tun = AsyncTun::open(name)?;
+
+        Command::new("ifconfig")
+            .arg(name)
+            .args(&["mtu", "1280"])
+            .output()
+            .await?;
+        let mtu = tun.get_mtu()?;
+        assert_eq!(mtu, 1280);
+
+        if cfg!(target_os = "linux") {
+            Command::new("ip")
+                .args(&["link", "set"])
+                .arg(name)
+                .args(&["name", "tun57"])
+                .output()
+                .await?;
+        } else {
+            // Assume BSD.
+            Command::new("ifconfig")
+                .arg(name)
+                .args(&["name", "tun57"])
+                .output()
+                .await?;
+        }
+        Command::new("ifconfig")
+            .arg("tun57")
+            .args(&["mtu", "9000"])
+            .output()
+            .await?;
+        let mtu = tun.get_mtu()?;
+        assert_eq!(mtu, 9000);
+
         Ok(())
     }
 }
