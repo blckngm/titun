@@ -94,10 +94,10 @@ impl PipeStream {
                 u16_slice.as_ptr(),
                 GENERIC_READ | GENERIC_WRITE,
                 0,
-                ::std::ptr::null_mut(),
+                std::ptr::null_mut(),
                 OPEN_EXISTING,
                 FILE_ATTRIBUTE_NORMAL,
-                ::std::ptr::null_mut(),
+                std::ptr::null_mut(),
             )
         };
 
@@ -136,7 +136,7 @@ impl<'a> Read for &'a PipeStream {
                 buf.as_mut_ptr() as LPVOID,
                 buf.len() as DWORD,
                 &mut bytes_read,
-                ::std::ptr::null_mut(),
+                std::ptr::null_mut(),
             )
         };
 
@@ -167,7 +167,7 @@ impl<'a> Write for &'a PipeStream {
                 buf.as_ptr() as LPCVOID,
                 buf.len() as DWORD,
                 &mut bytes_written,
-                ::std::ptr::null_mut(),
+                std::ptr::null_mut(),
             )
         };
 
@@ -274,7 +274,7 @@ impl<'a> PipeListener<'a> {
                 65536,
                 65536,
                 50,
-                ::std::ptr::null_mut(),
+                std::ptr::null_mut(),
             )
         };
 
@@ -286,7 +286,7 @@ impl<'a> PipeListener<'a> {
     }
 
     fn connect_pipe(handle: &Handle) -> io::Result<()> {
-        let result = unsafe { ConnectNamedPipe(handle.inner, ::std::ptr::null_mut()) };
+        let result = unsafe { ConnectNamedPipe(handle.inner, std::ptr::null_mut()) };
 
         if result != 0 {
             Ok(())
@@ -309,7 +309,7 @@ impl<'a> PipeListener<'a> {
     }
 
     pub fn accept(&mut self) -> io::Result<PipeStream> {
-        let handle = ::std::mem::replace(
+        let handle = std::mem::replace(
             &mut self.next_pipe,
             PipeListener::create_pipe(&self.path, false)?,
         );

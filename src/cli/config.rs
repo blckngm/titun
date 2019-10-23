@@ -16,7 +16,7 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::wireguard::{X25519Key, X25519Pubkey};
-use anyhow::{Context, Error};
+use anyhow::Context;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -32,7 +32,7 @@ use std::path::{Path, PathBuf};
 ///
 /// `print_warnings`: Print warnings to stderr directly instead of go through
 /// the logger.
-pub fn load_config_from_path(p: &Path, print_warnings: bool) -> Result<Config<SocketAddr>, Error> {
+pub fn load_config_from_path(p: &Path, print_warnings: bool) -> anyhow::Result<Config<SocketAddr>> {
     let file = OpenOptions::new()
         .read(true)
         .open(p)
@@ -72,7 +72,7 @@ pub fn load_config_from_path(p: &Path, print_warnings: bool) -> Result<Config<So
 fn load_config_from_file(
     mut file: &File,
     print_warnings: bool,
-) -> Result<Config<SocketAddr>, Error> {
+) -> anyhow::Result<Config<SocketAddr>> {
     let mut file_content = String::new();
     file.read_to_string(&mut file_content)
         .context("failed to read config file")?;
@@ -240,7 +240,7 @@ pub struct PeerConfig<Endpoint> {
 }
 
 impl Config<String> {
-    fn resolve_addresses(self, print_warnings: bool) -> Result<Config<SocketAddr>, Error> {
+    fn resolve_addresses(self, print_warnings: bool) -> anyhow::Result<Config<SocketAddr>> {
         let mut peers = Vec::with_capacity(self.peers.len());
         for p in self.peers {
             let endpoint = if let Some(endpoint) = p.endpoint {

@@ -25,6 +25,7 @@ mod simd_x86 {
     use std::arch::x86::*;
     #[cfg(target_arch = "x86_64")]
     use std::arch::x86_64::*;
+    use std::fmt;
 
     #[repr(transparent)]
     #[allow(non_camel_case_types)]
@@ -68,9 +69,9 @@ mod simd_x86 {
         }
     }
 
-    impl std::fmt::Debug for u32x4 {
+    impl fmt::Debug for u32x4 {
         #[allow(clippy::many_single_char_names)]
-        fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             let mut x = [0u32; 4];
             unsafe {
                 // Clippy: This is unaligned store, so casting to more aligned pointer is fine.
@@ -295,6 +296,8 @@ mod simd_x86 {
 
 #[cfg(not(target_feature = "sse2"))]
 mod simd_fallback {
+    use std::fmt;
+
     pub trait Machine: Copy {}
 
     #[derive(Copy, Clone)]
@@ -313,9 +316,9 @@ mod simd_fallback {
     #[derive(Copy, Clone)]
     pub struct u32x4([u32; 4]);
 
-    impl std::fmt::Debug for u32x4 {
+    impl fmt::Debug for u32x4 {
         #[allow(clippy::many_single_char_names)]
-        fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             let [a, b, c, d] = self.0;
             write!(f, "(0x{:08x}, 0x{:08x}, 0x{:08x}, 0x{:08x})", a, b, c, d)?;
             Ok(())

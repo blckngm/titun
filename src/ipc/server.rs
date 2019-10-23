@@ -21,13 +21,13 @@ use crate::ipc::commands::*;
 use crate::ipc::parse::*;
 use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::{SetPeerCommand, WgState, WgStateOut};
-use anyhow::{Context, Error};
+use anyhow::Context;
 use hex::encode;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::{Arc, Weak};
 use std::time::SystemTime;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
+use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
 use tokio::sync::oneshot::Sender;
 
 #[cfg(windows)]
@@ -35,7 +35,7 @@ pub async fn ipc_server(
     wg: Weak<WgState>,
     dev_name: &OsStr,
     ready: Sender<()>,
-) -> Result<(), Error> {
+) -> anyhow::Result<()> {
     use crate::ipc::windows_named_pipe::*;
 
     let mut path = Path::new(r#"\\.\pipe\wireguard"#).join(dev_name);
@@ -58,7 +58,7 @@ pub async fn ipc_server(
     wg: Weak<WgState>,
     dev_name: &OsStr,
     ready: Sender<()>,
-) -> Result<(), Error> {
+) -> anyhow::Result<()> {
     use futures::future::{select, Either};
     use nix::sys::stat::{umask, Mode};
     use pin_utils::pin_mut;
@@ -114,7 +114,7 @@ macro_rules! writeln {
 async fn write_wg_state(
     mut w: impl AsyncWrite + Unpin + 'static,
     state: &WgStateOut,
-) -> Result<(), ::std::io::Error> {
+) -> io::Result<()> {
     writeln!(w, "private_key={}", encode(state.private_key.as_slice()))?;
     writeln!(w, "listen_port={}", state.listen_port)?;
     if state.fwmark != 0 {
@@ -151,16 +151,13 @@ async fn write_wg_state(
     w.flush().await
 }
 
-async fn write_error(
-    mut stream: impl AsyncWrite + Unpin + 'static,
-    errno: i32,
-) -> Result<(), ::std::io::Error> {
+async fn write_error(mut stream: impl AsyncWrite + Unpin + 'static, errno: i32) -> io::Result<()> {
     writeln!(stream, "errno={}", errno)?;
     writeln!(stream)?;
     stream.flush().await
 }
 
-async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) -> Result<(), std::io::Error> {
+async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) -> io::Result<()> {
     info!("processing a set request");
     let _state_change = wg.state_change_advisory.lock().await;
 
@@ -210,7 +207,7 @@ async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) -> Result<(), 
     Ok(())
 }
 
-pub async fn serve<S>(wg: &Weak<WgState>, stream: S) -> Result<(), Error>
+pub async fn serve<S>(wg: &Weak<WgState>, stream: S) -> anyhow::Result<()>
 where
     S: AsyncRead + AsyncWrite + 'static,
 {

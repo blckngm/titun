@@ -41,7 +41,7 @@
 
 use num_traits::{PrimInt, Unsigned};
 
-use std::fmt::LowerHex;
+use std::fmt::{self, LowerHex};
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 
@@ -61,14 +61,14 @@ struct TrieNode<K, T> {
 
 struct HexDebug<'a, T: LowerHex>(&'a T);
 
-impl<'a, T: LowerHex> std::fmt::Debug for HexDebug<'a, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+impl<'a, T: LowerHex> fmt::Debug for HexDebug<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:#x}", self.0)
     }
 }
 
-impl<K: LowerHex, T: std::fmt::Debug> std::fmt::Debug for TrieNode<K, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+impl<K: LowerHex, T: fmt::Debug> fmt::Debug for TrieNode<K, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("TrieNode")
             .field("k", &HexDebug(&self.k))
             .field("len", &self.len)

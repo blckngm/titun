@@ -15,11 +15,11 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use anyhow::{bail, Context, Error};
+use anyhow::{bail, Context};
 use std::ffi::OsStr;
 use walkdir::WalkDir;
 
-fn main() -> Result<(), Error> {
+fn main() -> anyhow::Result<()> {
     let dirs = ["src", "examples", "benches"];
     let mut has_error = false;
     for entry in dirs.iter().map(|dir| WalkDir::new(dir)).flatten() {

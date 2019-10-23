@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use anyhow::{bail, Context, Error};
+use anyhow::{bail, Context};
 use log::info;
 use rand::{rngs::OsRng, RngCore};
 use std::ffi::OsString;
@@ -35,12 +35,12 @@ fn main() {
 }
 
 #[cfg(windows)]
-fn parse_network(network: &str) -> Result<(Ipv4Addr, u32), Error> {
+fn parse_network(network: &str) -> anyhow::Result<(Ipv4Addr, u32)> {
     let parts: Vec<_> = network.split('/').take(3).collect();
     if parts.len() != 2 {
         bail!("Invalid network: {}", network);
     }
-    let addr: ::std::net::Ipv4Addr = parts[0].parse()?;
+    let addr: std::net::Ipv4Addr = parts[0].parse()?;
     let prefix = parts[1].parse()?;
     if prefix > 32 {
         bail!("Invalid network: {}", network);
@@ -93,7 +93,7 @@ struct Options {
 }
 
 impl Options {
-    fn run(self, version: &str) -> Result<(), Error> {
+    fn run(self, version: &str) -> anyhow::Result<()> {
         let options = self;
 
         let mut config = if let Some(ref p) = options.config_file {
@@ -216,7 +216,7 @@ enum Cmd {
 }
 
 impl Cmd {
-    async fn run(self) -> Result<(), Error> {
+    async fn run(self) -> anyhow::Result<()> {
         match self {
             Cmd::Show { devices } => {
                 #[cfg(unix)]
@@ -293,7 +293,7 @@ impl Cmd {
     }
 }
 
-fn real_main() -> Result<(), Error> {
+fn real_main() -> anyhow::Result<()> {
     let default_panic_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
         default_panic_hook(panic_info);
