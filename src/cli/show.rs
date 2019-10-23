@@ -17,7 +17,7 @@
 
 use crate::wireguard::re_exports::{DH, X25519};
 use ansi_term::{Color, Style};
-use anyhow::{Context, Error};
+use anyhow::Context;
 use base64;
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
@@ -26,7 +26,7 @@ use tokio::future::FutureExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::unix::UnixStream;
 
-pub async fn show(devices: Vec<OsString>) -> Result<(), Error> {
+pub async fn show(devices: Vec<OsString>) -> anyhow::Result<()> {
     let mut is_first = true;
     if devices.is_empty() {
         let read_dir = match Path::new("/var/run/wireguard").read_dir() {
@@ -84,7 +84,7 @@ pub async fn show(devices: Vec<OsString>) -> Result<(), Error> {
     Ok(())
 }
 
-async fn get_and_print_status(dev_name: &OsStr, is_first: bool) -> Result<(), Error> {
+async fn get_and_print_status(dev_name: &OsStr, is_first: bool) -> anyhow::Result<()> {
     let path = Path::new("/var/run/wireguard/")
         .join(dev_name)
         .with_extension("sock");

@@ -20,6 +20,7 @@ use rand::prelude::*;
 use rand::rngs::OsRng;
 use ring::aead::*;
 use ring::agreement::*;
+use std::fmt;
 
 #[derive(Eq, PartialEq)]
 pub struct X25519Key {
@@ -33,9 +34,9 @@ impl X25519Key {
     }
 }
 
-impl ::std::fmt::Debug for X25519Key {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> Result<(), ::std::fmt::Error> {
-        write!(f, "X25519Key {{ key: {} }}", ::base64::encode(&self.key.0))
+impl fmt::Debug for X25519Key {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "X25519Key {{ key: {} }}", base64::encode(&self.key.0))
     }
 }
 

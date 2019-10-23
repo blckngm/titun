@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use anyhow::{Context, Error};
+use anyhow::Context;
 use nix;
 use nix::sys::stat::{umask, Mode};
 use nix::unistd::*;
@@ -45,7 +45,7 @@ macro_rules! ctx {
     };
 }
 
-pub fn daemonize() -> Result<NotifyHandle, Error> {
+pub fn daemonize() -> anyhow::Result<NotifyHandle> {
     let (r, w) = ctx!(pipe())?;
 
     if ctx!(fork())?.is_parent() {

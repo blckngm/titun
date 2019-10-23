@@ -18,7 +18,6 @@
 use crate::async_utils::{yield_once, AsyncScope};
 use crate::udp_socket::*;
 use crate::wireguard::*;
-use anyhow::Error;
 use fnv::FnvHashMap;
 use futures::future::{select, Either};
 use futures::prelude::*;
@@ -30,6 +29,7 @@ use rand::prelude::*;
 use rand::rngs::OsRng;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
@@ -605,7 +605,7 @@ pub struct SetPeerCommand {
 
 impl WgState {
     /// Create a new `WgState`, start worker threads.
-    pub fn new(mut info: WgInfo, tun: AsyncTun) -> Result<Arc<WgState>, Error> {
+    pub fn new(mut info: WgInfo, tun: AsyncTun) -> anyhow::Result<Arc<WgState>> {
         let mut cookie = [0u8; 32];
         OsRng.fill_bytes(&mut cookie);
 
@@ -674,7 +674,7 @@ impl WgState {
     }
 
     // Create a new socket, set IPv6 only to false, set fwmark, and bind.
-    fn prepare_socket(port: &mut u16, fwmark: u32) -> Result<UdpSocket, std::io::Error> {
+    fn prepare_socket(port: &mut u16, fwmark: u32) -> io::Result<UdpSocket> {
         let socket = net2::UdpBuilder::new_v6()?
             .only_v6(false)?
             .bind((Ipv6Addr::UNSPECIFIED, *port))?;
@@ -695,7 +695,7 @@ impl WgState {
         &'a self,
         buf: &'a [u8],
         target: impl Into<SocketAddr> + 'static,
-    ) -> Result<usize, std::io::Error> {
+    ) -> io::Result<usize> {
         let target = target.into();
         let socket = self.socket.lock().clone();
         socket.send_to(buf, &target).await
@@ -703,7 +703,7 @@ impl WgState {
 
     /// Add a pper.
     // XXX: change to `self: &Arc<Self>` once it's allowed in stable.
-    pub fn add_peer(self: Arc<Self>, public_key: &X25519Pubkey) -> Result<(), Error> {
+    pub fn add_peer(self: Arc<Self>, public_key: &X25519Pubkey) -> anyhow::Result<()> {
         wg_add_peer(&self, public_key)
     }
 
@@ -810,7 +810,7 @@ impl WgState {
     }
 
     /// Change listen port.
-    pub async fn set_port(&self, mut new_port: u16) -> Result<(), std::io::Error> {
+    pub async fn set_port(&self, mut new_port: u16) -> io::Result<()> {
         if new_port == self.info.read().port {
             return Ok(());
         }
@@ -827,7 +827,7 @@ impl WgState {
     }
 
     /// Set fwmark of the UDP socket.
-    pub fn set_fwmark(&self, new_fwmark: u32) -> Result<(), std::io::Error> {
+    pub fn set_fwmark(&self, new_fwmark: u32) -> io::Result<()> {
         let mut info = self.info.write();
         if info.fwmark == new_fwmark {
             return Ok(());
@@ -843,7 +843,7 @@ impl WgState {
     /// A self check.
     ///
     /// Check that peer allowed_ips are consistent with routing tables.
-    pub fn check_route_consistency(&self) -> Result<(), Error> {
+    pub fn check_route_consistency(&self) -> anyhow::Result<()> {
         use std::collections::HashSet;
 
         let rt4 = self.rt4.read();
@@ -893,7 +893,7 @@ impl WgState {
 
     /// Change configuration of a peer. Will return error if the peer does not
     /// exist.
-    pub fn set_peer(&self, mut command: SetPeerCommand) -> Result<(), Error> {
+    pub fn set_peer(&self, mut command: SetPeerCommand) -> anyhow::Result<()> {
         let peer0 = self
             .find_peer_by_pubkey(&command.public_key)
             .ok_or_else(|| anyhow::anyhow!("Peer not found"))?;
@@ -1031,9 +1031,9 @@ impl WgState {
 }
 
 #[cfg(target_os = "linux")]
-fn set_fwmark<Socket>(s: &Socket, fwmark: u32) -> Result<(), std::io::Error>
+fn set_fwmark<Socket>(s: &Socket, fwmark: u32) -> io::Result<()>
 where
-    Socket: ::std::os::unix::io::AsRawFd,
+    Socket: std::os::unix::io::AsRawFd,
 {
     use nix::sys::socket::setsockopt;
     use nix::sys::socket::sockopt::Mark;
@@ -1043,7 +1043,7 @@ where
 }
 
 #[cfg(not(target_os = "linux"))]
-fn set_fwmark<T>(_s: &T, _fwmark: u32) -> Result<(), std::io::Error> {
+fn set_fwmark<T>(_s: &T, _fwmark: u32) -> io::Result<()> {
     warn!("fwmark is not supported on this platform.");
     Ok(())
 }
@@ -1056,7 +1056,7 @@ mod tests {
     use std::ffi::OsStr;
 
     #[tokio::test]
-    async fn wg_state_tests() -> Result<(), Error> {
+    async fn wg_state_tests() -> anyhow::Result<()> {
         let info = WgInfo {
             key: X25519::genkey(),
             fwmark: 0,

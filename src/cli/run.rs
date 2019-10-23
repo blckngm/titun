@@ -21,7 +21,7 @@ use crate::cli::daemonize::NotifyHandle;
 use crate::cli::Config;
 use crate::ipc::ipc_server;
 use crate::wireguard::*;
-use anyhow::{Context, Error};
+use anyhow::Context;
 use futures::prelude::*;
 use std::net::SocketAddr;
 
@@ -40,7 +40,7 @@ fn schedule_force_shutdown() {
 async fn do_reload(
     config_file_path: std::path::PathBuf,
     wg: &std::sync::Arc<WgState>,
-) -> Result<(), Error> {
+) -> anyhow::Result<()> {
     let new_config = tokio_executor::blocking::run(move || {
         super::load_config_from_path(&config_file_path, false)
     })
@@ -52,7 +52,7 @@ async fn do_reload(
 async fn reload_on_sighup(
     config_file_path: Option<std::path::PathBuf>,
     weak: std::sync::Weak<WgState>,
-) -> Result<(), Error> {
+) -> anyhow::Result<()> {
     use tokio_net::signal::unix::{signal, SignalKind};
     while let Some(_) = signal(SignalKind::hangup())?.next().await {
         if let Some(ref config_file_path) = config_file_path {
@@ -67,7 +67,7 @@ async fn reload_on_sighup(
     Ok(())
 }
 
-pub async fn run(c: Config<SocketAddr>, notify: Option<NotifyHandle>) -> Result<(), Error> {
+pub async fn run(c: Config<SocketAddr>, notify: Option<NotifyHandle>) -> anyhow::Result<()> {
     #[cfg(unix)]
     let mut c = c;
     let scope0 = AsyncScope::new();

@@ -62,7 +62,7 @@ impl LoadMonitor {
         let bucket_add =
             (passed.as_secs() * freq * NANOS_PER_SEC) + u64::from(passed.subsec_nanos()) * freq;
         self.last_check = now;
-        self.bucket = ::std::cmp::min(cap, self.bucket + bucket_add);
+        self.bucket = std::cmp::min(cap, self.bucket + bucket_add);
 
         self.bucket = self.bucket.saturating_sub(NANOS_PER_SEC);
 

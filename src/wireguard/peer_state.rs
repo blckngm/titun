@@ -17,7 +17,6 @@
 
 use crate::async_utils::AsyncScope;
 use crate::wireguard::*;
-use anyhow::Error;
 use arrayvec::ArrayVec;
 use parking_lot::{Mutex, RwLock};
 use rand::{thread_rng, Rng};
@@ -224,7 +223,7 @@ impl PeerState {
     pub fn dequeue_all(&self) -> VecDeque<Vec<u8>> {
         let mut queue = self.queue.lock();
         let mut out = VecDeque::with_capacity(QUEUE_SIZE);
-        ::std::mem::swap(&mut out, &mut queue);
+        std::mem::swap(&mut out, &mut queue);
         out
     }
 }
@@ -232,7 +231,7 @@ impl PeerState {
 /// Add a peer to a WG interface.
 ///
 /// Returns `Err` if the peer's public key conflicts with any existing peers.
-pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> Result<(), Error> {
+pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> anyhow::Result<()> {
     // Lock pubkey_map.
     let mut pubkey_map = wg.pubkey_map.write();
 

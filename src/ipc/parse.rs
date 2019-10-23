@@ -19,7 +19,6 @@ use crate::ipc::commands::*;
 use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::X25519Key;
 use crate::wireguard::{PeerStateOut, WgStateOut};
-use anyhow::Error;
 use futures::prelude::*;
 use hex::decode;
 use std::collections::BTreeSet;
@@ -84,7 +83,7 @@ where
     }
 }
 
-async fn parse_peer<S>(stream: &mut Peekable<S>) -> Result<WgSetPeerCommand, Error>
+async fn parse_peer<S>(stream: &mut Peekable<S>) -> anyhow::Result<WgSetPeerCommand>
 where
     S: Stream<Item = io::Result<String>> + Unpin,
 {
@@ -167,7 +166,7 @@ where
     Ok(peer)
 }
 
-async fn parse_set_command<S>(stream: &mut Peekable<S>) -> Result<WgSetCommand, Error>
+async fn parse_set_command<S>(stream: &mut Peekable<S>) -> anyhow::Result<WgSetCommand>
 where
     S: Stream<Item = io::Result<String>> + Unpin,
 {
@@ -224,7 +223,7 @@ where
     Ok(command)
 }
 
-pub async fn parse_command<S>(stream: S) -> Result<Option<WgIpcCommand>, Error>
+pub async fn parse_command<S>(stream: S) -> anyhow::Result<Option<WgIpcCommand>>
 where
     S: Stream<Item = io::Result<String>> + Unpin,
 {
@@ -252,7 +251,7 @@ where
     }
 }
 
-pub async fn parse_command_io<R>(stream: R) -> Result<Option<WgIpcCommand>, Error>
+pub async fn parse_command_io<R>(stream: R) -> anyhow::Result<Option<WgIpcCommand>>
 where
     R: AsyncRead + Unpin,
 {
@@ -266,7 +265,7 @@ where
     parse_command(lines).await
 }
 
-async fn parse_peer_state_out<S>(stream: &mut Peekable<S>) -> Result<PeerStateOut, Error>
+async fn parse_peer_state_out<S>(stream: &mut Peekable<S>) -> anyhow::Result<PeerStateOut>
 where
     S: Stream<Item = io::Result<String>> + Unpin,
 {
@@ -360,7 +359,7 @@ where
     Ok(peer)
 }
 
-async fn parse_wg_state_out<S>(stream: &mut Peekable<S>) -> Result<WgStateOut, Error>
+async fn parse_wg_state_out<S>(stream: &mut Peekable<S>) -> anyhow::Result<WgStateOut>
 where
     S: Stream<Item = io::Result<String>> + Unpin,
 {
@@ -418,7 +417,7 @@ where
     Ok(state)
 }
 
-pub async fn parse_get_response<S>(stream: S) -> Result<Result<WgStateOut, i32>, Error>
+pub async fn parse_get_response<S>(stream: S) -> anyhow::Result<Result<WgStateOut, i32>>
 where
     S: Stream<Item = io::Result<String>> + Unpin,
 {
@@ -444,7 +443,7 @@ where
     }
 }
 
-pub async fn parse_get_response_io<R>(stream: R) -> Result<Result<WgStateOut, i32>, Error>
+pub async fn parse_get_response_io<R>(stream: R) -> anyhow::Result<Result<WgStateOut, i32>>
 where
     R: AsyncRead + Unpin,
 {
@@ -480,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parsing_get_response() -> Result<(), Error> {
+    fn test_parsing_get_response() -> anyhow::Result<()> {
         futures::executor::block_on(async {
             assert!(
                 parse_get_response_io(&include_bytes!("example_response.txt")[..])

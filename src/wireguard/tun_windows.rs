@@ -147,7 +147,7 @@ struct Tun {
 }
 
 impl fmt::Debug for Tun {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Tun")
             .field("handle", &self.handle.0)
             .finish()

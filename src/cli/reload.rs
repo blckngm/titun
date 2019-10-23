@@ -17,7 +17,7 @@
 
 use super::{Config, PeerConfig};
 use crate::wireguard::{SetPeerCommand, WgState};
-use anyhow::Error;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::SocketAddr;
 use std::num::NonZeroU16;
@@ -26,7 +26,7 @@ use std::sync::Arc;
 /// Reload the TiTun device, applying configuration changes.
 ///
 /// Most errors are handled. Shouldn't really return `Err`.
-pub async fn reload(wg: &Arc<WgState>, new_config: Config<SocketAddr>) -> Result<(), Error> {
+pub async fn reload(wg: &Arc<WgState>, new_config: Config<SocketAddr>) -> anyhow::Result<()> {
     let _state_change = wg.state_change_advisory.lock().await;
 
     let current_state = wg.get_state();

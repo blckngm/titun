@@ -17,7 +17,7 @@
 
 #![cfg(unix)]
 
-use anyhow::{Context as _, Error};
+use anyhow::Context as _;
 use futures::future::poll_fn;
 use futures::ready;
 use mio::event::Evented;
@@ -29,7 +29,7 @@ use nix::sys::stat::Mode;
 use nix::unistd::{close, read, write};
 use std::ffi::CString;
 use std::ffi::OsStr;
-use std::io::{self, Error as IOError, Read, Write};
+use std::io::{self, Read, Write};
 use std::mem;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
@@ -74,14 +74,14 @@ pub struct AsyncTun {
 }
 
 impl AsyncTun {
-    pub fn open(name: &OsStr) -> Result<AsyncTun, Error> {
+    pub fn open(name: &OsStr) -> anyhow::Result<AsyncTun> {
         let tun = Tun::open(name, OFlag::O_NONBLOCK)?;
         Ok(AsyncTun {
             io: PollEvented::new(tun),
         })
     }
 
-    fn poll_read(&self, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<Result<usize, IOError>> {
+    fn poll_read(&self, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<io::Result<usize>> {
         let ready = Ready::readable() | UnixReady::error();
         ready!(self.io.poll_read_ready(cx, ready))?;
         match self.io.get_ref().read(buf) {
@@ -93,7 +93,7 @@ impl AsyncTun {
         }
     }
 
-    fn poll_write(&self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize, IOError>> {
+    fn poll_write(&self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
         ready!(self.io.poll_write_ready(cx))?;
 
         match self.io.get_ref().write(buf) {
@@ -105,7 +105,7 @@ impl AsyncTun {
         }
     }
 
-    pub fn get_mtu(&self) -> Result<u32, IOError> {
+    pub fn get_mtu(&self) -> io::Result<u32> {
         use nix::sys::socket::*;
         unsafe {
             let mut req: ioctl::ifreq_mtu = mem::zeroed();
@@ -135,12 +135,12 @@ impl AsyncTun {
     }
 
     // Should be used from only one task.
-    pub async fn read<'a>(&'a self, buf: &'a mut [u8]) -> Result<usize, IOError> {
+    pub async fn read<'a>(&'a self, buf: &'a mut [u8]) -> io::Result<usize> {
         poll_fn(|cx| self.poll_read(cx, buf)).await
     }
 
     // Should be used from only one task.
-    pub async fn write<'a>(&'a self, buf: &'a [u8]) -> Result<usize, IOError> {
+    pub async fn write<'a>(&'a self, buf: &'a [u8]) -> io::Result<usize> {
         poll_fn(|cx| self.poll_write(cx, buf)).await
     }
 }
@@ -166,7 +166,7 @@ impl Tun {
 
     /// O_CLOEXEC, IFF_NO_PI.
     #[cfg(target_os = "linux")]
-    pub fn open(name: &OsStr, extra_flags: OFlag) -> Result<Tun, Error> {
+    pub fn open(name: &OsStr, extra_flags: OFlag) -> anyhow::Result<Tun> {
         if name.len() > 15 {
             bail!("Device name is too long.");
         }
@@ -209,7 +209,7 @@ impl Tun {
 
     // BSD systems.
     #[cfg(not(target_os = "linux"))]
-    pub fn open(name: &OsStr, extra_flags: OFlag) -> Result<Tun, Error> {
+    pub fn open(name: &OsStr, extra_flags: OFlag) -> anyhow::Result<Tun> {
         use std::path::Path;
 
         {
@@ -272,7 +272,7 @@ impl IntoRawFd for Tun {
 
 impl Tun {
     /// Read a packet from the tun device.
-    pub fn read(&self, buf: &mut [u8]) -> Result<usize, IOError> {
+    pub fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
         if cfg!(target_os = "freebsd") {
             use nix::sys::uio::{readv, IoVec};
 
@@ -285,14 +285,14 @@ impl Tun {
                 ],
             )
             .map(|len| len - 4)
-            .map_err(|_| IOError::last_os_error())
+            .map_err(|_| io::Error::last_os_error())
         } else {
-            read(self.fd, buf).map_err(|_| IOError::last_os_error())
+            read(self.fd, buf).map_err(|_| io::Error::last_os_error())
         }
     }
 
     /// Write a packet to tun device.
-    pub fn write(&self, buf: &[u8]) -> Result<usize, IOError> {
+    pub fn write(&self, buf: &[u8]) -> io::Result<usize> {
         if cfg!(target_os = "freebsd") {
             use nix::libc::{AF_INET, AF_INET6};
             use nix::sys::uio::{writev, IoVec};
@@ -315,42 +315,42 @@ impl Tun {
                 &[IoVec::from_slice(&af_header), IoVec::from_slice(buf)],
             )
             .map(|len| len - 4)
-            .map_err(|_| IOError::last_os_error())
+            .map_err(|_| io::Error::last_os_error())
         } else {
-            write(self.fd, buf).map_err(|_| IOError::last_os_error())
+            write(self.fd, buf).map_err(|_| io::Error::last_os_error())
         }
     }
 }
 
 impl Read for Tun {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, IOError> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         Tun::read(self, buf)
     }
 }
 
 impl<'a> Read for &'a Tun {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, IOError> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         Tun::read(self, buf)
     }
 }
 
 impl Write for Tun {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, IOError> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         Tun::write(self, buf)
     }
 
     /// flush() for Tun is a no-op.
-    fn flush(&mut self) -> Result<(), IOError> {
+    fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
 
 impl<'a> Write for &'a Tun {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, IOError> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         Tun::write(self, buf)
     }
 
-    fn flush(&mut self) -> Result<(), IOError> {
+    fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
@@ -384,7 +384,6 @@ impl Evented for Tun {
 #[cfg(all(test, feature = "sudo-tests"))]
 mod tests {
     use super::*;
-    use anyhow::Error;
     use std::time::Duration;
     use tokio::future::FutureExt;
     use tokio::net::process::Command;
@@ -393,7 +392,7 @@ mod tests {
     const PEER_IP: &str = "10.33.178.1";
 
     #[tokio::test]
-    async fn test_tun_ping_and_read() -> Result<(), Error> {
+    async fn test_tun_ping_and_read() -> anyhow::Result<()> {
         let name = OsStr::new("tun7");
         let t = AsyncTun::open(name)?;
 
@@ -428,7 +427,7 @@ mod tests {
             for _ in 0..5 {
                 t.read(&mut buf).await?;
             }
-            Ok(()) as Result<(), Error>
+            Ok(()) as anyhow::Result<_>
         }
             .timeout(Duration::from_secs(2))
             .await??;
@@ -436,7 +435,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_mtu() -> Result<(), Error> {
+    async fn test_get_mtu() -> anyhow::Result<()> {
         let name = OsStr::new("tun10");
         let tun = AsyncTun::open(name)?;
 

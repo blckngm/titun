@@ -34,7 +34,7 @@ pub struct UdpSocket {
 }
 
 impl UdpSocket {
-    pub fn from_std(socket: std::net::UdpSocket) -> Result<UdpSocket, std::io::Error> {
+    pub fn from_std(socket: std::net::UdpSocket) -> io::Result<UdpSocket> {
         socket.set_nonblocking(true)?;
         let socket = PollEvented::new(MioUdpSocket::from_socket(socket)?);
         Ok(UdpSocket {
