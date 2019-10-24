@@ -116,9 +116,9 @@ pub async fn run(c: Config<SocketAddr>, notify: Option<NotifyHandle>) -> anyhow:
         &dev_name,
         c.network.map(|n| (n.address, n.prefix_len)).unwrap(),
     )
-    .context("failed to open tun device")?;
+    .context("failed to open tun interface")?;
     #[cfg(unix)]
-    let tun = AsyncTun::open(&dev_name).context("failed to open tun device")?;
+    let tun = AsyncTun::open(&dev_name).context("failed to open tun interface")?;
 
     info!("setting port, fwmark and private key");
     let info = WgInfo {

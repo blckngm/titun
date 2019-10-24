@@ -26,9 +26,9 @@ use tokio::future::FutureExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::unix::UnixStream;
 
-pub async fn show(devices: Vec<OsString>) -> anyhow::Result<()> {
+pub async fn show(interfaces: Vec<OsString>) -> anyhow::Result<()> {
     let mut is_first = true;
-    if devices.is_empty() {
+    if interfaces.is_empty() {
         let read_dir = match Path::new("/var/run/wireguard").read_dir() {
             Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
             r => r?,
@@ -67,7 +67,7 @@ pub async fn show(devices: Vec<OsString>) -> anyhow::Result<()> {
             }
         }
     } else {
-        for d in &devices {
+        for d in &interfaces {
             get_and_print_status(d, is_first)
                 .timeout(Duration::from_secs(3))
                 .await

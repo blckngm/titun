@@ -33,11 +33,11 @@ Use
 $ sudo titun -c tun0.toml -f tun0
 ```
 
-to run TiTun and open the tun device `tun0`. Here `-f` tells the program to run
-in foreground, i.e., not daemonize. The `-c tun0.toml` option tells the program
-to load configuration from the file `tun0.toml`.
+to run TiTun and open the tun interface `tun0`. Here `-f` tells the program to
+run in foreground, i.e., not daemonize. The `-c tun0.toml` option tells the
+program to load configuration from the file `tun0.toml`.
 
-Use `titun show` to show device status. (It's similar to `wg show`.) Use
+Use `titun show` to show interface status. (It's similar to `wg show`.) Use
 `titun help` to discover more CLI options.
 
 It is recommended to use the TOML format, but the format used by `wg` is also
@@ -113,7 +113,7 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
-Now if you want to run a TiTun device `tun0`, put its configuration at
+Now if you want to run a TiTun interface `tun0`, put its configuration at
 `/etc/titun/tun0.conf`, write a script `/etc/titun/tun0.up.sh` to configure IP
 address, routes, DNS etc., write a script `/etc/titun/tun0.down.sh` to reverse
 those changes, and use `systemctl (start|stop|reload|restart|status) titun@tun0`
@@ -123,7 +123,7 @@ to manage the service.
 
 On unix-like operating systems, the WireGuard [cross platform userspace
 interface](https://www.wireguard.com/xplatform/) is implemented. So you can use
-`wg` and `wg-quick` to configure TiTun devices.
+`wg` and `wg-quick` to configure TiTun interfaces.
 
 To use `wg-quick`, specify the `WG_QUICK_USERSPACE_IMPLEMENTATION` environment
 variable to `titun`:

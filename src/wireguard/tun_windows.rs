@@ -17,7 +17,7 @@
 
 #![cfg(windows)]
 
-//! Tap-windows TUN devices support.
+//! Tap-windows TUN interfaces support.
 
 use crate::async_utils::blocking;
 
@@ -138,7 +138,7 @@ impl AsyncTun {
     }
 }
 
-/// A handle to a tun device.
+/// A handle to a tun interface.
 struct Tun {
     handle: HandleWrapper,
     read_overlapped: Mutex<OverlappedWrapper>,
@@ -222,7 +222,7 @@ fn get_netcfg_instance_id(alias: &OsStr) -> io::Result<String> {
     Err(Error::from(ErrorKind::NotFound))
 }
 
-/// Show warning if interface is not a tap-windows device.
+/// Show warning if interface is not a tap-windows interface.
 fn check_interface_is_tap(guid: &str) -> io::Result<()> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let adapters = hklm.open_subkey(
@@ -237,7 +237,7 @@ fn check_interface_is_tap(guid: &str) -> io::Result<()> {
             // Found matching interface.
             let component_id: String = adapter.get_value("ComponentId")?;
             if component_id != "tap0901" {
-                warn!("The interface does not seem to be a Tap-Windows device.");
+                warn!("The interface does not seem to be a Tap-Windows interface.");
             }
             return Ok(());
         }
@@ -273,9 +273,9 @@ fn test_to_octets() {
 }
 
 impl Tun {
-    /// Open a handle to a tun device.
+    /// Open a handle to a tun interface.
     ///
-    /// The device should have already been created. If it does not exist, this function returns NOT_FOUND.
+    /// The interface should have already been created. If it does not exist, this function returns NOT_FOUND.
     ///
     /// * `alias` - e.g., `Local Area Network 2`.
     /// * `network` - Network configuration. Used in `TAP_IOCTL_CONFIG_TUN`.
@@ -352,7 +352,7 @@ impl Tun {
         }
     }
 
-    /// Read a packet from the device.
+    /// Read a packet from the interface.
     ///
     /// Blocking.
     pub fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
@@ -394,7 +394,7 @@ impl Tun {
         }
     }
 
-    /// Write a packet to the device.
+    /// Write a packet to the interface.
     ///
     /// Blocking.
     pub fn write(&self, buf: &[u8]) -> io::Result<usize> {
@@ -426,7 +426,7 @@ impl Tun {
         }
     }
 
-    /// Interrupt a blocking read operation on this Tun device.
+    /// Interrupt a blocking read operation on this Tun interface.
     pub fn interrupt(&self) {
         unsafe {
             SetEvent(self.cancel_event.0);

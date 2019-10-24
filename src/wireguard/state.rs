@@ -530,7 +530,7 @@ async fn tun_packet_processing(wg: Arc<WgState>) {
             let dst = match parse_ip_packet(pkt) {
                 Ok((_, _, dst)) => dst,
                 Err(_) => {
-                    error!("Get packet from TUN device, but failed to parse it!");
+                    error!("Get packet from TUN interface, but failed to parse it!");
                     continue;
                 }
             };
@@ -647,7 +647,7 @@ impl WgState {
                         Ok(mtu) => {
                             let old_mtu = wg.mtu.load(Ordering::Relaxed);
                             if mtu != old_mtu {
-                                info!("device mtu is now {}", mtu);
+                                info!("interface mtu is now {}", mtu);
                                 wg.mtu.store(mtu, Ordering::Relaxed);
                             }
                         }
