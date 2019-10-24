@@ -43,7 +43,7 @@ mod transport;
 #[doc(hidden)]
 pub mod types;
 
-/// Tun device support on linux and BSDs.
+/// Tun interface support on linux and BSDs.
 mod tun_unix;
 mod tun_windows;
 #[cfg(unix)]

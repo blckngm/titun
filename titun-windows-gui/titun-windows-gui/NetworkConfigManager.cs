@@ -357,7 +357,7 @@ namespace titun_windows_gui
             uint index;
             try
             {
-                index = FindInterfaceIndexByAlias(config.Interface.Name) ?? throw new Exception($"Failed to find device {config.Interface.Name}");
+                index = FindInterfaceIndexByAlias(config.Interface.Name) ?? throw new Exception($"Failed to find interface {config.Interface.Name}");
             }
             catch (Exception e)
             {
@@ -462,7 +462,7 @@ namespace titun_windows_gui
             uint index;
             try
             {
-                index = FindInterfaceIndexByAlias(config.Interface.Name) ?? throw new Exception($"Failed to find device {config.Interface}");
+                index = FindInterfaceIndexByAlias(config.Interface.Name) ?? throw new Exception($"Failed to find interface {config.Interface}");
             }
             catch (Exception e)
             {

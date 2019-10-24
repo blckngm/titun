@@ -23,7 +23,7 @@ use std::net::SocketAddr;
 use std::num::NonZeroU16;
 use std::sync::Arc;
 
-/// Reload the TiTun device, applying configuration changes.
+/// Reload the TiTun interface, applying configuration changes.
 ///
 /// Most errors are handled. Shouldn't really return `Err`.
 pub async fn reload(wg: &Arc<WgState>, new_config: Config<SocketAddr>) -> anyhow::Result<()> {

@@ -40,7 +40,7 @@ name = "load_monitor"
 harness = false
 
 [features]
-# Enable tests that need root privilege, e.g., unit test for tun devices.
+# Enable tests that need root privilege, e.g., unit test for tun interfaces.
 # Run with:
 # export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER='sudo -E'
 sudo-tests = []

@@ -65,7 +65,7 @@ struct Options {
         long,
         value_name = "IP/PREFIX_LEN",
         parse(try_from_str = parse_network),
-        help = "Network configuration for the device",
+        help = "Network configuration for the interface",
     )]
     network: Option<(Ipv4Addr, u32)>,
 
@@ -83,7 +83,11 @@ struct Options {
     #[structopt(long, help = "Change to group")]
     group: Option<String>,
 
-    #[structopt(value_name = "DEVICE_NAME", help = "Device name", parse(from_os_str))]
+    #[structopt(
+        value_name = "INTERFACE_NAME",
+        help = "Interface name",
+        parse(from_os_str)
+    )]
     dev: Option<OsString>,
 
     // This field is never accessed.
@@ -145,7 +149,7 @@ impl Options {
             config.interface.name = options.dev;
         }
         if config.interface.name.is_none() {
-            bail!("device name is never specified\nSpecify a device name via command line arg or in config file in `Interface.Name`.");
+            bail!("interface name is never specified\nSpecify a interface name via command line arg or in config file in `Interface.Name`.");
         }
 
         #[cfg(windows)]
@@ -193,10 +197,10 @@ impl Options {
 
 #[derive(StructOpt)]
 enum Cmd {
-    #[structopt(about = "Show device status")]
+    #[structopt(about = "Show interface status")]
     Show {
-        #[structopt(help = "Devices to show. Omit to show all", parse(from_os_str))]
-        devices: Vec<OsString>,
+        #[structopt(help = "Interfaces to show. Omit to show all", parse(from_os_str))]
+        interfaces: Vec<OsString>,
     },
     #[structopt(about = "Check configuration file validity")]
     Check { config_file: PathBuf },
@@ -218,12 +222,12 @@ enum Cmd {
 impl Cmd {
     async fn run(self) -> anyhow::Result<()> {
         match self {
-            Cmd::Show { devices } => {
+            Cmd::Show { interfaces } => {
                 #[cfg(unix)]
-                titun::cli::show(devices).await?;
+                titun::cli::show(interfaces).await?;
                 #[cfg(not(unix))]
                 {
-                    drop(devices);
+                    drop(interfaces);
                     anyhow::bail!("the show command is not implemented on this platform");
                 }
             }

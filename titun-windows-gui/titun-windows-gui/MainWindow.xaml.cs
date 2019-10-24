@@ -428,13 +428,13 @@ namespace titun_windows_gui
             return BitConverter.ToString(data).Replace("-", string.Empty);
         }
         
-        private async Task GetStatus(CancellationToken token, string deviceName)
+        private async Task GetStatus(CancellationToken token, string interfaceName)
         {
             while (!token.IsCancellationRequested)
             {
                 try
                 {
-                    using (var conn = new NamedPipeClientStream($"wireguard\\{deviceName}.sock"))
+                    using (var conn = new NamedPipeClientStream($"wireguard\\{interfaceName}.sock"))
                     {
                         await conn.ConnectAsync(token);
                         using (var writer = new StreamWriter(conn, new UTF8Encoding(false), 128, true))

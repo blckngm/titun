@@ -145,7 +145,7 @@ impl AsyncTun {
     }
 }
 
-/// A linux tun device.
+/// A linux tun interface.
 #[derive(Debug)]
 struct Tun {
     fd: i32,
@@ -162,13 +162,13 @@ impl Drop for Tun {
 }
 
 impl Tun {
-    /// Create a tun device.
+    /// Create a tun interface.
 
     /// O_CLOEXEC, IFF_NO_PI.
     #[cfg(target_os = "linux")]
     pub fn open(name: &OsStr, extra_flags: OFlag) -> anyhow::Result<Tun> {
         if name.len() > 15 {
-            bail!("Device name is too long.");
+            bail!("interface name is too long.");
         }
 
         let name_cstring = CString::new(name.as_bytes())?;
@@ -215,11 +215,11 @@ impl Tun {
         {
             let name = name
                 .to_str()
-                .ok_or_else(|| anyhow!("invalid tun device name: {}", name.to_string_lossy()))?;
+                .ok_or_else(|| anyhow!("invalid tun interface name: {}", name.to_string_lossy()))?;
 
             if !name.starts_with("tun") || name[3..].parse::<u32>().is_err() {
                 bail!(
-                    "invalid tun device name: {}: must be tunN where N is an integer",
+                    "invalid tun interface name: {}: must be tunN where N is an integer",
                     name
                 );
             }
@@ -271,7 +271,7 @@ impl IntoRawFd for Tun {
 }
 
 impl Tun {
-    /// Read a packet from the tun device.
+    /// Read a packet from the tun interface.
     pub fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
         if cfg!(target_os = "freebsd") {
             use nix::sys::uio::{readv, IoVec};
@@ -291,7 +291,7 @@ impl Tun {
         }
     }
 
-    /// Write a packet to tun device.
+    /// Write a packet to tun interface.
     pub fn write(&self, buf: &[u8]) -> io::Result<usize> {
         if cfg!(target_os = "freebsd") {
             use nix::libc::{AF_INET, AF_INET6};
