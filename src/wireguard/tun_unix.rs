@@ -29,7 +29,7 @@ use nix::sys::stat::Mode;
 use nix::unistd::{close, read, write};
 use std::ffi::CString;
 use std::ffi::OsStr;
-use std::io::{self, Read, Write};
+use std::io;
 use std::mem;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
@@ -319,39 +319,6 @@ impl Tun {
         } else {
             write(self.fd, buf).map_err(|_| io::Error::last_os_error())
         }
-    }
-}
-
-impl Read for Tun {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        Tun::read(self, buf)
-    }
-}
-
-impl<'a> Read for &'a Tun {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        Tun::read(self, buf)
-    }
-}
-
-impl Write for Tun {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        Tun::write(self, buf)
-    }
-
-    /// flush() for Tun is a no-op.
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-impl<'a> Write for &'a Tun {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        Tun::write(self, buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
     }
 }
 
