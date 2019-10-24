@@ -865,7 +865,7 @@ dependencies = [
 
 [[package]]
 name = "titun"
-version = "0.0.6-preview"
+version = "0.1.0-dev"
 dependencies = [
  "ansi_term 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "anyhow 1.0.17 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -907,7 +907,7 @@ version = "0.0.1"
 dependencies = [
  "futures-preview 0.3.0-alpha.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "libfuzzer-sys 0.1.0 (git+https://github.com/rust-fuzz/libfuzzer-sys.git)",
- "titun 0.0.6-preview",
+ "titun 0.1.0-dev",
  "toml 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
