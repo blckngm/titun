@@ -239,18 +239,30 @@ pub struct PeerConfig<Endpoint> {
     pub keepalive: Option<NonZeroU16>,
 }
 
+fn resolve_address(addr: &str) -> anyhow::Result<SocketAddr> {
+    use std::net::ToSocketAddrs;
+    match addr.to_socket_addrs() {
+        Err(e) => Err(e.into()),
+        Ok(mut addrs) => match addrs.next() {
+            None => Err(anyhow::anyhow!("host not found")),
+            Some(a) => Ok(a),
+        },
+    }
+}
+
 impl Config<String> {
     fn resolve_addresses(self, print_warnings: bool) -> anyhow::Result<Config<SocketAddr>> {
         let mut peers = Vec::with_capacity(self.peers.len());
         for p in self.peers {
             let endpoint = if let Some(endpoint) = p.endpoint {
-                use std::net::ToSocketAddrs;
-                match endpoint.to_socket_addrs() {
-                    Ok(mut addrs) => Some(addrs.next().unwrap()),
+                match resolve_address(&endpoint) {
+                    Ok(addr) => Some(addr),
                     Err(e) => {
-                        // Reject invalid syntax, but warn and ignore resolution failures.
-                        if e.kind() == std::io::ErrorKind::InvalidInput {
-                            bail!("Invalid endpoint: {}", endpoint);
+                        if let Some(ref e) = e.downcast_ref::<std::io::Error>() {
+                            // Reject invalid syntax, but warn and ignore resolution failures.
+                            if e.kind() == std::io::ErrorKind::InvalidInput {
+                                bail!("invalid endpoint: {}", endpoint);
+                            }
                         }
                         if print_warnings {
                             eprintln!(
@@ -468,6 +480,35 @@ AllowedIPs = "192.168.77.1"
 Endpoint = "192.168.3.1:7777"
 PersistentKeepalive = 17
 "##;
+
+    const EXAMPLE_CONFIG_INVALID_ENDPOINT: &str = r##"[Interface]
+PrivateKey = "2BJtcgPUjHfKKN3yMvTiVQbJ/UgHj2tcZE6xU/4BdGM="
+
+[Network]
+Address = "192.168.77.0"
+PrefixLen = 24
+
+[[Peer]]
+PublicKey = "Ck8P+fUguLIf17zmb3eWxxS7PqgN3+ciMFBlSwqRaw4="
+Endpoint = "host.no.port.invalid"
+"##;
+
+    #[test]
+    fn resolve_invalid_endpoint() {
+        let config: Config<String> = toml::from_str(EXAMPLE_CONFIG_INVALID_ENDPOINT).unwrap();
+
+        let err = config.resolve_addresses(true).unwrap_err();
+        assert!(format!("{}", err).contains("invalid endpoint"));
+    }
+
+    #[test]
+    fn resolve_not_found() {
+        let mut config: Config<String> = toml::from_str(EXAMPLE_CONFIG_INVALID_ENDPOINT).unwrap();
+        config.peers.iter_mut().next().unwrap().endpoint = Some("not.found.invalid:3238".into());
+
+        let config = config.resolve_addresses(true).unwrap();
+        assert!(config.peers.iter().next().unwrap().endpoint.is_none());
+    }
 
     #[test]
     fn deserialization() {
