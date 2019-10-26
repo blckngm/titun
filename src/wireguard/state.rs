@@ -21,7 +21,6 @@ use crate::wireguard::*;
 use fnv::FnvHashMap;
 use futures::future::{select, Either};
 use futures::prelude::*;
-use ip_lookup_trie::{Address, IpLookupTable};
 use noise_protocol::U8Array;
 use parking_lot::{Mutex, RwLock};
 use pin_utils::pin_mut;

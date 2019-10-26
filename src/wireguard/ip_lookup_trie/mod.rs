@@ -21,7 +21,7 @@
 //!
 //! ```
 //! # use std::net::Ipv4Addr;
-//! # use ip_lookup_trie::*;
+//! # use titun::wireguard::ip_lookup_trie::*;
 //!
 //! let mut t = IpLookupTable::new();
 //! t.insert(Ipv4Addr::new(0, 0, 0, 0), 0, 0);
@@ -42,14 +42,7 @@
 use num_traits::{PrimInt, Unsigned};
 
 use std::fmt::{self, LowerHex};
-use std::net::Ipv4Addr;
-use std::net::Ipv6Addr;
-
-#[cfg(test)]
-extern crate quickcheck;
-#[cfg(test)]
-#[macro_use(quickcheck)]
-extern crate quickcheck_macros;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 struct TrieNode<K, T> {
     k: K,
@@ -547,6 +540,7 @@ mod simple;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use quickcheck_macros::quickcheck;
     use std::net::Ipv4Addr;
 
     #[test]

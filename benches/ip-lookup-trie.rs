@@ -16,8 +16,8 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use ip_lookup_trie::IpLookupTable;
 use std::net::Ipv4Addr;
+use titun::wireguard::ip_lookup_trie::IpLookupTable;
 
 criterion_group!(benches, register_benches,);
 criterion_main!(benches);
