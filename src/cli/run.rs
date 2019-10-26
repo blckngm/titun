@@ -120,13 +120,17 @@ pub async fn run(c: Config<SocketAddr>, notify: Option<NotifyHandle>) -> anyhow:
     #[cfg(unix)]
     let tun = AsyncTun::open(&dev_name).context("failed to open tun interface")?;
 
-    info!("setting port, fwmark and private key");
-    let info = WgInfo {
-        port: c.interface.listen_port.unwrap_or(0),
-        fwmark: c.interface.fwmark.unwrap_or(0),
-        key: c.interface.private_key,
-    };
-    let wg = WgState::new(info, tun)?;
+    let wg = WgState::new(tun)?;
+    info!("setting privatge key");
+    wg.set_key(c.interface.private_key);
+    if let Some(port) = c.interface.listen_port {
+        info!("setting port");
+        wg.set_port(port).await.context("failed to set port")?;
+    }
+    if let Some(fwmark) = c.interface.fwmark {
+        info!("setting fwmark");
+        wg.set_fwmark(fwmark).context("failed to set fwmark")?;
+    }
 
     for p in c.peers {
         info!("adding peer {}", base64::encode(&p.public_key));
@@ -143,7 +147,13 @@ pub async fn run(c: Config<SocketAddr>, notify: Option<NotifyHandle>) -> anyhow:
 
     let weak = std::sync::Arc::downgrade(&wg);
 
-    scope0.clone().spawn_canceller(WgState::run(wg));
+    scope0
+        .clone()
+        .spawn_canceller(wg.clone().task_update_cookie_secret());
+    #[cfg(not(windows))]
+    scope0.clone().spawn_canceller(wg.clone().task_update_mtu());
+    scope0.clone().spawn_canceller(wg.clone().task_rx());
+    scope0.clone().spawn_canceller(wg.clone().task_tx());
 
     #[cfg(unix)]
     {
@@ -183,7 +193,7 @@ pub async fn run(c: Config<SocketAddr>, notify: Option<NotifyHandle>) -> anyhow:
             }
 
             if c.general.foreground {
-                crate::systemd::notify_ready()
+                super::systemd::notify_ready()
                     .unwrap_or_else(|e| warn!("failed to notify systemd: {}", e));
             } else {
                 notify

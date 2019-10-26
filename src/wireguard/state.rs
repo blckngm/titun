@@ -15,9 +15,11 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::async_utils::{yield_once, AsyncScope};
+use crate::async_utils::yield_once;
 use crate::udp_socket::*;
+use crate::wireguard::re_exports::{DH, X25519};
 use crate::wireguard::*;
+use anyhow::Context;
 use fnv::FnvHashMap;
 use futures::future::{select, Either};
 use futures::prelude::*;
@@ -58,7 +60,16 @@ const HANDSHAKES_PER_SEC: u32 = 250;
 //   info > pubkey_map > any peers > id_map > anything else
 //   any peers > rt4 > rt6
 
-/// State of a WG interface.
+/// WireGuard state machine.
+///
+/// Spawn all the tasks to run the state machine:
+///
+/// * `task_update_cookie_secret`
+/// * `task_update_mtu`
+/// * `task_tx`
+/// * `task_rx`
+///
+/// And use other methods manipulate it.
 pub struct WgState {
     pub(crate) info: RwLock<WgInfo>,
 
@@ -441,8 +452,14 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
                 match select(recv, receiver.next()).await {
                     Either::Left((recv_result, _)) => recv_result.unwrap(),
                     Either::Right((socket, _)) => {
-                        *wg.socket.lock() = Arc::new(socket.unwrap());
-                        continue;
+                        if let Some(socket) = socket {
+                            *wg.socket.lock() = Arc::new(socket);
+                            continue;
+                        } else {
+                            // The sender is dropped, this means that there is
+                            // now another rx task, and we should return.
+                            return;
+                        }
                     }
                 }
             };
@@ -511,13 +528,16 @@ fn padding() {
     }
 }
 
-/// Sending thread loop.
-async fn tun_packet_processing(wg: Arc<WgState>) {
+async fn tun_packet_processing(wg: Arc<WgState>) -> anyhow::Result<()> {
     let mut pkt = vec![0u8; BUFSIZE];
     let mut encrypted = vec![0u8; BUFSIZE];
     loop {
         for _ in 0..1024 {
-            let len = wg.tun.read(&mut pkt).await.unwrap();
+            let len = wg
+                .tun
+                .read(&mut pkt)
+                .await
+                .context("read from tun device")?;
 
             let padded_len = pad_len(len, wg.mtu.load(Ordering::Relaxed) as usize);
             // Do not leak other packets' data!
@@ -604,13 +624,17 @@ pub struct SetPeerCommand {
 
 impl WgState {
     /// Create a new `WgState`, start worker threads.
-    pub fn new(mut info: WgInfo, tun: AsyncTun) -> anyhow::Result<Arc<WgState>> {
+    pub fn new(tun: AsyncTun) -> anyhow::Result<Arc<WgState>> {
+        let mut info = WgInfo {
+            port: 0,
+            fwmark: 0,
+            key: X25519::genkey(),
+        };
+
         let mut cookie = [0u8; 32];
         OsRng.fill_bytes(&mut cookie);
 
         let socket = WgState::prepare_socket(&mut info.port, info.fwmark)?;
-        #[cfg(not(windows))]
-        use anyhow::Context;
         #[cfg(not(windows))]
         let mtu = tun.get_mtu().context("failed to get mtu")?.into();
         // TODO: Implement get MTU on Windows.
@@ -634,42 +658,46 @@ impl WgState {
         Ok(wg)
     }
 
-    pub async fn run(self: Arc<WgState>) {
-        let scope = AsyncScope::new();
-        #[cfg(not(windows))]
-        {
-            let wg = self.clone();
-            scope.spawn_async(async move {
-                loop {
-                    delay_for(Duration::from_secs(10)).await;
-                    match wg.tun.get_mtu() {
-                        Ok(mtu) => {
-                            let old_mtu = wg.mtu.load(Ordering::Relaxed);
-                            if mtu != old_mtu {
-                                info!("interface mtu is now {}", mtu);
-                                wg.mtu.store(mtu, Ordering::Relaxed);
-                            }
-                        }
-                        Err(e) => warn!("failed to get mtu: {}", e),
+    /// Update cookie secret every two minutes.
+    pub async fn task_update_cookie_secret(self: Arc<WgState>) {
+        loop {
+            delay_for(Duration::from_secs(120)).await;
+            let mut cookie = self.cookie_secret.write();
+            OsRng.fill_bytes(&mut cookie[..]);
+        }
+    }
+
+    /// Update MTU every 10 seconds.
+    #[cfg(not(windows))]
+    pub async fn task_update_mtu(self: Arc<WgState>) {
+        loop {
+            delay_for(Duration::from_secs(10)).await;
+            match self.tun.get_mtu() {
+                Ok(mtu) => {
+                    let old_mtu = self.mtu.load(Ordering::Relaxed);
+                    if mtu != old_mtu {
+                        info!("interface mtu is now {}", mtu);
+                        self.mtu.store(mtu, Ordering::Relaxed);
                     }
                 }
-            });
+                Err(e) => warn!("failed to get mtu: {}", e),
+            }
         }
-        {
-            let wg = self.clone();
-            scope.spawn_async(async move {
-                loop {
-                    delay_for(Duration::from_secs(120)).await;
-                    let mut cookie = wg.cookie_secret.write();
-                    OsRng.fill_bytes(&mut cookie[..]);
-                }
-            });
+    }
+
+    /// TX. Tun -> Socket.
+    pub async fn task_tx(self: Arc<WgState>) {
+        match tun_packet_processing(self).await {
+            Err(e) => error!("error in tx task: {}", e),
+            _ => unreachable!(),
         }
+    }
+
+    /// RX. Socket -> Tun.
+    pub async fn task_rx(self: Arc<WgState>) {
         let (sender, receiver) = channel(1);
         *self.socket_sender.lock() = Some(sender);
-        scope.spawn_async(udp_processing(self.clone(), receiver));
-        scope.spawn_async(tun_packet_processing(self));
-        scope.cancelled().await;
+        udp_processing(self, receiver).await;
     }
 
     // Create a new socket, set IPv6 only to false, set fwmark, and bind.
@@ -1056,12 +1084,7 @@ mod tests {
 
     #[tokio::test]
     async fn wg_state_tests() -> anyhow::Result<()> {
-        let info = WgInfo {
-            key: X25519::genkey(),
-            fwmark: 0,
-            port: 0,
-        };
-        let state = WgState::new(info, AsyncTun::open(OsStr::new("tun37"))?)?;
+        let state = WgState::new(AsyncTun::open(OsStr::new("tun37"))?)?;
 
         // `set_port` should work.
         state.set_port(0).await?;

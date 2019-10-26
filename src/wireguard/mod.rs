@@ -68,4 +68,6 @@ pub use self::state::{SetPeerCommand, WgState};
 use self::timer::*;
 use self::transport::*;
 use self::types::*;
-pub use self::types::{PeerInfo, PeerStateOut, WgInfo, WgStateOut, X25519Key, X25519Pubkey};
+#[doc(hidden)]
+pub use self::types::{PeerInfo, WgInfo};
+pub use self::types::{PeerStateOut, WgStateOut, X25519Key, X25519Pubkey};

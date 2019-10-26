@@ -18,14 +18,18 @@
 mod config;
 #[cfg(unix)]
 pub mod daemonize;
+mod real_main;
 #[cfg(unix)]
 mod reload;
 mod run;
 #[cfg(unix)]
 mod show;
+mod systemd;
 pub mod transform;
 
 pub use config::*;
+#[doc(hidden)]
+pub use real_main::real_main;
 #[cfg(unix)]
 pub use reload::reload;
 pub use run::*;

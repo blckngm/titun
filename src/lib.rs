@@ -29,7 +29,6 @@ pub mod crypto;
 pub mod ipc;
 mod udp_socket;
 
-mod systemd;
 pub mod wireguard;
 
 #[doc(hidden)]
