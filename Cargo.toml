@@ -7,7 +7,6 @@ repository = "https://github.com/sopium/titun"
 version = "0.1.0-dev"
 
 [workspace]
-members = ["ip-lookup-trie"]
 exclude = ["patched"]
 
 [lib]
@@ -53,7 +52,6 @@ env_logger = { version = "0.7.1", default-features = false }
 fnv = "1.0.6"
 futures-preview = "0.3.0-alpha.19"
 hex = "0.4.0"
-ip-lookup-trie = { path = "./ip-lookup-trie" }
 log = "0.4.8"
 mio = "0.6.19"
 net2 = "0.2.33"
@@ -73,6 +71,7 @@ atty = "0.2.13"
 serde = { version = "1.0.101", features = ["derive"] }
 toml = "0.5.3"
 anyhow = "1.0.17"
+num-traits = "0.2.6"
 
 [dependencies.tokio]
 version = "0.2.0-alpha.6"
@@ -99,6 +98,8 @@ inotify = { git = "https://github.com/sopium/inotify.git" }
 [dev-dependencies]
 criterion = "0.3.0"
 walkdir = "2.2.9"
+quickcheck = "0.9"
+quickcheck_macros = "0.8"
 
 [profile.release]
 lto = true

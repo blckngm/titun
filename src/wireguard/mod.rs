@@ -28,6 +28,8 @@ pub mod cookie;
 pub mod handshake;
 /// IP packet parsing.
 mod ip;
+#[doc(hidden)]
+pub mod ip_lookup_trie;
 /// Determine load.
 #[doc(hidden)]
 pub mod load_monitor;
@@ -58,6 +60,7 @@ use self::anti_replay::*;
 use self::cookie::*;
 use self::handshake::*;
 use self::ip::*;
+use self::ip_lookup_trie::*;
 use self::load_monitor::*;
 use self::peer_state::*;
 use self::state::*;
