@@ -47,7 +47,7 @@ test_logging = []
 version = "0.5.2"
 default-features = false
 [target."cfg(all(target_arch = \"wasm32\", target_vendor = \"unknown\", target_os = \"unknown\", target_env = \"\"))".dependencies.web-sys]
-version = "0.3.25"
+version = "0.3.29"
 features = ["Crypto", "Window"]
 default-features = false
 [target."cfg(any(target_os = \"android\", target_os = \"freebsd\", target_os = \"linux\", target_os = \"netbsd\", target_os = \"openbsd\", target_os = \"solaris\"))".dependencies.lazy_static]
