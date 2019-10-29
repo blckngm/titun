@@ -843,7 +843,7 @@ impl WgState {
         }
         let new_socket = WgState::prepare_socket(&mut new_port, self.info.read().fwmark)?;
         // XXX: possible race condition between this and `run`.
-        let sender = self.socket_sender.lock().as_ref().map(|s| s.clone());
+        let sender = self.socket_sender.lock().as_ref().cloned();
         if let Some(mut sender) = sender {
             sender.send(new_socket).await.unwrap();
         } else {
@@ -905,7 +905,7 @@ impl WgState {
         for p in self.pubkey_map.read().values() {
             let peer = p.read();
             for &(ip, prefix_len) in &peer.info.allowed_ips {
-                if !exist_in_rt4_or_rt6.contains(&(peer.info.public_key, ip.into(), prefix_len)) {
+                if !exist_in_rt4_or_rt6.contains(&(peer.info.public_key, ip, prefix_len)) {
                     bail!(
                         "Peer {} has route {}/{}, but it's not in rt4/rt6",
                         base64::encode(&peer.info.public_key),
@@ -920,6 +920,8 @@ impl WgState {
 
     /// Change configuration of a peer. Will return error if the peer does not
     /// exist.
+    // Clippy: this function is inherently complex...
+    #[allow(clippy::cognitive_complexity)]
     pub fn set_peer(&self, mut command: SetPeerCommand) -> anyhow::Result<()> {
         let peer0 = self
             .find_peer_by_pubkey(&command.public_key)

@@ -37,6 +37,8 @@ pub fn constant_time_eq_16(a: &[u8; 16], b: &[u8; 16]) -> bool {
     #[cfg(target_arch = "x86_64")]
     use core::arch::x86_64::*;
 
+    // Clippy: These are unaligned loads, so casting to more aligned pointer is fine.
+    #[allow(clippy::cast_ptr_alignment)]
     unsafe {
         let a = _mm_loadu_si128(a.as_ptr() as *const __m128i);
         let b = _mm_loadu_si128(b.as_ptr() as *const __m128i);
