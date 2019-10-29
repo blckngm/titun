@@ -13,4 +13,10 @@ fn main() {
         })
         .unwrap_or("".to_string());
     println!("cargo:rustc-env=GIT_HASH={}", git_hash);
+
+    if std::env::var_os("CARGO_CFG_UNIX").is_some() {
+        cc::Build::new()
+            .file("src/wireguard/tun_unix.c")
+            .compile("tun_unix");
+    }
 }
