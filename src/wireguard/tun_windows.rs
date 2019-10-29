@@ -121,7 +121,7 @@ impl AsyncTun {
         }
     }
 
-    pub async fn read<'a>(&'a self, buf: &'a mut [u8]) -> io::Result<usize> {
+    pub(crate) async fn read<'a>(&'a self, buf: &'a mut [u8]) -> io::Result<usize> {
         // Don't use `blocking` for operations that may block forever.
 
         let mut channels = self.channels.lock().await;
@@ -133,7 +133,7 @@ impl AsyncTun {
         Ok(len)
     }
 
-    pub async fn write<'a>(&'a self, buf: &'a [u8]) -> io::Result<usize> {
+    pub(crate) async fn write<'a>(&'a self, buf: &'a [u8]) -> io::Result<usize> {
         blocking(|| self.tun.write(buf)).await
     }
 }

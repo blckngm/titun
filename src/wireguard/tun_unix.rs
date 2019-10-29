@@ -68,6 +68,7 @@ mod ioctl {
     ioctl_write_ptr!(tunsifhead, b't', 96, i32);
 }
 
+/// A tun interface.
 #[derive(Debug)]
 pub struct AsyncTun {
     io: PollEvented<Tun>,
@@ -105,7 +106,7 @@ impl AsyncTun {
         }
     }
 
-    pub fn get_mtu(&self) -> io::Result<u32> {
+    pub(crate) fn get_mtu(&self) -> io::Result<u32> {
         use nix::sys::socket::*;
         unsafe {
             let mut req: ioctl::ifreq_mtu = mem::zeroed();
@@ -135,17 +136,16 @@ impl AsyncTun {
     }
 
     // Should be used from only one task.
-    pub async fn read<'a>(&'a self, buf: &'a mut [u8]) -> io::Result<usize> {
+    pub(crate) async fn read<'a>(&'a self, buf: &'a mut [u8]) -> io::Result<usize> {
         poll_fn(|cx| self.poll_read(cx, buf)).await
     }
 
     // Should be used from only one task.
-    pub async fn write<'a>(&'a self, buf: &'a [u8]) -> io::Result<usize> {
+    pub(crate) async fn write<'a>(&'a self, buf: &'a [u8]) -> io::Result<usize> {
         poll_fn(|cx| self.poll_write(cx, buf)).await
     }
 }
 
-/// A linux tun interface.
 #[derive(Debug)]
 struct Tun {
     fd: i32,
