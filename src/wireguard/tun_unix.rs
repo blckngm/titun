@@ -24,7 +24,7 @@ use mio::event::Evented;
 use mio::unix::{EventedFd, UnixReady};
 use mio::{Poll as MioPoll, PollOpt, Ready, Token};
 use nix::fcntl::{open, OFlag};
-use nix::libc::{if_indextoname, if_nametoindex, IF_NAMESIZE};
+use nix::libc;
 use nix::sys::stat::Mode;
 use nix::unistd::{close, read, write};
 use std::ffi::CString;
@@ -36,36 +36,16 @@ use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
 use std::task::{Context, Poll};
 use tokio_net::util::PollEvented;
 
-#[allow(unused)]
-mod ioctl {
-    use nix::libc::{c_int, c_short};
-    use nix::*;
+mod ffi {
+    use nix::libc;
 
-    // Linux.
-    ioctl_write_int!(tunsetiff, b'T', 202);
-
-    pub const IFF_TUN: c_short = 0x0001;
-    pub const IFF_NO_PI: c_short = 0x1000;
-
-    #[repr(C, align(4))]
-    pub struct ifreq {
-        pub name: [u8; 16], // Use u8 becuase that's what CString and CStr wants.
-        pub flags: c_short,
+    extern "C" {
+        pub fn get_mtu(socket_fd: libc::c_int, ifindex: libc::c_uint) -> libc::c_int;
+        #[cfg(target_os = "linux")]
+        pub fn tunsetiff(tun_fd: libc::c_int, name: *const u8) -> libc::c_int;
+        #[cfg(target_os = "freebsd")]
+        pub fn tunsifhead(tun_fd: libc::c_int) -> libc::c_int;
     }
-
-    #[repr(C)]
-    pub struct ifreq_mtu {
-        pub name: [u8; 16],
-        pub mtu: c_int,
-    }
-
-    #[cfg(target_os = "linux")]
-    ioctl_readwrite_bad!(siocgifmtu, nix::libc::SIOCGIFMTU, ifreq_mtu);
-    #[cfg(target_os = "freebsd")]
-    ioctl_readwrite_bad!(siocgifmtu, 3223349555, ifreq_mtu);
-
-    // FreeBSD.
-    ioctl_write_ptr!(tunsifhead, b't', 96, i32);
 }
 
 /// A tun interface.
@@ -108,30 +88,21 @@ impl AsyncTun {
 
     pub(crate) fn get_mtu(&self) -> io::Result<u32> {
         use nix::sys::socket::*;
-        unsafe {
-            let mut req: ioctl::ifreq_mtu = mem::zeroed();
-            assert_eq!(IF_NAMESIZE, 16);
-            if if_indextoname(self.io.get_ref().index, req.name.as_mut_ptr() as *mut _).is_null() {
-                return Err(io::Error::last_os_error());
-            }
-            let socket = socket(
-                AddressFamily::Inet,
-                SockType::Datagram,
-                SockFlag::SOCK_CLOEXEC,
-                None,
-            )
-            .map_err(|_| io::Error::last_os_error())?;
-            match ioctl::siocgifmtu(socket, &mut req) {
-                Ok(_) => {
-                    let _ = close(socket);
-                    Ok(req.mtu as u32)
-                }
-                Err(_) => {
-                    let e = io::Error::last_os_error();
-                    let _ = close(socket);
-                    Err(e)
-                }
-            }
+        let socket = socket(
+            AddressFamily::Inet,
+            SockType::Datagram,
+            SockFlag::SOCK_CLOEXEC,
+            None,
+        )
+        .map_err(|_| io::Error::last_os_error())?;
+        let mtu = unsafe { ffi::get_mtu(socket, self.io.get_ref().index) };
+        if mtu < 0 {
+            let err = io::Error::last_os_error();
+            let _ = close(socket);
+            Err(err)
+        } else {
+            let _ = close(socket);
+            Ok(mtu as u32)
         }
     }
 
@@ -167,7 +138,7 @@ impl Tun {
     /// O_CLOEXEC, IFF_NO_PI.
     #[cfg(target_os = "linux")]
     pub fn open(name: &OsStr, extra_flags: OFlag) -> anyhow::Result<Tun> {
-        if name.len() > 15 {
+        if name.len() > nix::libc::IF_NAMESIZE - 1 {
             bail!("interface name is too long.");
         }
 
@@ -184,18 +155,14 @@ impl Tun {
         // error occurs below, the `fd` is `close`d.
         let mut tun = Tun { fd, index: 0 };
 
-        let mut ifr = ioctl::ifreq {
-            name: [0; 16],
-            flags: ioctl::IFF_TUN | ioctl::IFF_NO_PI,
-        };
+        if unsafe { ffi::tunsetiff(fd, name_c_bytes.as_ptr()) } < 0 {
+            return Err(io::Error::last_os_error().into());
+        }
 
-        ifr.name[..name_c_bytes.len()].copy_from_slice(name_c_bytes);
-
-        unsafe { ioctl::tunsetiff(fd, &mut ifr as *mut _ as _) }?;
         // XXX: possible race if another process changes the name before we get
         // the index.
-        tun.index = unsafe {
-            let r = if_nametoindex(name_c_bytes.as_ptr() as *const _);
+        tun.index = {
+            let r = unsafe { libc::if_nametoindex(name_c_bytes.as_ptr() as *const _) };
             if r > 0 {
                 Ok(r)
             } else {
@@ -208,7 +175,7 @@ impl Tun {
     }
 
     // BSD systems.
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "freebsd")]
     pub fn open(name: &OsStr, extra_flags: OFlag) -> anyhow::Result<Tun> {
         use std::path::Path;
 
@@ -235,8 +202,8 @@ impl Tun {
         let name_c_bytes = name_cstring.as_bytes_with_nul();
 
         // XXX: this will fail the interface has previously been created and renamed.
-        tun.index = unsafe {
-            let r = if_nametoindex(name_c_bytes.as_ptr() as *const _);
+        tun.index = {
+            let r = unsafe { libc::if_nametoindex(name_c_bytes.as_ptr() as *const _) };
             if r > 0 {
                 Ok(r)
             } else {
@@ -245,11 +212,9 @@ impl Tun {
         }
         .context("get interface index")?;
 
-        if cfg!(target_os = "freebsd") {
-            unsafe {
-                // Call TUNSIFHEAD, without this, IPv6 in tunnel won't work.
-                ioctl::tunsifhead(fd, &mut 1)?;
-            }
+        // Call TUNSIFHEAD, without this, IPv6 in tunnel won't work.
+        if unsafe { ffi::tunsifhead(fd) } < 0 {
+            return Err(io::Error::last_os_error().into());
         }
 
         Ok(tun)
