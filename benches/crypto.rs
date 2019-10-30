@@ -63,7 +63,7 @@ fn register_benches(c: &mut Criterion) {
 
         b.iter(|| {
             ChaCha20Poly1305::encrypt(&key, nonce, &[], &data, &mut out);
-            nonce = nonce + 1;
+            nonce += 1;
         })
     });
     group.finish();

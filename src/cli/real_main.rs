@@ -129,7 +129,7 @@ impl Options {
             .log
             .as_ref()
             .map(|x| x.as_str())
-            .or(config.general.log.as_ref().map(|x| x.as_str()))
+            .or_else(|| config.general.log.as_ref().map(|x| x.as_str()))
             .unwrap_or("warn");
         std::env::set_var("RUST_LOG", log);
         env_logger::init();

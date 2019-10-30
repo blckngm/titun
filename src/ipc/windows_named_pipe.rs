@@ -378,7 +378,7 @@ mod test {
         let thread = thread::spawn(move || {
             let mut stream = or_panic!(listener.accept());
             let mut buf = [0; 5];
-            or_panic!(stream.read(&mut buf));
+            or_panic!(stream.read_exact(&mut buf));
             assert_eq!(&msg1[..], &buf[..]);
             or_panic!(stream.write_all(msg2));
         });
@@ -403,7 +403,7 @@ mod test {
             for stream in listener.incoming().take(2) {
                 let mut stream = or_panic!(stream);
                 let mut buf = [0];
-                or_panic!(stream.read(&mut buf));
+                or_panic!(stream.read_exact(&mut buf));
             }
         });
 

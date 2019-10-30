@@ -33,7 +33,7 @@ fn register_benches(c: &mut Criterion) {
                 let run = run.clone();
                 create_timer_async(move || {
                     run.store(true, SeqCst);
-                    async { () }
+                    async {}
                 })
             };
 

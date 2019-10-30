@@ -22,7 +22,7 @@ use walkdir::WalkDir;
 fn main() -> anyhow::Result<()> {
     let dirs = ["src", "examples", "benches"];
     let mut has_error = false;
-    for entry in dirs.iter().map(|dir| WalkDir::new(dir)).flatten() {
+    for entry in dirs.iter().map(WalkDir::new).flatten() {
         let entry = entry?;
         if entry.file_type().is_file() && entry.path().extension() == Some(OsStr::new("rs")) {
             let file_content = std::fs::read_to_string(entry.path())

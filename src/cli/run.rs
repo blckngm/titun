@@ -204,7 +204,7 @@ pub async fn run(c: Config<SocketAddr>, notify: Option<NotifyHandle>) -> anyhow:
         }
         // So rustc does not warn about unused.
         #[cfg(not(unix))]
-        drop(notify);
+        let _notify = notify;
     }
 
     scope0.cancelled().await;

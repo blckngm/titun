@@ -177,9 +177,7 @@ fn register_benches(c: &mut Criterion) {
 
             let cookie = calc_cookie(&secret, b"1.2.3.4");
 
-            let reply = cookie_reply(&pk, &cookie, Id::gen(), &mac1);
-
-            reply
+            cookie_reply(&pk, &cookie, Id::gen(), &mac1)
         });
     });
 }

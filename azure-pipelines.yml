@@ -38,7 +38,7 @@ jobs:
     vmImage: ubuntu-16.04
   variables:
     # Use kcov to collect coverage.
-    RUSTFLAGS: -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code
+    RUSTFLAGS: -Clink-dead-code -D warnings
     CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E kcov --verify --exclude-pattern=/usr/lib,/.cargo,patched/ring coverage
   steps:
     - template: ci/azure-install-rust.yml
@@ -66,6 +66,10 @@ jobs:
       displayName: Install kcov
     - script: cargo test --locked --all --features=sudo-tests
       displayName: Run tests
+    - script: |
+        rustup component add clippy &&
+        cargo clippy --all-targets -- -D clippy::all
+      displayName: Run clippy
     - script: cargo test --locked --all --benches
       displayName: Run benches as tests
     - script: |
@@ -80,6 +84,9 @@ jobs:
 
 - job: windows_test
   displayName: Test on Windows
+  variables:
+    # Deny warnings
+    RUSTFLAGS: -D warnings
   pool:
     vmImage: vs2017-win2016
   steps:
@@ -88,6 +95,10 @@ jobs:
         rust_version: beta
     - script: cargo test --locked --all -- --nocapture
       displayName: Run tests
+    - bash: |
+        rustup component add clippy &&
+        cargo clippy --all-targets -- -D clippy::all
+      displayName: Run clippy
     - script: cargo test --benches --locked --all
       displayName: Run benches as tests
 
@@ -133,6 +144,9 @@ jobs:
 
 - job: cross_test_aarch64
   displayName: Cross test for aarch64
+  variables:
+    # Deny warnings
+    RUSTFLAGS: -D warnings
   pool:
     vmImage: ubuntu-16.04
   steps:
@@ -151,6 +165,9 @@ jobs:
 
 - job: cross_check_freebsd
   displayName: Cross check for freebsd
+  variables:
+    # Deny warnings
+    RUSTFLAGS: -D warnings
   pool:
     vmImage: ubuntu-16.04
   steps:
