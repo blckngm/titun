@@ -1,4 +1,4 @@
-// Copyright 2019 Yin Guanhao <sopium@mysterious.site>
+// Copyright 2019 Guanhao Yin <sopium@mysterious.site>
 
 // This file is part of TiTun.
 
@@ -16,12 +16,19 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use criterion::Criterion;
-use titun::wireguard::load_monitor::LoadMonitor;
+use std::net::Ipv4Addr;
+use titun::wireguard::ip_lookup_trie::IpLookupTable;
 
 pub fn register_benches(c: &mut Criterion) {
-    c.bench_function("load monitor check", |b| {
-        let mut u = LoadMonitor::new(100);
+    c.bench_function("timer adjust and activate", |b| {
+        let mut t = IpLookupTable::new();
+        t.insert(Ipv4Addr::new(192, 168, 9, 233), 32, 99);
+        t.insert(Ipv4Addr::new(192, 168, 9, 0), 24, 1);
+        t.insert(Ipv4Addr::new(192, 168, 1, 0), 16, 2);
+        t.insert(Ipv4Addr::new(10, 0, 77, 3), 8, 3);
 
-        b.iter(|| u.check());
+        let a = Ipv4Addr::new(192, 168, 9, 233);
+
+        b.iter(|| t.longest_match(a));
     });
 }

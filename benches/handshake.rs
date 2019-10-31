@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::Criterion;
 use rand::{rngs::OsRng, RngCore};
 use std::collections::BTreeSet;
 use titun::wireguard::handshake::*;
@@ -23,10 +23,7 @@ use titun::wireguard::re_exports::*;
 use titun::wireguard::types::Id;
 use titun::wireguard::*;
 
-criterion_group!(benches, register_benches,);
-criterion_main!(benches);
-
-fn register_benches(c: &mut Criterion) {
+pub fn register_benches(c: &mut Criterion) {
     c.bench_function("handshake init", |b| {
         let k = X25519::genkey();
         let init = WgInfo {

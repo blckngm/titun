@@ -15,16 +15,13 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::Criterion;
 use std::sync::atomic::{AtomicBool, Ordering::*};
 use std::sync::Arc;
 use std::time::Duration;
 use titun::wireguard::timer::create_timer_async;
 
-criterion_group!(benches, register_benches,);
-criterion_main!(benches);
-
-fn register_benches(c: &mut Criterion) {
+pub fn register_benches(c: &mut Criterion) {
     c.bench_function("timer adjust and activate", |b| {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {

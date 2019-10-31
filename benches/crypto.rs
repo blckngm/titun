@@ -15,16 +15,13 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use criterion::{criterion_group, criterion_main, Criterion, Throughput};
+use criterion::{Criterion, Throughput};
 use rand::{rngs::OsRng, RngCore};
 use std::convert::TryInto;
 use titun::crypto;
 use titun::wireguard::re_exports::*;
 
-criterion_group!(benches, register_benches);
-criterion_main!(benches);
-
-fn register_benches(c: &mut Criterion) {
+pub fn register_benches(c: &mut Criterion) {
     c.bench_function("hchacha", |b| {
         let key = hex::decode("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
             .unwrap();

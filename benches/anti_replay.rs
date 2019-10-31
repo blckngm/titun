@@ -15,13 +15,10 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::Criterion;
 use titun::wireguard::anti_replay::AntiReplay;
 
-criterion_group!(benches, register_benches,);
-criterion_main!(benches);
-
-fn register_benches(c: &mut Criterion) {
+pub fn register_benches(c: &mut Criterion) {
     c.bench_function("anti replay sequential", |b| {
         let mut ar = AntiReplay::new();
         let mut seq = 0;

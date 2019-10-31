@@ -1,4 +1,4 @@
-// Copyright 2019 Guanhao Yin <sopium@mysterious.site>
+// Copyright 2019 Yin Guanhao <sopium@mysterious.site>
 
 // This file is part of TiTun.
 
@@ -15,23 +15,23 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use criterion::{criterion_group, criterion_main, Criterion};
-use std::net::Ipv4Addr;
-use titun::wireguard::ip_lookup_trie::IpLookupTable;
+mod anti_replay;
+mod crypto;
+mod handshake;
+mod ip_lookup_trie;
+mod load_monitor;
+mod timer;
 
-criterion_group!(benches, register_benches,);
+use criterion::{criterion_group, criterion_main, Criterion};
+
+criterion_group!(benches, register_benches);
 criterion_main!(benches);
 
 fn register_benches(c: &mut Criterion) {
-    c.bench_function("timer adjust and activate", |b| {
-        let mut t = IpLookupTable::new();
-        t.insert(Ipv4Addr::new(192, 168, 9, 233), 32, 99);
-        t.insert(Ipv4Addr::new(192, 168, 9, 0), 24, 1);
-        t.insert(Ipv4Addr::new(192, 168, 1, 0), 16, 2);
-        t.insert(Ipv4Addr::new(10, 0, 77, 3), 8, 3);
-
-        let a = Ipv4Addr::new(192, 168, 9, 233);
-
-        b.iter(|| t.longest_match(a));
-    });
+    anti_replay::register_benches(c);
+    crypto::register_benches(c);
+    handshake::register_benches(c);
+    ip_lookup_trie::register_benches(c);
+    load_monitor::register_benches(c);
+    timer::register_benches(c);
 }
