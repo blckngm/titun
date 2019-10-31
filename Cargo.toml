@@ -5,6 +5,7 @@ license = "GPL-3.0"
 name = "titun"
 repository = "https://github.com/sopium/titun"
 version = "0.1.0-dev"
+autobenches = false
 
 [workspace]
 exclude = ["patched"]
@@ -19,23 +20,7 @@ path = "src/main.rs"
 bench = false
 
 [[bench]]
-name = "handshake"
-harness = false
-
-[[bench]]
-name = "crypto"
-harness = false
-
-[[bench]]
-name = "timer"
-harness = false
-
-[[bench]]
-name = "anti_replay"
-harness = false
-
-[[bench]]
-name = "load_monitor"
+name = "benches"
 harness = false
 
 [features]

@@ -64,14 +64,12 @@ jobs:
         cd ../..
         rm -rf kcov-master
       displayName: Install kcov
-    - script: cargo test --locked --all --features=sudo-tests
+    - script: cargo test --lib --benches --locked --features=sudo-tests
       displayName: Run tests
     - script: |
         rustup component add clippy &&
         cargo clippy --all-targets -- -D clippy::all
       displayName: Run clippy
-    - script: cargo test --locked --all --benches
-      displayName: Run benches as tests
     - script: |
         set -ex
         cargo build
@@ -93,43 +91,41 @@ jobs:
     - template: ci/azure-install-rust.yml
       parameters:
         rust_version: beta
-    - script: cargo test --locked --all -- --nocapture
+    - script: cargo test --lib --benches --locked
       displayName: Run tests
     - bash: |
         rustup component add clippy &&
         cargo clippy --all-targets -- -D clippy::all
       displayName: Run clippy
-    - script: cargo test --benches --locked --all
-      displayName: Run benches as tests
 
-# TODO: x86 build
-- job: windows_gui
-  displayName: Build Windows GUI Installer
-  pool:
-    vmImage: vs2017-win2016
-  steps:
-    - task: NuGetCommand@2
-      inputs:
-        solution: titun-windows-gui/titun-windows-gui.sln
-        command: restore
-    - task: MSBuild@1
-      inputs:
-        solution: titun-windows-gui/titun-windows-gui.sln
-        configuration: release
-    - template: ci/azure-install-rust.yml
-      parameters:
-        rust_version: beta
-    - script: cargo build --release
-      displayName: Build TiTun
-    - bash: |
-        set -ex
-        cp target/release/titun.exe titun-windows-gui/titun.exe
-        iscc titun-windows-gui/installer/titun.iss
-      displayName: Build Installer
-    - task: PublishBuildArtifacts@1
-      inputs:
-        pathToPublish: titun-windows-gui\installer\Output\titun-setup.exe
-        artifactName: titun-setup.exe
+# # TODO: x86 build
+# - job: windows_gui
+#   displayName: Build Windows GUI Installer
+#   pool:
+#     vmImage: vs2017-win2016
+#   steps:
+#     - task: NuGetCommand@2
+#       inputs:
+#         solution: titun-windows-gui/titun-windows-gui.sln
+#         command: restore
+#     - task: MSBuild@1
+#       inputs:
+#         solution: titun-windows-gui/titun-windows-gui.sln
+#         configuration: release
+#     - template: ci/azure-install-rust.yml
+#       parameters:
+#         rust_version: beta
+#     - script: cargo build --release
+#       displayName: Build TiTun
+#     - bash: |
+#         set -ex
+#         cp target/release/titun.exe titun-windows-gui/titun.exe
+#         iscc titun-windows-gui/installer/titun.iss
+#       displayName: Build Installer
+#     - task: PublishBuildArtifacts@1
+#       inputs:
+#         pathToPublish: titun-windows-gui\installer\Output\titun-setup.exe
+#         artifactName: titun-setup.exe
 
 - job: check_fuzz
   displayName: Check Fuzz
@@ -157,7 +153,7 @@ jobs:
         set -ex
         rustup target add aarch64-unknown-linux-gnu
         sudo apt-get install -yqq gcc-aarch64-linux-gnu qemu-user-static
-        cargo test --target aarch64-unknown-linux-gnu --locked --all
+        cargo test --locked --target aarch64-unknown-linux-gnu
       env:
         CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER: qemu-aarch64-static -L /usr/aarch64-linux-gnu
@@ -177,5 +173,5 @@ jobs:
     - script: |
         set -ex
         rustup target add x86_64-unknown-freebsd
-        cargo check --target x86_64-unknown-freebsd --locked --all --tests
+        cargo check --locked --all-targets --target x86_64-unknown-freebsd
       displayName: Check

@@ -18,24 +18,6 @@
 //! IP longest prefix lookup table (i.e., routing table).
 //!
 //! Implemented as patricia tries.
-//!
-//! ```
-//! # use std::net::Ipv4Addr;
-//! # use titun::wireguard::ip_lookup_trie::*;
-//!
-//! let mut t = IpLookupTable::new();
-//! t.insert(Ipv4Addr::new(0, 0, 0, 0), 0, 0);
-//! t.insert(Ipv4Addr::new(192, 168, 0, 0), 16, 1);
-//! t.insert(Ipv4Addr::new(192, 168, 72, 0), 24, 2);
-//! t.insert(Ipv4Addr::new(10, 0, 0, 0), 8, 33);
-//!
-//! assert_eq!(t.longest_match(Ipv4Addr::new(10, 2, 3, 6)), Some(&33));
-//! assert_eq!(t.longest_match(Ipv4Addr::new(172, 8, 33, 9)), Some(&0));
-//! assert_eq!(t.longest_match(Ipv4Addr::new(192, 168, 72, 39)), Some(&2));
-//!
-//! t.remove(Ipv4Addr::new(0, 0, 0, 0), 0);
-//! assert_eq!(t.longest_match(Ipv4Addr::new(172, 8, 33, 9)), None);
-//! ```
 
 #![deny(missing_debug_implementations, missing_docs)]
 
