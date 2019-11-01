@@ -115,37 +115,22 @@ impl Future for YieldOnce {
     }
 }
 
-#[cfg(windows)]
-pub fn blocking<T>(f: impl FnOnce() -> T) -> impl futures::Future<Output = T> + Unpin {
-    use futures::future::poll_fn;
-    use futures::prelude::*;
-
-    // Hack for FnMut.
-    let mut f = Some(f);
-    poll_fn(move |_cx| {
-        // The closure is not redundant!
-        // https://github.com/rust-lang/rust-clippy/issues/3071
-        #[allow(clippy::redundant_closure)]
-        tokio_executor::threadpool::blocking(|| f.take().unwrap()())
-    })
-    .map(|x| x.unwrap())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn cancellation() {
-        let mut rt = tokio::runtime::current_thread::Runtime::new().unwrap();
+        let mut rt = tokio::runtime::Builder::new()
+            .current_thread()
+            .build()
+            .unwrap();
 
-        rt.spawn(async {
+        rt.block_on(async {
             let scope = AsyncScope::new();
             scope.spawn_async(future::pending());
             scope.spawn_async(future::pending());
             drop(scope);
         });
-
-        rt.run().unwrap();
     }
 }

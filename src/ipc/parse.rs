@@ -255,12 +255,12 @@ pub async fn parse_command_io<R>(stream: R) -> anyhow::Result<Option<WgIpcComman
 where
     R: AsyncRead + Unpin,
 {
-    let codec = tokio::codec::LinesCodec::new_with_max_length(128);
-    let lines = tokio::codec::FramedRead::new(stream, codec).map_err(|e| match e {
-        tokio::codec::LinesCodecError::MaxLineLengthExceeded => {
+    let codec = tokio_util::codec::LinesCodec::new_with_max_length(128);
+    let lines = tokio_util::codec::FramedRead::new(stream, codec).map_err(|e| match e {
+        tokio_util::codec::LinesCodecError::MaxLineLengthExceeded => {
             io::Error::new(io::ErrorKind::Other, "max line length exceeded")
         }
-        tokio::codec::LinesCodecError::Io(e) => e,
+        tokio_util::codec::LinesCodecError::Io(e) => e,
     });
     parse_command(lines).await
 }
@@ -447,12 +447,12 @@ pub async fn parse_get_response_io<R>(stream: R) -> anyhow::Result<Result<WgStat
 where
     R: AsyncRead + Unpin,
 {
-    let codec = tokio::codec::LinesCodec::new_with_max_length(128);
-    let lines = tokio::codec::FramedRead::new(stream, codec).map_err(|e| match e {
-        tokio::codec::LinesCodecError::MaxLineLengthExceeded => {
+    let codec = tokio_util::codec::LinesCodec::new_with_max_length(128);
+    let lines = tokio_util::codec::FramedRead::new(stream, codec).map_err(|e| match e {
+        tokio_util::codec::LinesCodecError::MaxLineLengthExceeded => {
             io::Error::new(io::ErrorKind::Other, "max line length exceeded")
         }
-        tokio::codec::LinesCodecError::Io(e) => e,
+        tokio_util::codec::LinesCodecError::Io(e) => e,
     });
     parse_get_response(lines).await
 }

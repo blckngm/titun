@@ -36,7 +36,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 use tokio::sync::mpsc::*;
-use tokio::timer::delay_for;
+use tokio::time::delay_for;
 
 // Some Constants.
 
@@ -349,7 +349,7 @@ fn udp_process_cookie_reply(wg: &WgState, p: &[u8]) {
         peer.count_recv(p.len());
         if let Some(mac1) = peer.last_mac1 {
             if let Ok(cookie) = process_cookie_reply(&peer.info.public_key, &mac1, p) {
-                peer.cookie = Some((cookie, tokio::clock::now()));
+                peer.cookie = Some((cookie, tokio::time::clock::now()));
             } else {
                 debug!(
                     "{}: Process cookie reply: auth/decryption failed.",

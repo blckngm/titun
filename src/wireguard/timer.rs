@@ -28,9 +28,8 @@ use std::sync::atomic::{AtomicBool, Ordering::*};
 use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
-use tokio::clock::now;
 use tokio::sync::oneshot::{channel, Sender};
-use tokio::timer::{delay_for, Delay};
+use tokio::time::{clock::now, delay_for, Delay};
 
 struct TimerOptions {
     activated: AtomicBool,

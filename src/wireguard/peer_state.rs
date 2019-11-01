@@ -27,7 +27,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use tai64::TAI64N;
-use tokio::timer::delay_for;
+use tokio::time::delay_for;
 
 pub type SharedPeerState = Arc<RwLock<PeerState>>;
 

@@ -35,7 +35,7 @@ base64 = "0.11.0"
 blake2s_simd = "0.5.9"
 env_logger = { version = "0.7.1", default-features = false }
 fnv = "1.0.6"
-futures-preview = "0.3.0-alpha.19"
+futures = "0.3.1"
 hex = "0.4.0"
 log = "0.4.8"
 mio = "0.6.20"
@@ -49,25 +49,24 @@ rand = "0.7.2"
 ring = { path = "patched/ring" }
 structopt = "0.3.5"
 tai64 = "3.1.0"
-tokio-net = { version = "0.2.0-alpha.6", default-features = false, features = ["signal"] }
-tokio-executor = "0.2.0-alpha.6"
 ansi_term = "0.12.1"
 atty = "0.2.13"
 serde = { version = "1.0.103", features = ["derive"] }
 toml = "0.5.5"
 anyhow = "1.0.23"
 num-traits = "0.2.10"
+tokio-util = { git = "https://github.com/tokio-rs/tokio.git" }
 
 [dependencies.tokio]
-version = "0.2.0-alpha.6"
+git = "https://github.com/tokio-rs/tokio.git"
 default-features = false
 features = [
-    "codec",
     "io",
     "rt-full",
-    "timer",
+    "time",
     "uds",
     "process",
+    "signal",
 ]
 
 [target.'cfg(windows)'.dependencies]

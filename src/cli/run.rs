@@ -41,7 +41,7 @@ async fn do_reload(
     config_file_path: std::path::PathBuf,
     wg: &std::sync::Arc<WgState>,
 ) -> anyhow::Result<()> {
-    let new_config = tokio_executor::blocking::run(move || {
+    let new_config = tokio::runtime::blocking::run(move || {
         super::load_config_from_path(&config_file_path, false)
     })
     .await?;
@@ -53,7 +53,7 @@ async fn reload_on_sighup(
     config_file_path: Option<std::path::PathBuf>,
     weak: std::sync::Weak<WgState>,
 ) -> anyhow::Result<()> {
-    use tokio_net::signal::unix::{signal, SignalKind};
+    use tokio::signal::unix::{signal, SignalKind};
     while let Some(_) = signal(SignalKind::hangup())?.next().await {
         if let Some(ref config_file_path) = config_file_path {
             if let Some(wg) = weak.upgrade() {
@@ -73,7 +73,7 @@ pub async fn run(c: Config<SocketAddr>, notify: Option<NotifyHandle>) -> anyhow:
     let scope0 = AsyncScope::new();
 
     scope0.clone().spawn_canceller(async move {
-        let mut ctrl_c = tokio_net::signal::ctrl_c().unwrap();
+        let mut ctrl_c = tokio::signal::ctrl_c().unwrap();
         ctrl_c.next().await;
         info!("Received SIGINT or Ctrl-C, shutting down.");
     });
@@ -102,7 +102,7 @@ pub async fn run(c: Config<SocketAddr>, notify: Option<NotifyHandle>) -> anyhow:
     }
     #[cfg(unix)]
     scope0.clone().spawn_canceller(async move {
-        use tokio_net::signal::unix::{signal, SignalKind};
+        use tokio::signal::unix::{signal, SignalKind};
 
         let mut term = signal(SignalKind::terminate()).unwrap();
         term.next().await;

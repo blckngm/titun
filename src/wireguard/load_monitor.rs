@@ -16,7 +16,7 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use std::time::Instant;
-use tokio::clock::now;
+use tokio::time::clock::now;
 
 /// Monitors the frequency of handshake messages and determine whether
 /// they are arriving too quickly.

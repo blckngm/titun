@@ -19,8 +19,6 @@
 
 //! Tap-windows TUN interfaces support.
 
-use crate::async_utils::blocking;
-
 use std::ffi::{CString, OsStr, OsString};
 use std::fmt;
 use std::io::{self, Error, ErrorKind, Read, Write};
@@ -134,7 +132,7 @@ impl AsyncTun {
     }
 
     pub(crate) async fn write<'a>(&'a self, buf: &'a [u8]) -> io::Result<usize> {
-        blocking(|| self.tun.write(buf)).await
+        tokio::runtime::blocking::in_place(|| self.tun.write(buf))
     }
 }
 
