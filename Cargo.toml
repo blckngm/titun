@@ -55,7 +55,7 @@ ansi_term = "0.12.1"
 atty = "0.2.13"
 serde = { version = "1.0.102", features = ["derive"] }
 toml = "0.5.5"
-anyhow = "1.0.18"
+anyhow = "1.0.19"
 num-traits = "0.2.6"
 
 [dependencies.tokio]
