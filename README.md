@@ -14,16 +14,13 @@ This project is experimental and still under development. Use at your own risk.
 
 ## Build
 
-[Install rust](https://www.rust-lang.org/tools/install)[1], and then
+[Install rust](https://www.rust-lang.org/tools/install), and then
 
 ```
 $ cargo build --release
 ```
 
 to build a `titun` executable in `target/release`.
-
-[1]: You need the beta toolchain. If you use rustup, it should be automatically
-downloaded and installed when you try to build this project.
 
 ## CLI and Configuration
 
