@@ -32,7 +32,7 @@ sudo-tests = []
 [dependencies]
 arrayvec = "0.5.1"
 base64 = "0.11.0"
-blake2s_simd = "0.5.8"
+blake2s_simd = "0.5.9"
 env_logger = { version = "0.7.1", default-features = false }
 fnv = "1.0.6"
 futures-preview = "0.3.0-alpha.19"
