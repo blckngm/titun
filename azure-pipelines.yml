@@ -32,6 +32,20 @@ jobs:
     - script: cargo run --example check-copyright
       displayName: Check copyright headers
 
+# Speed up CI by running clippy in its own jobs.
+- job: clippy
+  displayName: clippy
+  pool:
+    vmImage: ubuntu-16.04
+  steps:
+    - template: ci/azure-install-rust.yml
+      parameters:
+        rust_version: stable
+    - script: |
+        rustup component add clippy &&
+        cargo clippy --all-targets -- -D clippy::all
+      displayName: Run clippy
+
 - job: test
   displayName: Test
   pool:
@@ -67,10 +81,6 @@ jobs:
     - script: cargo test --lib --benches --locked --features=sudo-tests
       displayName: Run tests
     - script: |
-        rustup component add clippy &&
-        cargo clippy --all-targets -- -D clippy::all
-      displayName: Run clippy
-    - script: |
         set -ex
         cargo build
         cd ns-test
@@ -79,6 +89,19 @@ jobs:
       displayName: Run Integration Test
     - script: bash <(curl -s https://codecov.io/bash)
       displayName: Upload code coverage info to codecov.io
+
+- job: windows_clippy
+  displayName: Clippy on Windows
+  pool:
+    vmImage: vs2017-win2016
+  steps:
+    - template: ci/azure-install-rust.yml
+      parameters:
+        rust_version: stable
+    - bash: |
+        rustup component add clippy &&
+        cargo clippy --all-targets -- -D clippy::all
+      displayName: Run clippy
 
 - job: windows_test
   displayName: Test on Windows
@@ -93,10 +116,6 @@ jobs:
         rust_version: stable
     - script: cargo test --lib --benches --locked
       displayName: Run tests
-    - bash: |
-        rustup component add clippy &&
-        cargo clippy --all-targets -- -D clippy::all
-      displayName: Run clippy
 
 # # TODO: x86 build
 # - job: windows_gui
