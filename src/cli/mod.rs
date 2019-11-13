@@ -29,7 +29,7 @@ pub mod transform;
 
 pub use config::*;
 #[doc(hidden)]
-pub use real_main::real_main;
+pub use real_main::*;
 #[cfg(unix)]
 pub use reload::reload;
 pub use run::*;

@@ -235,7 +235,9 @@ impl AsRawHandle for PipeStream {
 
 impl IntoRawHandle for PipeStream {
     fn into_raw_handle(self) -> RawHandle {
-        self.handle.inner
+        let handle = self.handle.inner;
+        std::mem::forget(self);
+        handle
     }
 }
 

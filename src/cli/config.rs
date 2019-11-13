@@ -105,19 +105,6 @@ fn load_config_from_file(
         }
     }
 
-    // Verify that `network.prefix_len` is valid.
-    #[cfg(windows)]
-    {
-        if let Some(ref n) = config.network {
-            if n.prefix_len > 32 {
-                bail!(
-                    "invalid config file: prefix length {} is too large, should be <= 32",
-                    n.prefix_len,
-                );
-            }
-        }
-    }
-
     Ok(config.resolve_addresses(print_warnings)?)
 }
 
@@ -131,9 +118,6 @@ pub struct Config<Endpoint> {
     pub general: GeneralConfig,
 
     pub interface: InterfaceConfig,
-
-    #[cfg(windows)]
-    pub network: Option<NetworkConfig>,
 
     #[serde(default, rename = "Peer")]
     pub peers: Vec<PeerConfig<Endpoint>>,
@@ -151,10 +135,6 @@ pub struct GeneralConfig {
     // Change to this group.
     #[cfg(unix)]
     pub group: Option<String>,
-
-    // Only command line option.
-    #[serde(skip)]
-    pub exit_stdin_eof: bool,
 
     #[serde(skip)]
     pub config_file_path: Option<PathBuf>,
@@ -176,18 +156,9 @@ impl PartialEq<GeneralConfig> for GeneralConfig {
         let ug = true;
         self.log == other.log
             && ug
-            && self.exit_stdin_eof == other.exit_stdin_eof
             && self.foreground == other.foreground
             && self.threads == other.threads
     }
-}
-
-#[cfg(windows)]
-#[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "PascalCase")]
-pub struct NetworkConfig {
-    pub address: std::net::Ipv4Addr,
-    pub prefix_len: u32,
 }
 
 #[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -288,8 +259,6 @@ impl Config<String> {
         }
         Ok(Config {
             general: self.general,
-            #[cfg(windows)]
-            network: self.network,
             interface: self.interface,
             peers,
         })
@@ -469,10 +438,6 @@ ListenPort = 7777
 PrivateKey = "2BJtcgPUjHfKKN3yMvTiVQbJ/UgHj2tcZE6xU/4BdGM="
 FwMark = 33
 
-[Network]
-Address = "192.168.77.0"
-PrefixLen = 24
-
 [[Peer]]
 PublicKey = "Ck8P+fUguLIf17zmb3eWxxS7PqgN3+ciMFBlSwqRaw4="
 PresharedKey = "w64eiHxoUHU8DcFexHWzqILOvbWx9U+dxxh8iQqJr+k="
@@ -526,11 +491,6 @@ Endpoint = "host.no.port.invalid"
                     ),
                     fwmark: Some(33),
                 },
-                #[cfg(windows)]
-                network: Some(NetworkConfig {
-                    address: "192.168.77.0".parse().unwrap(),
-                    prefix_len: 24,
-                }),
                 peers: vec![PeerConfig {
                     public_key: U8Array::from_slice(
                         &base64::decode("Ck8P+fUguLIf17zmb3eWxxS7PqgN3+ciMFBlSwqRaw4=").unwrap()

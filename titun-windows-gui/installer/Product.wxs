@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+	<Product Id="*" Name="TiTun" Language="1033" Version="1.0.0.0" Manufacturer="TiTun" UpgradeCode="1291eefc-5c33-4702-8b9e-1a7ed90c7401">
+		<Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" Platform="x64" />
+
+		<MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+		<MediaTemplate EmbedCab="yes" />
+
+    <UI>
+      <UIRef Id="WixUI_InstallDir"/>
+
+      <!-- Skip license dialog -->
+      <Publish Dialog="WelcomeDlg"
+               Control="Next"
+               Event="NewDialog"
+               Value="InstallDirDlg"
+               Order="2">1</Publish>
+      <Publish Dialog="InstallDirDlg"
+               Control="Back"
+               Event="NewDialog"
+               Value="WelcomeDlg"
+               Order="2">1</Publish>
+    </UI>
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />    
+
+		<Feature Id="ProductFeature" Title="titun-installer" Level="1">
+			<ComponentGroupRef Id="ProductComponents" />
+      <ComponentRef Id="ApplicationShortcutDesktop"/>
+      <ComponentRef Id="ApplicationShortcut"/>
+		</Feature>
+    <Feature Id="WintunFeature" Title="Wintun" Level="1">
+      <MergeRef Id="WintunMergeModule" />
+    </Feature>
+  </Product>
+
+	<Fragment>
+		<Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+				<Directory Id="INSTALLFOLDER" Name="TiTun" />
+			</Directory>
+      <Directory Id="DesktopFolder" Name="Desktop">
+      </Directory>
+      <!--Create application folder in Program Menu-->
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="TiTun" />
+      </Directory>      
+    </Directory>
+	</Fragment>
+
+	<Fragment>
+		<ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Component Win64="yes">
+        <File Source="$(var.titun-windows-gui.TargetPath)"/>
+      </Component>
+      <Component Win64="yes">
+        <File Source="../../target/release/titun.exe"/>
+      </Component>
+      <Component Win64="yes">
+        <File Source="../../wintun.dll"/>
+      </Component>
+    </ComponentGroup>
+	</Fragment>
+
+  <Fragment>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Merge Id="WintunMergeModule" Language="0" DiskId="1" SourceFile="wintun-amd64-0.7.msm" />
+    </DirectoryRef>
+  </Fragment>
+  
+  <Fragment>
+    <DirectoryRef Id="DesktopFolder">
+      <Component Id="ApplicationShortcutDesktop" Guid="*">
+        <Shortcut Id="ApplicationDesktopShortcut"
+            Name="TiTun"
+            Description="TiTun"
+            Target="[INSTALLFOLDER]titun-windows-gui.exe"
+            WorkingDirectory="INSTALLFOLDER"/>
+        <RemoveFolder Id="DesktopFolder" On="uninstall"/>
+        <RegistryValue
+            Root="HKCU"
+            Key="Software/TiTun"
+            Name="installed"
+            Type="integer"
+            Value="1"
+            KeyPath="yes"/>
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+  
+  <Fragment>
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <!--Create application shortcut in Program Menu-->
+      <Component Id="ApplicationShortcut" Guid="*">
+        <Shortcut Id="ApplicationStartMenuShortcut" Name="TiTun" Description="TiTun" Target="[INSTALLFOLDER]titun-windows-gui.exe" WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\TiTun" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>

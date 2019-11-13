@@ -22,24 +22,9 @@ use log::info;
 use rand::{rngs::OsRng, RngCore};
 use std::ffi::OsString;
 use std::io::{stdin, Read};
-#[cfg(windows)]
-use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use structopt::{clap::crate_version, clap::AppSettings, StructOpt};
-
-#[cfg(windows)]
-fn parse_network(network: &str) -> anyhow::Result<(Ipv4Addr, u32)> {
-    let parts: Vec<_> = network.split('/').take(3).collect();
-    if parts.len() != 2 {
-        bail!("Invalid network: {}", network);
-    }
-    let addr: std::net::Ipv4Addr = parts[0].parse()?;
-    let prefix = parts[1].parse()?;
-    if prefix > 32 {
-        bail!("Invalid network: {}", network);
-    }
-    Ok((addr, prefix))
-}
+use tokio::sync::oneshot;
 
 #[derive(StructOpt)]
 #[structopt(rename_all = "kebab")]
@@ -50,17 +35,20 @@ struct Options {
     #[structopt(short, long, help = "Load initial configuration from TOML file")]
     config_file: Option<PathBuf>,
 
+    #[cfg(windows)]
     #[structopt(long, hidden = true, help = "Exit if stdin is closed")]
     exit_stdin_eof: bool,
 
+    // On windows, the program is intended to run as a Windows Service. In that
+    // case, any logs will be discarded if they are simply written to stderr. So
+    // we provide an option to redirect logging to a named pipe.
     #[cfg(windows)]
     #[structopt(
         long,
-        value_name = "IP/PREFIX_LEN",
-        parse(try_from_str = parse_network),
-        help = "Network configuration for the interface",
+        hidden = true,
+        help = "Redirect logging to the specified named pipe"
     )]
-    network: Option<(Ipv4Addr, u32)>,
+    log_pipe: Option<PathBuf>,
 
     #[structopt(long, help = "Set logging (env_logger)", env = "RUST_LOG")]
     log: Option<String>,
@@ -90,15 +78,37 @@ struct Options {
 }
 
 impl Options {
-    fn run(self, version: &str) -> anyhow::Result<()> {
+    fn run(self, version: &str, stop_rx: Option<oneshot::Receiver<()>>) -> anyhow::Result<()> {
         let options = self;
+
+        // Too bad env_logger does not support logging to a file.
+        //
+        // We redirect stderr to the file with SetStdHandle.
+        #[cfg(windows)]
+        {
+            if let Some(ref log_pipe) = options.log_pipe {
+                use crate::ipc::windows_named_pipe::PipeStream;
+                use std::io;
+                use std::os::windows::io::IntoRawHandle;
+                use winapi::um::processenv::*;
+                use winapi::um::winbase::*;
+
+                let pipe = PipeStream::connect(log_pipe).context("connect to log_pipe")?;
+
+                let h = pipe.into_raw_handle();
+
+                if unsafe { SetStdHandle(STD_ERROR_HANDLE, h) } == 0 {
+                    return Err(io::Error::last_os_error())
+                        .context("SetStdHandle")
+                        .context("redirecting logging");
+                };
+            }
+        }
 
         let mut config = if let Some(ref p) = options.config_file {
             cli::load_config_from_path(&p, true)?
         } else {
             cli::Config {
-                #[cfg(windows)]
-                network: None,
                 general: Default::default(),
                 interface: cli::InterfaceConfig {
                     name: None,
@@ -132,30 +142,19 @@ impl Options {
             .or_else(|| config.general.log.as_ref().map(|x| x.as_str()))
             .unwrap_or("warn");
         std::env::set_var("RUST_LOG", log);
-        env_logger::init();
-
-        if options.exit_stdin_eof {
-            config.general.exit_stdin_eof = options.exit_stdin_eof;
+        let mut builder = env_logger::Builder::from_default_env();
+        if cfg!(windows) {
+            builder.format_timestamp_millis();
+        } else {
+            builder.format_timestamp(None);
         }
+        builder.init();
 
         if options.dev.is_some() {
             config.interface.name = options.dev;
         }
         if config.interface.name.is_none() {
             bail!("interface name is never specified\nSpecify a interface name via command line arg or in config file in `Interface.Name`.");
-        }
-
-        #[cfg(windows)]
-        {
-            if let Some((address, prefix_len)) = options.network {
-                config.network = Some(cli::NetworkConfig {
-                    address,
-                    prefix_len,
-                });
-            }
-            if config.network.is_none() {
-                bail!("network is never specified\nSpecify a network via command line options --network or in configuration file in `Netowrk`.");
-            }
         }
 
         let threads = options
@@ -181,13 +180,13 @@ impl Options {
                 .threaded_scheduler()
                 .num_threads(threads)
                 .build()?;
-            rt.block_on(cli::run(config, notify))
+            rt.block_on(cli::run(config, notify, stop_rx))
         } else {
             let mut rt = tokio::runtime::Builder::new()
                 .enable_all()
                 .basic_scheduler()
                 .build()?;
-            rt.block_on(cli::run(config, notify))
+            rt.block_on(cli::run(config, notify, stop_rx))
         }
     }
 }
@@ -294,7 +293,95 @@ impl Cmd {
     }
 }
 
-pub fn real_main() -> anyhow::Result<()> {
+#[cfg(windows)]
+pub struct WindowsServiceArgs {
+    pub interface_name: OsString,
+    pub exit_stdin_eof: bool,
+    pub args: Vec<OsString>,
+}
+
+/// Validate command line arguments and config file, get interface name and args
+/// to re-run as windows service. Also initiate logger for this process.
+#[cfg(windows)]
+pub fn windows_service_args() -> anyhow::Result<Option<WindowsServiceArgs>> {
+    let version = if !env!("GIT_HASH").is_empty() {
+        concat!(crate_version!(), "-", env!("GIT_HASH"))
+    } else {
+        crate_version!()
+    };
+
+    let matches = Options::clap()
+        .about(include_str!("copyright.txt"))
+        .version(version)
+        .setting(AppSettings::UnifiedHelpMessage)
+        .setting(AppSettings::DeriveDisplayOrder)
+        .setting(AppSettings::VersionlessSubcommands)
+        .setting(AppSettings::SubcommandsNegateReqs)
+        .setting(AppSettings::ArgsNegateSubcommands)
+        .get_matches();
+
+    if matches.subcommand_name().is_none() {
+        let options = Options::from_clap(&matches);
+
+        let config = if let Some(ref p) = options.config_file {
+            cli::load_config_from_path(&p, true)?
+        } else {
+            cli::Config {
+                general: Default::default(),
+                interface: cli::InterfaceConfig {
+                    name: None,
+                    private_key: X25519::genkey(),
+                    fwmark: None,
+                    listen_port: None,
+                },
+                peers: Vec::new(),
+            }
+        };
+
+        let interface_name = options.dev.clone().or(config.interface.name).ok_or_else(||
+            anyhow::anyhow!("interface name is never specified\nSpecify a interface name via command line arg or in config file in `Interface.Name`.")
+        )?;
+
+        let mut args: Vec<OsString> = Vec::new();
+        if let Some(config_file) = options.config_file {
+            args.push("-c".into());
+            args.push(config_file.into());
+        }
+
+        let log = options
+            .log
+            .clone()
+            .or(config.general.log)
+            .unwrap_or_else(|| "warn".into());
+        std::env::set_var("RUST_LOG", log);
+        let mut builder = env_logger::Builder::from_default_env();
+        builder.format_timestamp_millis();
+        builder.init();
+
+        if let Some(log) = options.log {
+            args.push("--log".into());
+            args.push(log.into())
+        }
+
+        if let Some(threads) = options.threads {
+            args.push(format!("--threads={}", threads).into());
+        }
+
+        if let Some(dev) = options.dev {
+            args.push(dev);
+        }
+
+        Ok(Some(WindowsServiceArgs {
+            interface_name,
+            exit_stdin_eof: options.exit_stdin_eof,
+            args,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+pub fn real_main(stop_rx: Option<oneshot::Receiver<()>>) -> anyhow::Result<()> {
     let default_panic_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
         default_panic_hook(panic_info);
@@ -319,7 +406,7 @@ pub fn real_main() -> anyhow::Result<()> {
 
     if matches.subcommand_name().is_none() {
         let options = Options::from_clap(&matches);
-        options.run(version)?;
+        options.run(version, stop_rx)?;
     } else {
         let cmd = Cmd::from_clap(&matches);
         let mut rt = tokio::runtime::Builder::new()
