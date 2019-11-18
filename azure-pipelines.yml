@@ -171,6 +171,7 @@ jobs:
     - script: |
         set -ex
         rustup target add aarch64-unknown-linux-gnu
+        sudo apt-get update
         sudo apt-get install -yqq gcc-aarch64-linux-gnu qemu-user-static
         cargo test --locked --target aarch64-unknown-linux-gnu
       env:
