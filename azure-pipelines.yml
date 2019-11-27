@@ -53,7 +53,8 @@ jobs:
   variables:
     # Use kcov to collect coverage.
     RUSTFLAGS: -Clink-dead-code -D warnings
-    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E kcov --verify --include-pattern=titun/src coverage
+    # CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E kcov --verify --include-pattern=titun/src coverage
+    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E
   steps:
     - template: ci/azure-install-rust.yml
       parameters:
@@ -64,20 +65,20 @@ jobs:
         sudo apt-get update
         sudo apt-get install -yqq wireguard-dkms wireguard-tools
       displayName: Install WireGuard DKMS and Tools
-    - script: |
-        set -ex
-        sudo apt-get install -yqq libcurl4-openssl-dev libelf-dev libdw-dev cmake gcc binutils-dev libiberty-dev
-        wget https://github.com/SimonKagstrom/kcov/archive/master.tar.gz
-        tar xzf master.tar.gz
-        cd kcov-master
-        mkdir build
-        cd build
-        cmake ..
-        make
-        sudo make install
-        cd ../..
-        rm -rf kcov-master
-      displayName: Install kcov
+    # - script: |
+    #     set -ex
+    #     sudo apt-get install -yqq libcurl4-openssl-dev libelf-dev libdw-dev cmake gcc binutils-dev libiberty-dev
+    #     wget https://github.com/SimonKagstrom/kcov/archive/master.tar.gz
+    #     tar xzf master.tar.gz
+    #     cd kcov-master
+    #     mkdir build
+    #     cd build
+    #     cmake ..
+    #     make
+    #     sudo make install
+    #     cd ../..
+    #     rm -rf kcov-master
+    #   displayName: Install kcov
     - script: cargo test --lib --benches --locked --features=sudo-tests
       displayName: Run tests
     - script: |
@@ -87,8 +88,8 @@ jobs:
         sudo ./integration-test.sh
         sudo ./interop-test.sh
       displayName: Run Integration Test
-    - script: bash <(curl -s https://codecov.io/bash)
-      displayName: Upload code coverage info to codecov.io
+    # - script: bash <(curl -s https://codecov.io/bash)
+    #   displayName: Upload code coverage info to codecov.io
 
 - job: windows_clippy
   displayName: Clippy on Windows
