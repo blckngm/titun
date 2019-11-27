@@ -55,18 +55,22 @@ serde = { version = "1.0.103", features = ["derive"] }
 toml = "0.5.5"
 anyhow = "1.0.23"
 num-traits = "0.2.10"
-tokio-util = { git = "https://github.com/tokio-rs/tokio.git" }
+tokio-util = { version = "0.2.0", features = ["codec"] }
 
 [dependencies.tokio]
-git = "https://github.com/tokio-rs/tokio.git"
-default-features = false
+version = "0.2.1"
 features = [
-    "io",
-    "rt-full",
+    "io-driver",
+    "io-util",
+    "rt-threaded",
+    "blocking",
     "time",
+    "udp",
     "uds",
+    "sync",
     "process",
     "signal",
+    "macros",
 ]
 
 [target.'cfg(windows)'.dependencies]

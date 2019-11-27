@@ -15,7 +15,6 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::async_utils::yield_once;
 use crate::udp_socket::*;
 use crate::wireguard::re_exports::{DH, X25519};
 use crate::wireguard::*;
@@ -34,8 +33,9 @@ use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc::*;
+use tokio::task::yield_now;
 use tokio::time::delay_for;
 
 // Some Constants.
@@ -349,7 +349,7 @@ fn udp_process_cookie_reply(wg: &WgState, p: &[u8]) {
         peer.count_recv(p.len());
         if let Some(mac1) = peer.last_mac1 {
             if let Ok(cookie) = process_cookie_reply(&peer.info.public_key, &mac1, p) {
-                peer.cookie = Some((cookie, tokio::time::clock::now()));
+                peer.cookie = Some((cookie, Instant::now()));
             } else {
                 debug!(
                     "{}: Process cookie reply: auth/decryption failed.",
@@ -449,7 +449,9 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
                 let socket = wg.socket.lock().clone();
                 let recv = socket.recv_from(&mut p);
                 pin_mut!(recv);
-                match select(recv, receiver.next()).await {
+                let recv_socket = receiver.recv();
+                pin_mut!(recv_socket);
+                match select(recv, recv_socket).await {
                     Either::Left((recv_result, _)) => recv_result.unwrap(),
                     Either::Right((socket, _)) => {
                         if let Some(socket) = socket {
@@ -484,7 +486,7 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
                 _ => (),
             }
         }
-        yield_once().await;
+        yield_now().await;
     }
 }
 
@@ -602,7 +604,7 @@ async fn tun_packet_processing(wg: Arc<WgState>) -> anyhow::Result<()> {
                 do_handshake(&wg, &peer0);
             }
         }
-        yield_once().await;
+        yield_now().await;
     }
 }
 
@@ -845,7 +847,10 @@ impl WgState {
         // XXX: possible race condition between this and `run`.
         let sender = self.socket_sender.lock().as_ref().cloned();
         if let Some(mut sender) = sender {
-            sender.send(new_socket).await.unwrap();
+            sender
+                .send(new_socket)
+                .await
+                .unwrap_or_else(|e| panic!("failed to send socket: {}", e));
         } else {
             *self.socket.lock() = new_socket.into();
         }
@@ -1092,7 +1097,7 @@ mod tests {
         state.set_port(0).await?;
 
         // `set_port` should fail if the port is in use.
-        let socket = tokio::net::UdpSocket::bind("[::]:0").await?;
+        let socket = tokio::net::UdpSocket::bind((Ipv6Addr::UNSPECIFIED, 0)).await?;
         let in_use_port = socket.local_addr()?.port();
 
         assert!(state.set_port(in_use_port).await.is_err());

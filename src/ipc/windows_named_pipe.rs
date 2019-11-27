@@ -27,7 +27,6 @@
 
 #![cfg(windows)]
 
-use futures::StreamExt;
 use std::borrow::Cow;
 use std::ffi::OsString;
 use std::io::{self, Read, Write};
@@ -72,7 +71,7 @@ impl AsyncPipeListener {
     }
 
     pub async fn accept(&mut self) -> io::Result<PipeStream> {
-        self.rx.next().await.unwrap()
+        self.rx.recv().await.unwrap()
     }
 }
 
@@ -196,7 +195,7 @@ impl AsyncRead for PipeStream {
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
         // TODO: use dedicated thread and channel.
-        tokio::runtime::blocking::in_place(|| self.read(buf)).into()
+        tokio::task::block_in_place(|| self.read(buf)).into()
     }
 }
 
@@ -206,7 +205,7 @@ impl AsyncWrite for PipeStream {
         _cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        tokio::runtime::blocking::in_place(|| self.write(buf)).into()
+        tokio::task::block_in_place(|| self.write(buf)).into()
     }
 
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {

@@ -77,7 +77,7 @@ impl Transport {
             not_too_old: AtomicBool::new(true),
             send_key: sk,
             recv_key: rk,
-            created: tokio::time::clock::now(),
+            created: Instant::now(),
             recv_ar: Mutex::new(AntiReplay::new()),
             send_counter: AtomicU64::new(0),
             scope: AsyncScope::new(),

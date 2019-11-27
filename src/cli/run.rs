@@ -22,7 +22,6 @@ use crate::cli::Config;
 use crate::ipc::ipc_server;
 use crate::wireguard::*;
 use anyhow::Context;
-use futures::prelude::*;
 use std::net::SocketAddr;
 
 #[cfg(not(unix))]
@@ -41,10 +40,10 @@ async fn do_reload(
     config_file_path: std::path::PathBuf,
     wg: &std::sync::Arc<WgState>,
 ) -> anyhow::Result<()> {
-    let new_config = tokio::runtime::blocking::run(move || {
-        super::load_config_from_path(&config_file_path, false)
-    })
-    .await?;
+    let new_config =
+        tokio::task::spawn_blocking(move || super::load_config_from_path(&config_file_path, false))
+            .await
+            .expect("join load_config_from_path")?;
     crate::cli::reload(wg, new_config).await
 }
 
@@ -54,7 +53,7 @@ async fn reload_on_sighup(
     weak: std::sync::Weak<WgState>,
 ) -> anyhow::Result<()> {
     use tokio::signal::unix::{signal, SignalKind};
-    while let Some(_) = signal(SignalKind::hangup())?.next().await {
+    while let Some(_) = signal(SignalKind::hangup())?.recv().await {
         if let Some(ref config_file_path) = config_file_path {
             if let Some(wg) = weak.upgrade() {
                 info!("reloading");
@@ -73,8 +72,9 @@ pub async fn run(c: Config<SocketAddr>, notify: Option<NotifyHandle>) -> anyhow:
     let scope0 = AsyncScope::new();
 
     scope0.clone().spawn_canceller(async move {
-        let mut ctrl_c = tokio::signal::ctrl_c().unwrap();
-        ctrl_c.next().await;
+        tokio::signal::ctrl_c()
+            .await
+            .unwrap_or_else(|e| warn!("ctrl_c failed: {}", e));
         info!("Received SIGINT or Ctrl-C, shutting down.");
     });
 
@@ -105,7 +105,7 @@ pub async fn run(c: Config<SocketAddr>, notify: Option<NotifyHandle>) -> anyhow:
         use tokio::signal::unix::{signal, SignalKind};
 
         let mut term = signal(SignalKind::terminate()).unwrap();
-        term.next().await;
+        term.recv().await;
         info!("Received SIGTERM, shutting down.");
     });
 

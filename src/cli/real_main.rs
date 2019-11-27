@@ -177,12 +177,11 @@ impl Options {
         // must use the threadpool runtime.
         if threads > 1 || cfg!(windows) {
             let mut rt = tokio::runtime::Builder::new()
-                .thread_pool()
                 .num_threads(threads)
                 .build()?;
             rt.block_on(cli::run(config, notify))
         } else {
-            let mut rt = tokio::runtime::Builder::new().current_thread().build()?;
+            let mut rt = tokio::runtime::Builder::new().basic_scheduler().build()?;
             rt.block_on(cli::run(config, notify))
         }
     }
@@ -318,7 +317,7 @@ pub fn real_main() -> anyhow::Result<()> {
         options.run(version)?;
     } else {
         let cmd = Cmd::from_clap(&matches);
-        let mut rt = tokio::runtime::Builder::new().current_thread().build()?;
+        let mut rt = tokio::runtime::Builder::new().basic_scheduler().build()?;
         rt.block_on(cmd.run())?;
     }
 

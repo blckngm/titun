@@ -34,7 +34,7 @@ use std::mem;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
 use std::task::{Context, Poll};
-use tokio::net::util::PollEvented;
+use tokio::io::PollEvented;
 
 mod ffi {
     use nix::libc;
@@ -317,8 +317,8 @@ impl Evented for Tun {
 mod tests {
     use super::*;
     use std::time::Duration;
-    use tokio::future::FutureExt;
     use tokio::process::Command;
+    use tokio::time::timeout;
 
     const SELF_IP: &str = "10.33.178.2";
     const PEER_IP: &str = "10.33.178.1";
@@ -355,14 +355,14 @@ mod tests {
 
         let mut buf = [0u8; 2048];
 
-        async {
+        let read = async {
             for _ in 0..5 {
                 t.read(&mut buf).await?;
             }
             Ok(()) as anyhow::Result<_>
-        }
-            .timeout(Duration::from_secs(2))
-            .await??;
+        };
+        timeout(Duration::from_secs(5), read).await??;
+
         Ok(())
     }
 
