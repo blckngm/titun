@@ -76,7 +76,7 @@ pub async fn wait_delete(p: &Path, ready: Sender<()>) -> anyhow::Result<()> {
     inotify.add_watch(parent_dir, WatchMask::DELETE)?;
     let _ = ready.send(());
     let buf = vec![0u8; 1024];
-    let mut stream = inotify.event_stream(buf);
+    let mut stream = inotify.event_stream(buf)?;
     loop {
         let event = stream.next().await.unwrap()?;
         if event.mask == EventMask::DELETE && event.name.as_ref() == Some(&file_name) {

@@ -173,16 +173,20 @@ impl Options {
         };
         #[cfg(not(unix))]
         let notify = None;
-        // On windows we make use `tokio_executor::threadpool::blocking`, so it
+        // On windows we make use `tokio::executor::threadpool::blocking`, so it
         // must use the threadpool runtime.
         if threads > 1 || cfg!(windows) {
-            let rt = tokio::runtime::Builder::new()
-                .core_threads(threads)
-                .panic_handler(|e| std::panic::resume_unwind(e))
+            let mut rt = tokio::runtime::Builder::new()
+                .enable_all()
+                .threaded_scheduler()
+                .num_threads(threads)
                 .build()?;
             rt.block_on(cli::run(config, notify))
         } else {
-            let mut rt = tokio::runtime::current_thread::Runtime::new()?;
+            let mut rt = tokio::runtime::Builder::new()
+                .enable_all()
+                .basic_scheduler()
+                .build()?;
             rt.block_on(cli::run(config, notify))
         }
     }
@@ -318,7 +322,10 @@ pub fn real_main() -> anyhow::Result<()> {
         options.run(version)?;
     } else {
         let cmd = Cmd::from_clap(&matches);
-        let mut rt = tokio::runtime::current_thread::Runtime::new()?;
+        let mut rt = tokio::runtime::Builder::new()
+            .enable_all()
+            .basic_scheduler()
+            .build()?;
         rt.block_on(cmd.run())?;
     }
 

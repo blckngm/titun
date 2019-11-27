@@ -11,7 +11,8 @@ clean_up() {
 }
 trap clean_up EXIT
 
-KCOV_TITUN='kcov --verify --exclude-pattern=/usr/include,/lib,/usr/lib,/.cargo,patched/ring ../coverage/$(dd if=/dev/urandom of=/dev/stdout bs=6 count=1 2>/dev/null | base64 | tr / _) ../target/debug/titun'
+# KCOV_TITUN='kcov --verify --exclude-pattern=/usr/include,/lib,/usr/lib,/.cargo,patched/ring ../coverage/$(dd if=/dev/urandom of=/dev/stdout bs=6 count=1 2>/dev/null | base64 | tr / _) ../target/debug/titun'
+KCOV_TITUN=../target/debug/titun
 
 # Setup.
 

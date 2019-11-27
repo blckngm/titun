@@ -19,8 +19,6 @@
 
 //! Tap-windows TUN interfaces support.
 
-use crate::async_utils::blocking;
-
 use std::ffi::{CString, OsStr, OsString};
 use std::fmt;
 use std::io::{self, Error, ErrorKind, Read, Write};
@@ -30,7 +28,6 @@ use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::ptr::null_mut;
 use std::sync::Arc;
 
-use futures::prelude::*;
 use parking_lot::Mutex;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::Mutex as AsyncMutex;
@@ -90,7 +87,7 @@ impl AsyncTun {
             move || {
                 futures::executor::block_on(async move {
                     'outer: loop {
-                        let mut buf = match buffer_rx.next().await {
+                        let mut buf = match buffer_rx.recv().await {
                             None => break,
                             Some(buf) => buf,
                         };
@@ -126,7 +123,7 @@ impl AsyncTun {
 
         let mut channels = self.channels.lock().await;
 
-        let (p, p_len) = channels.read_rx.next().await.unwrap()?;
+        let (p, p_len) = channels.read_rx.recv().await.unwrap()?;
         let len = std::cmp::min(p_len, buf.len());
         buf[..len].copy_from_slice(&p[..len]);
         channels.buffer_tx.send(p).await.unwrap();
@@ -134,7 +131,7 @@ impl AsyncTun {
     }
 
     pub(crate) async fn write<'a>(&'a self, buf: &'a [u8]) -> io::Result<usize> {
-        blocking(|| self.tun.write(buf)).await
+        tokio::task::block_in_place(|| self.tun.write(buf))
     }
 }
 

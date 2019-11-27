@@ -24,7 +24,7 @@ use std::convert::TryInto;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::timer::delay_for;
+use tokio::time::delay_for;
 
 // That is, 2 ^ 64 - 2 ^ 16 - 1;
 const REKEY_AFTER_MESSAGES: u64 = 0xffff_ffff_fffe_ffff;
@@ -77,7 +77,7 @@ impl Transport {
             not_too_old: AtomicBool::new(true),
             send_key: sk,
             recv_key: rk,
-            created: tokio::clock::now(),
+            created: Instant::now(),
             recv_ar: Mutex::new(AntiReplay::new()),
             send_counter: AtomicU64::new(0),
             scope: AsyncScope::new(),

@@ -10,8 +10,8 @@ edition = "2018"
 cargo-fuzz = true
 
 [dependencies]
-futures-preview = "0.3.0-alpha.19"
-toml = "0.5.3"
+futures = "0.3.1"
+toml = "0.5.5"
 
 [dependencies.titun]
 path = ".."

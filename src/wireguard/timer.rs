@@ -28,9 +28,8 @@ use std::sync::atomic::{AtomicBool, Ordering::*};
 use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
-use tokio::clock::now;
 use tokio::sync::oneshot::{channel, Sender};
-use tokio::timer::{delay_for, Delay};
+use tokio::time::{delay_for, Delay, Instant};
 
 struct TimerOptions {
     activated: AtomicBool,
@@ -63,7 +62,7 @@ where
                 let mut delay = options.delay.lock();
                 ready!(delay.poll_unpin(cx));
                 // Reset delay to get notified again.
-                delay.reset(now() + Duration::from_secs(600));
+                delay.reset(Instant::now() + Duration::from_secs(600));
                 match delay.poll_unpin(cx) {
                     Poll::Pending => (),
                     _ => unreachable!(),
@@ -91,7 +90,7 @@ impl TimerHandle {
     /// Reset the timer to some timer later.
     pub fn adjust_and_activate(&self, delay: Duration) {
         let mut d = self.options.delay.lock();
-        d.reset(now() + delay);
+        d.reset(Instant::now() + delay);
         self.options.activated.store(true, SeqCst);
     }
 
@@ -115,8 +114,8 @@ impl TimerHandle {
 mod tests {
     use super::*;
     use std::time::Duration;
-    use tokio::future::FutureExt;
     use tokio::sync::mpsc::channel;
+    use tokio::time::timeout;
 
     #[tokio::test]
     async fn smoke() {
@@ -129,7 +128,7 @@ mod tests {
         });
 
         t.adjust_and_activate(Duration::from_millis(10));
-        rx.next().await.unwrap();
+        rx.recv().await.unwrap();
     }
 
     #[tokio::test]
@@ -145,23 +144,25 @@ mod tests {
             })
         };
 
-        let t0 = now();
+        let t0 = Instant::now();
         t.adjust_and_activate(Duration::from_millis(10));
         t.adjust_and_activate(Duration::from_millis(100));
-        rx.next().await.unwrap();
+        rx.recv().await.unwrap();
         assert!(t0.elapsed() >= Duration::from_millis(90));
 
         t.adjust_and_activate(Duration::from_millis(10));
         t.de_activate();
 
-        assert!(rx.next().timeout(Duration::from_millis(20)).await.is_err());
+        assert!(timeout(Duration::from_millis(20), rx.recv()).await.is_err());
 
         t.adjust_and_activate(Duration::from_millis(10));
         t.de_activate();
         t.adjust_and_activate(Duration::from_millis(15));
 
-        rx.next().await.unwrap();
+        rx.recv().await.unwrap();
 
-        assert!(rx.next().timeout(Duration::from_millis(100)).await.is_err());
+        assert!(timeout(Duration::from_millis(100), rx.recv())
+            .await
+            .is_err());
     }
 }

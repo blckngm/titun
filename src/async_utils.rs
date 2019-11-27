@@ -23,7 +23,6 @@ use pin_utils::pin_mut;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 use tokio::sync::oneshot::*;
 
 /// Manage a group of tasks.
@@ -92,60 +91,22 @@ impl AsyncScope {
     }
 }
 
-/// Returns a future that yields, allow other tasks to execute. Like `sched_yield` but for async code.
-pub fn yield_once() -> YieldOnce {
-    YieldOnce { pending: true }
-}
-
-pub struct YieldOnce {
-    pending: bool,
-}
-
-impl Future for YieldOnce {
-    type Output = ();
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-        if self.pending {
-            self.pending = false;
-            cx.waker().wake_by_ref();
-            Poll::Pending
-        } else {
-            Poll::Ready(())
-        }
-    }
-}
-
-#[cfg(windows)]
-pub fn blocking<T>(f: impl FnOnce() -> T) -> impl futures::Future<Output = T> + Unpin {
-    use futures::future::poll_fn;
-    use futures::prelude::*;
-
-    // Hack for FnMut.
-    let mut f = Some(f);
-    poll_fn(move |_cx| {
-        // The closure is not redundant!
-        // https://github.com/rust-lang/rust-clippy/issues/3071
-        #[allow(clippy::redundant_closure)]
-        tokio_executor::threadpool::blocking(|| f.take().unwrap()())
-    })
-    .map(|x| x.unwrap())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn cancellation() {
-        let mut rt = tokio::runtime::current_thread::Runtime::new().unwrap();
+        let mut rt = tokio::runtime::Builder::new()
+            .basic_scheduler()
+            .build()
+            .unwrap();
 
-        rt.spawn(async {
+        rt.block_on(async {
             let scope = AsyncScope::new();
             scope.spawn_async(future::pending());
             scope.spawn_async(future::pending());
             drop(scope);
         });
-
-        rt.run().unwrap();
     }
 }

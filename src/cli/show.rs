@@ -22,9 +22,9 @@ use base64;
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
 use std::time::Duration;
-use tokio::future::FutureExt;
 use tokio::io::AsyncWriteExt;
-use tokio::net::unix::UnixStream;
+use tokio::net::UnixStream;
+use tokio::time::timeout;
 
 pub async fn show(interfaces: Vec<OsString>) -> anyhow::Result<()> {
     let mut is_first = true;
@@ -39,37 +39,38 @@ pub async fn show(interfaces: Vec<OsString>) -> anyhow::Result<()> {
                 continue;
             }
             let dev_name = path.file_stem().unwrap();
-            let print_anything = get_and_print_status(dev_name, is_first)
-                .timeout(Duration::from_secs(3))
-                .await
-                .unwrap_or_else(|e| Err(e.into()))
-                .map(|_| true)
-                .unwrap_or_else(|e| {
-                    if let Some(io_error) = e.root_cause().downcast_ref::<std::io::Error>() {
-                        if io_error.kind() == std::io::ErrorKind::ConnectionRefused {
-                            // Ignore connection refused errors.
-                            return false;
-                        }
+            let print_anything = timeout(
+                Duration::from_secs(3),
+                get_and_print_status(dev_name, is_first),
+            )
+            .await
+            .unwrap_or_else(|e| Err(e.into()))
+            .map(|_| true)
+            .unwrap_or_else(|e| {
+                if let Some(io_error) = e.root_cause().downcast_ref::<std::io::Error>() {
+                    if io_error.kind() == std::io::ErrorKind::ConnectionRefused {
+                        // Ignore connection refused errors.
+                        return false;
                     }
+                }
 
-                    if !is_first {
-                        println!();
-                    }
-                    eprintln!(
-                        "Failed to get status of {}: {}",
-                        dev_name.to_string_lossy(),
-                        e
-                    );
-                    true
-                });
+                if !is_first {
+                    println!();
+                }
+                eprintln!(
+                    "Failed to get status of {}: {}",
+                    dev_name.to_string_lossy(),
+                    e
+                );
+                true
+            });
             if print_anything {
                 is_first = false;
             }
         }
     } else {
         for d in &interfaces {
-            get_and_print_status(d, is_first)
-                .timeout(Duration::from_secs(3))
+            timeout(Duration::from_secs(3), get_and_print_status(d, is_first))
                 .await
                 .unwrap_or_else(|e| Err(e.into()))
                 .unwrap_or_else(|e| {

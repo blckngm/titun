@@ -23,8 +23,8 @@ use std::net::SocketAddr;
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
 use std::task::{Context, Poll};
+use tokio::io::PollEvented;
 use tokio::sync::Mutex;
-use tokio_net::util::PollEvented;
 
 /// Like tokio UdpSocket, but can be used from multiple tasks concurrently.
 pub struct UdpSocket {
@@ -36,7 +36,7 @@ pub struct UdpSocket {
 impl UdpSocket {
     pub fn from_std(socket: std::net::UdpSocket) -> io::Result<UdpSocket> {
         socket.set_nonblocking(true)?;
-        let socket = PollEvented::new(MioUdpSocket::from_socket(socket)?);
+        let socket = PollEvented::new(MioUdpSocket::from_socket(socket)?)?;
         Ok(UdpSocket {
             socket,
             send_lock: Mutex::new(()),

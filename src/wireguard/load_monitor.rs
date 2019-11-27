@@ -15,8 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use std::time::Instant;
-use tokio::clock::now;
+use tokio::time::Instant;
 
 /// Monitors the frequency of handshake messages and determine whether
 /// they are arriving too quickly.
@@ -45,7 +44,7 @@ impl LoadMonitor {
         LoadMonitor {
             freq,
             bucket: CAP_RATIO * u64::from(freq) * NANOS_PER_SEC,
-            last_check: now(),
+            last_check: Instant::now(),
             under_load: false,
         }
     }
@@ -57,7 +56,7 @@ impl LoadMonitor {
         let freq = u64::from(self.freq);
         let cap = CAP_RATIO * freq * NANOS_PER_SEC;
 
-        let now = now();
+        let now = Instant::now();
         let passed = now.duration_since(self.last_check);
         let bucket_add =
             (passed.as_secs() * freq * NANOS_PER_SEC) + u64::from(passed.subsec_nanos()) * freq;
