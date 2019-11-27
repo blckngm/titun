@@ -53,7 +53,7 @@ jobs:
   variables:
     # Use kcov to collect coverage.
     RUSTFLAGS: -Clink-dead-code -D warnings
-    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E kcov --verify --exclude-pattern=/usr/lib,/.cargo,patched/ring coverage
+    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E kcov --verify --include-pattern=titun/src coverage
   steps:
     - template: ci/azure-install-rust.yml
       parameters:
