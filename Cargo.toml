@@ -58,7 +58,7 @@ num-traits = "0.2.10"
 tokio-util = { version = "0.2.0", features = ["codec"] }
 
 [dependencies.tokio]
-version = "0.2.1"
+version = "0.2.2"
 features = [
     "io-driver",
     "io-util",
