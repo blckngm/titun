@@ -81,7 +81,7 @@ winreg = "0.6.2"
 privdrop = "0.3.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-inotify = { git = "https://github.com/inotify-rs/inotify.git" }
+inotify = "0.8.0"
 
 [dev-dependencies]
 criterion = "0.3.0"
@@ -90,7 +90,7 @@ quickcheck = "0.9.0"
 quickcheck_macros = "0.8.0"
 
 [build-dependencies]
-cc = "1.0.47"
+cc = "1.0.48"
 
 [profile.release]
 lto = true
