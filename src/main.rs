@@ -17,8 +17,246 @@
 
 use titun::cli::real_main;
 
+#[cfg(windows)]
 fn main() {
-    real_main().unwrap_or_else(|e| {
+    use std::ffi::OsString;
+    use std::path::PathBuf;
+
+    use titun::cli::windows_service_args;
+    use titun::ipc::windows_named_pipe::*;
+
+    use anyhow::Context;
+    use log::*;
+    use pin_utils::pin_mut;
+    use rand::prelude::*;
+    use tokio::io::{stderr, stdin, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+    use tokio::sync::oneshot;
+    use winapi::shared::winerror::*;
+    use windows_service::{
+        define_windows_service,
+        service::*,
+        service_control_handler::{self, ServiceControlHandlerResult},
+        service_dispatcher,
+        service_manager::*,
+    };
+
+    define_windows_service!(ffi_service_main, service_main);
+
+    fn service_main(_args: Vec<OsString>) {
+        let (stop_tx, stop_rx) = oneshot::channel::<()>();
+        let mut stop_tx = Some(stop_tx);
+        let status_handle = service_control_handler::register("titun", move |event| match event {
+            ServiceControl::Stop => {
+                info!("received stop event");
+                if let Some(stop_tx) = stop_tx.take() {
+                    stop_tx.send(()).unwrap();
+                }
+                ServiceControlHandlerResult::NoError
+            }
+            ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
+            _ => ServiceControlHandlerResult::NotImplemented,
+        })
+        .expect("service_control_handler::register");
+
+        status_handle
+            .set_service_status(ServiceStatus {
+                service_type: ServiceType::OWN_PROCESS,
+                current_state: ServiceState::Running,
+                controls_accepted: ServiceControlAccept::STOP,
+                exit_code: ServiceExitCode::Win32(0),
+                checkpoint: 0,
+                wait_hint: std::time::Duration::default(),
+            })
+            .expect("set_service_status");
+
+        real_main(Some(stop_rx)).unwrap_or_else(|e| {
+            eprint!("Error: {:?}", e);
+            std::process::exit(1);
+        });
+
+        // Some background threads can keep the process from exiting. Exit
+        // explicitly.
+        info!("now exiting");
+        std::process::exit(0);
+    }
+
+    fn maybe_run_as_service() -> anyhow::Result<()> {
+        let service_args = windows_service_args()?;
+
+        let service_args = if let Some(service_args) = service_args {
+            service_args
+        } else {
+            return real_main(None);
+        };
+
+        let service_name = format!("titun@{}", service_args.interface_name.to_string_lossy());
+
+        let database: Option<&str> = None;
+        let service_manager =
+            ServiceManager::local_computer(database, ServiceManagerAccess::CREATE_SERVICE)
+                .context("create service manager")?;
+
+        match service_manager.open_service(&service_name, ServiceAccess::all()) {
+            Ok(service) => {
+                info!("found existing service, will stop and delete it");
+                match service.stop() {
+                    Ok(_) => (),
+                    Err(windows_service::Error::Winapi(e))
+                        if e.raw_os_error() == Some(ERROR_SERVICE_NOT_ACTIVE as i32) => {}
+                    Err(e) => return Err(e).context("stop service"),
+                }
+                service.delete().context("delete service")?;
+            }
+            Err(windows_service::Error::Winapi(e))
+                if e.raw_os_error() == Some(ERROR_SERVICE_DOES_NOT_EXIST as i32) => {}
+            Err(e) => return Err(e).context("open service"),
+        }
+
+        let mut args = service_args.args;
+        let mut bytes = [0u8; 16];
+        thread_rng().fill_bytes(&mut bytes);
+        let log_pipe_path: PathBuf =
+            format!("\\\\.\\Pipe\\titun-log-{}", base64::encode(&bytes[..])).into();
+        let mut log_pipe_listener =
+            AsyncPipeListener::bind(log_pipe_path.clone()).context("bind log pipe listener")?;
+
+        args.push("--log-pipe".into());
+        args.push(log_pipe_path.into());
+
+        let create_service_info = ServiceInfo {
+            name: service_name.clone().into(),
+            display_name: service_name.clone().into(),
+            service_type: ServiceType::OWN_PROCESS,
+            start_type: ServiceStartType::OnDemand,
+            error_control: ServiceErrorControl::Normal,
+            executable_path: std::env::current_exe().context("get current executable path")?,
+            launch_arguments: args,
+            dependencies: vec![],
+            account_name: None,
+            account_password: None,
+        };
+        let service = loop {
+            match service_manager.create_service(create_service_info.clone(), ServiceAccess::all())
+            {
+                Ok(s) => break s,
+                Err(e) => {
+                    if let windows_service::Error::Winapi(ref e) = e {
+                        if e.raw_os_error() == Some(ERROR_SERVICE_MARKED_FOR_DELETE as i32) {
+                            debug!("service marked delete, retry in one second");
+                            std::thread::sleep(std::time::Duration::from_secs(1));
+                            continue;
+                        }
+                    }
+                    return Err(e).context("create service")?;
+                }
+            }
+        };
+        service.start(&["titun"]).context("start service")?;
+        info!("started service {}", service_name);
+
+        let mut rt = tokio::runtime::Builder::new()
+            .enable_all()
+            // Have to use threaded because we use `block_in_place`.
+            .threaded_scheduler()
+            .num_threads(1)
+            .build()
+            .context("build tokio runtime")?;
+
+        let exit_stdin_eof = service_args.exit_stdin_eof;
+        rt.block_on(async move {
+            let stdin_eof = tokio::spawn(async move {
+                if exit_stdin_eof {
+                    let mut stdin = stdin();
+                    let mut buf = vec![0u8; 4096];
+                    loop {
+                        debug!("read stdin");
+                        match stdin.read(&mut buf).await {
+                            Ok(0) => {
+                                info!("stdin EOF");
+                                break;
+                            }
+                            Err(e) => {
+                                warn!("Error read from stdin: {}", e);
+                                break;
+                            }
+                            _ => (),
+                        }
+                    }
+                } else {
+                    futures::future::pending().await
+                }
+            });
+
+            let log_pipe = log_pipe_listener
+                .accept()
+                .await
+                .context("log_pipe_listener accept")?;
+            let mut stderr = stderr();
+            let copy = tokio::spawn(async move {
+                let mut log_pipe = BufReader::new(log_pipe);
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    match log_pipe.read_line(&mut line).await {
+                        Err(e) => {
+                            break if false {
+                                /* help type inference */
+                                Ok(())
+                            } else {
+                                Err(e)
+                            };
+                        }
+                        Ok(_) => {
+                            let line = format!(">>> {}", line);
+                            let _ = stderr.write_all(line.as_bytes()).await;
+                        }
+                    }
+                }
+            });
+            let ctrl_c = tokio::signal::ctrl_c();
+            pin_mut!(ctrl_c);
+            let ctrl_c_or_stdin_eof = futures::future::select(ctrl_c, stdin_eof);
+            match futures::future::select(copy, ctrl_c_or_stdin_eof).await {
+                futures::future::Either::Left((copy_result, _)) => {
+                    info!("service unexpectedly stopped: {:?}", copy_result);
+                    service.delete().context("delete service")?;
+                }
+                futures::future::Either::Right((_, copy)) => {
+                    info!("received ctrl-c or stdin eof, will stop and delete service");
+                    service.stop().context("stop service")?;
+                    // Drain log_pipe.
+                    let _ = copy.await;
+                    service.delete().context("delete service")?;
+                }
+            }
+            let r: anyhow::Result<()> = Ok(());
+            r
+        })?;
+
+        Ok(())
+    }
+
+    service_dispatcher::start("titun", ffi_service_main).unwrap_or_else(|e| {
+        match e {
+            windows_service::Error::Winapi(e)
+                if e.raw_os_error() == Some(ERROR_FAILED_SERVICE_CONTROLLER_CONNECT as i32) =>
+            {
+                // This process is not running as a service. Create a service and start it.
+                maybe_run_as_service().unwrap_or_else(|e| {
+                    eprint!("Error: {:?}", e);
+                });
+            }
+            _ => {
+                eprintln!("failed to start service: {}", e);
+                std::process::exit(1);
+            }
+        }
+    });
+}
+
+#[cfg(not(windows))]
+fn main() {
+    real_main(None).unwrap_or_else(|e| {
         eprint!("Error: {:?}", e);
         std::process::exit(1);
     });

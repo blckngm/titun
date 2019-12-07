@@ -204,7 +204,7 @@ namespace titun_windows_gui
             }
             else
             {
-                titunProcess.Kill();
+                titunProcess.StandardInput.Close();
             }
         }
 
@@ -269,7 +269,7 @@ namespace titun_windows_gui
         {
             if (titunProcess != null)
             {
-                titunProcess.Kill();
+                titunProcess.StandardInput.Close();
                 return;
             }
 
@@ -306,11 +306,6 @@ namespace titun_windows_gui
 
                 var context = new ValidationContext(configObj);
                 Validator.ValidateObject(configObj, context, true);
-
-                if (configObj.Network.AutoConfig && configObj.Network.NextHop == null)
-                {
-                    throw new Exception("network.next_hop must be specified unless auto_config is false");
-                }
             }
             catch (ValidationException ex)
             {
@@ -325,7 +320,7 @@ namespace titun_windows_gui
                 return;
             }
 
-            var info = new ProcessStartInfo(titunPath, "-c " + configFilePath)
+            var info = new ProcessStartInfo(titunPath, "-c " + configFilePath + " --exit-stdin-eof")
             {
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
@@ -367,7 +362,7 @@ namespace titun_windows_gui
             var haveRunAutoConfigure = false;
             IEnumerable<string> routes = null;
 
-            if (configObj.Network.AutoConfig)
+            if (configObj.Interface.Address != null)
             {
                 if (Task.WaitAny(new Task[] { exitSeamophore.WaitAsync() }, 500) == -1)
                 {

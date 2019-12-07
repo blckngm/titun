@@ -15,6 +15,14 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
+// Define our own todo before it is in stable.
+#[allow(unused)]
+macro_rules! todo {
+    () => {
+        unimplemented!()
+    };
+}
+
 #[macro_use]
 extern crate anyhow;
 #[macro_use]

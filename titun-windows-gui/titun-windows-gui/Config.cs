@@ -19,9 +19,6 @@ namespace titun_windows_gui
         [Required, ValidateObject]
         public InterfaceConfig Interface { get; set; }
 
-        [Required, ValidateObject]
-        public NetworkConfig Network { get; set; }
-
         [ValidateCollection]
         public List<PeerConfig> Peer { get; set; } = new List<PeerConfig>();
     }
@@ -30,22 +27,11 @@ namespace titun_windows_gui
     {
         [Required]
         public string Name { get; set; }
-    }
-
-    public class NetworkConfig
-    {
-        public bool AutoConfig { get; set; } = false;
-        [Required, Ipv4Addr(ErrorMessage = "Address must be an IPv4 address")]
+        [Ipv4Addr(ErrorMessage = "Address must be an IPv4 address")]
         public string Address { get; set; }
-        [Range(0, 32)]
-        public uint PrefixLen { get; set; }
         [Range(0, 65536)]
         public uint? Mtu { get; set; }
-        public uint? Metric { get; set; }
         public List<string> Dns { get; set; } = new List<string>();
-        public bool PreventDnsLeak { get; set; } = false;
-        // Next hop must not be null if auto_config.
-        public string NextHop { get; set; }
     }
 
     public class PeerConfig

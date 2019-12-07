@@ -205,8 +205,10 @@ namespace titun_windows_gui
             var c = PSCommand.Create("New-NetRoute")
                 .P("InterfaceIndex", interfaceIndex)
                 .P("DestinationPrefix", destinationWithPrefix)
-                .P("PolicyStore", "ActiveStore")
-                .P("NextHop", nextHop);
+                .P("PolicyStore", "ActiveStore");
+            if (nextHop != null) {
+                c.P("NextHop", nextHop);
+            }
             c.Invoke();
         }
 
@@ -370,10 +372,10 @@ namespace titun_windows_gui
             {
                 SetBasic(index, new BasicConfig
                 {
-                    address = config.Network.Address,
-                    prefix = config.Network.PrefixLen,
-                    mtu = config.Network.Mtu,
-                    metric = config.Network.Metric
+                    address = config.Interface.Address,
+                    prefix = 32,
+                    mtu = config.Interface.Mtu,
+                    metric = 1,
                 });
             });
             // Fixate routes.
@@ -424,21 +426,17 @@ namespace titun_windows_gui
                     // XXX: IPv6.
                     var prefix = rr.Count() > 1 ? uint.Parse(rr[1]) : 32;
                     // Add route if it is not in interface network address/prefix.
-                    if (!IsSubNetwork(network, prefix, IPAddress.Parse(config.Network.Address), config.Network.PrefixLen))
+                    if (!IsSubNetwork(network, prefix, IPAddress.Parse(config.Interface.Address), 32))
                     {
                         Try($"Add route {r}", () =>
                         {
-                            AddRoute(index, r, config.Network.NextHop);
-                            routes.Add(r);
+                            AddRoute(index, r, null);
                         });
                     }
                 }
             }
-            Try($"Set DNS servers.", () => SetDns(index, config.Network.Dns));
-            if (config.Network.PreventDnsLeak)
-            {
-                Try($"Block other DNS servers", () => BlockOtherDNS(index));
-            }
+            Try($"Set DNS servers.", () => SetDns(index, config.Interface.Dns));
+            Try($"Block other DNS servers", () => BlockOtherDNS(index));
             output.Post("Done.");
             routesAdded = routes;
         }
@@ -459,21 +457,8 @@ namespace titun_windows_gui
                     output.Post(e.ToString().Trim());
                 }
             }
-            uint index;
-            try
-            {
-                index = FindInterfaceIndexByAlias(config.Interface.Name) ?? throw new Exception($"Failed to find interface {config.Interface}");
-            }
-            catch (Exception e)
-            {
-                output.Post(e.Message);
-                return;
-            }
             // Unblock DNS.
-            if (config.Network.PreventDnsLeak)
-            {
-                Try("Unblock DNS", () => UnBlockDNS());
-            }
+            Try("Unblock DNS", () => UnBlockDNS());
             // Remove routes.
             output.Post("Remove Routes.");
             foreach(var r in routes)

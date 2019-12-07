@@ -33,7 +33,7 @@ sudo-tests = []
 arrayvec = "0.5.1"
 base64 = "0.11.0"
 blake2s_simd = "0.5.9"
-env_logger = { version = "0.7.1", default-features = false }
+env_logger = "0.7.1"
 fnv = "1.0.6"
 futures = "0.3.1"
 hex = "0.4.0"
@@ -60,6 +60,7 @@ tokio-util = { version = "0.2.0", features = ["codec"] }
 [dependencies.tokio]
 version = "0.2.2"
 features = [
+    "io-std",
     "io-driver",
     "io-util",
     "rt-threaded",
@@ -74,8 +75,28 @@ features = [
 ]
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3.8", features = ["std", "fileapi", "winbase", "ioapiset", "synchapi", "namedpipeapi"] }
+winapi = { version = "0.3.8", features = [
+    "std",
+    "fileapi",
+    "winbase",
+    "ioapiset",
+    "synchapi",
+    "namedpipeapi",
+    "winioctl",
+    "sddl",
+    "securitybaseapi",
+    "namespaceapi",
+    "setupapi",
+    "devguid",
+    "combaseapi",
+    "cfgmgr32",
+] }
 winreg = "0.6.2"
+scopeguard = "1.0.0"
+once_cell = "1.2.0"
+widestring = "0.4.0"
+wchar = "0.6.0"
+windows-service = "0.2.0"
 
 [target.'cfg(unix)'.dependencies]
 privdrop = "0.3.3"

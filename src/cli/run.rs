@@ -23,17 +23,10 @@ use crate::ipc::ipc_server;
 use crate::wireguard::*;
 use anyhow::Context;
 use std::net::SocketAddr;
+use tokio::sync::oneshot;
 
 #[cfg(not(unix))]
 type NotifyHandle = ();
-
-fn schedule_force_shutdown() {
-    std::thread::spawn(|| {
-        std::thread::sleep(std::time::Duration::from_secs(2));
-        warn!("Clean shutdown seem to have failed. Force shutting down.");
-        std::process::exit(0);
-    });
-}
 
 #[cfg(unix)]
 async fn do_reload(
@@ -66,7 +59,11 @@ async fn reload_on_sighup(
     Ok(())
 }
 
-pub async fn run(c: Config<SocketAddr>, notify: Option<NotifyHandle>) -> anyhow::Result<()> {
+pub async fn run(
+    c: Config<SocketAddr>,
+    notify: Option<NotifyHandle>,
+    stop_rx: Option<oneshot::Receiver<()>>,
+) -> anyhow::Result<()> {
     #[cfg(unix)]
     let mut c = c;
     let scope0 = AsyncScope::new();
@@ -78,28 +75,12 @@ pub async fn run(c: Config<SocketAddr>, notify: Option<NotifyHandle>) -> anyhow:
         info!("Received SIGINT or Ctrl-C, shutting down.");
     });
 
-    if c.general.exit_stdin_eof {
-        let scope = scope0.clone();
-        std::thread::spawn(move || {
-            use std::io::Read;
-
-            let stdin = std::io::stdin();
-            let mut stdin = stdin.lock();
-            let mut buf = vec![0u8; 4096];
-            loop {
-                match stdin.read(&mut buf) {
-                    Ok(0) => break,
-                    Err(e) => {
-                        warn!("Error read from stdin: {}", e);
-                        break;
-                    }
-                    _ => (),
-                }
-            }
-            info!("Stdin EOF, shutting down.");
-            scope.cancel();
+    if let Some(stop_rx) = stop_rx {
+        scope0.clone().spawn_canceller(async move {
+            stop_rx.await.unwrap();
         });
     }
+
     #[cfg(unix)]
     scope0.clone().spawn_canceller(async move {
         use tokio::signal::unix::{signal, SignalKind};
@@ -111,13 +92,6 @@ pub async fn run(c: Config<SocketAddr>, notify: Option<NotifyHandle>) -> anyhow:
 
     let dev_name = c.interface.name.unwrap();
 
-    #[cfg(windows)]
-    let tun = AsyncTun::open(
-        &dev_name,
-        c.network.map(|n| (n.address, n.prefix_len)).unwrap(),
-    )
-    .context("failed to open tun interface")?;
-    #[cfg(unix)]
     let tun = AsyncTun::open(&dev_name).context("failed to open tun interface")?;
 
     let wg = WgState::new(tun)?;
@@ -208,6 +182,5 @@ pub async fn run(c: Config<SocketAddr>, notify: Option<NotifyHandle>) -> anyhow:
     }
 
     scope0.cancelled().await;
-    schedule_force_shutdown();
     Ok(())
 }
