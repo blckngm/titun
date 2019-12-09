@@ -21,7 +21,7 @@
                Value="WelcomeDlg"
                Order="2">1</Publish>
     </UI>
-    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />    
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
 
 		<Feature Id="ProductFeature" Title="titun-installer" Level="1">
 			<ComponentGroupRef Id="ProductComponents" />
@@ -43,7 +43,7 @@
       <!--Create application folder in Program Menu-->
       <Directory Id="ProgramMenuFolder">
         <Directory Id="ApplicationProgramsFolder" Name="TiTun" />
-      </Directory>      
+      </Directory>
     </Directory>
 	</Fragment>
 
@@ -55,9 +55,6 @@
       <Component Win64="yes">
         <File Source="../../target/release/titun.exe"/>
       </Component>
-      <Component Win64="yes">
-        <File Source="../../wintun.dll"/>
-      </Component>
     </ComponentGroup>
 	</Fragment>
 
@@ -66,7 +63,7 @@
       <Merge Id="WintunMergeModule" Language="0" DiskId="1" SourceFile="wintun-amd64-0.7.msm" />
     </DirectoryRef>
   </Fragment>
-  
+
   <Fragment>
     <DirectoryRef Id="DesktopFolder">
       <Component Id="ApplicationShortcutDesktop" Guid="*">
@@ -86,7 +83,7 @@
       </Component>
     </DirectoryRef>
   </Fragment>
-  
+
   <Fragment>
     <DirectoryRef Id="ApplicationProgramsFolder">
       <!--Create application shortcut in Program Menu-->

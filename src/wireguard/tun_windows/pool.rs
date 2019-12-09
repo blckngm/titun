@@ -20,11 +20,6 @@ use std::time::{Duration, Instant};
 
 use super::*;
 
-extern "system" {
-    pub fn WintunOpen(name: *const u8, name_len: i32) -> HANDLE;
-    pub fn WintunClose(name: *const u8, name_len: i32);
-}
-
 pub const HARDWARE_ID: &str = "Wintun";
 const HARDWARE_ID_MULTI_SZ: &[u16] = wch!("Wintun\0\0");
 const WAIT_REGISTRY_TIMEOUT: Duration = Duration::from_secs(1);
@@ -612,7 +607,7 @@ impl Pool {
         let dev_info = unsafe_h!(SetupDiCreateDeviceInfoListExW(
             &GUID_DEVCLASS_NET,
             null_mut(),
-            wch_c!("").as_ptr(),
+            null(),
             null_mut(),
         ))
         .context("SetupDiCreateDeviceInfoListExW")?
@@ -721,14 +716,6 @@ impl Pool {
                 }
             }
 
-            debug!(
-                "found driver with description: {}, version: 0x{:x}",
-                WideCStr::from_slice_with_nul(&drvinfo_data.Description[..])
-                    .unwrap()
-                    .to_string_lossy(),
-                drvinfo_data.DriverVersion
-            );
-
             let newer = (
                 drvinfo_data.DriverDate.dwHighDateTime,
                 drvinfo_data.DriverDate.dwLowDateTime,
@@ -744,7 +731,6 @@ impl Pool {
                 let drvinfo_detail_data =
                     get_driver_info_detail(dev_info, &mut *device_info_data, &mut drvinfo_data)?;
                 if drvinfo_detail_data.is_compatible(HARDWARE_ID) {
-                    debug!("driver selected");
                     unsafe_b!(SetupDiSetSelectedDriverW(
                         dev_info,
                         &mut *device_info_data,
@@ -819,20 +805,22 @@ impl Pool {
 
         // Install the device.
         unsafe_b!(SetupDiCallClassInstaller(
-            DIF_INSTALLINTERFACES,
+            DIF_INSTALLDEVICE,
             dev_info,
             &mut **device_info_data,
         ))
-        .context("SetupDiCallClassInstaller DIF_INSTALLINTERFACES")?;
+        .context("SetupDiCallClassInstaller DIF_INSTALLDEVICE")?;
 
         // TODO: check reboot required.
 
+        let mut device_type_name_multi_sz = device_type_name.into_vec_with_nul();
+        device_type_name_multi_sz.push(0);
         unsafe_b!(SetupDiSetDeviceRegistryPropertyW(
             dev_info,
             &mut **device_info_data,
             SPDRP_DEVICEDESC,
-            device_type_name.as_ptr() as *const u8,
-            (device_type_name.len() * 2) as u32,
+            device_type_name_multi_sz.as_ptr() as *const u8,
+            (device_type_name_multi_sz.len() * 2) as u32,
         ))
         .context("SetupDiSetDeviceRegistryPropertyW SPDRP_DEVICEDESC")?;
 
