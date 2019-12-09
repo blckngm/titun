@@ -52,7 +52,7 @@ async fn reload_on_sighup(
                 info!("reloading");
                 do_reload(config_file_path.clone(), &wg)
                     .await
-                    .unwrap_or_else(|e| warn!("error in reloading: {}", e));
+                    .unwrap_or_else(|e| warn!("error in reloading: {:#}", e));
             }
         }
     }
@@ -71,7 +71,7 @@ pub async fn run(
     scope0.clone().spawn_canceller(async move {
         tokio::signal::ctrl_c()
             .await
-            .unwrap_or_else(|e| warn!("ctrl_c failed: {}", e));
+            .unwrap_or_else(|e| warn!("ctrl_c failed: {:#}", e));
         info!("Received SIGINT or Ctrl-C, shutting down.");
     });
 
@@ -136,7 +136,7 @@ pub async fn run(
         scope0.clone().spawn_canceller(async move {
             reload_on_sighup(config_file_path, weak1)
                 .await
-                .unwrap_or_else(|e| warn!("error in reload_on_sighup: {}", e))
+                .unwrap_or_else(|e| warn!("error in reload_on_sighup: {:#}", e))
         });
     }
 
@@ -145,7 +145,7 @@ pub async fn run(
     scope0.clone().spawn_canceller(async move {
         ipc_server(weak, &dev_name, ready_tx)
             .await
-            .unwrap_or_else(|e| error!("IPC server error: {}", e))
+            .unwrap_or_else(|e| error!("IPC server error: {:#}", e))
     });
 
     if ready_rx.await.is_ok() {
@@ -168,7 +168,7 @@ pub async fn run(
 
             if c.general.foreground {
                 super::systemd::notify_ready()
-                    .unwrap_or_else(|e| warn!("failed to notify systemd: {}", e));
+                    .unwrap_or_else(|e| warn!("failed to notify systemd: {:#}", e));
             } else {
                 notify
                     .unwrap()

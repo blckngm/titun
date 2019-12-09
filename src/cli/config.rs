@@ -241,7 +241,7 @@ impl Config<String> {
                                 endpoint, e
                             );
                         } else {
-                            warn!("failed to resolve {}: {}", endpoint, e);
+                            warn!("failed to resolve {}: {:#}", endpoint, e);
                         }
                         None
                     }

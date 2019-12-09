@@ -41,7 +41,7 @@ pub async fn reload(wg: &Arc<WgState>, new_config: Config<SocketAddr>) -> anyhow
     if new_fwmark != current_state.fwmark {
         info!("setting fwmark");
         if let Err(e) = wg.set_fwmark(new_fwmark) {
-            warn!("failed to set fwmark to {}: {}", new_fwmark, e);
+            warn!("failed to set fwmark to {}: {:#}", new_fwmark, e);
         }
     }
 
@@ -49,7 +49,7 @@ pub async fn reload(wg: &Arc<WgState>, new_config: Config<SocketAddr>) -> anyhow
     if current_state.listen_port != new_port {
         info!("setting listen port");
         if let Err(e) = wg.set_port(new_port).await {
-            warn!("failed to set port to {}: {}", new_port, e);
+            warn!("failed to set port to {}: {:#}", new_port, e);
         }
     }
 

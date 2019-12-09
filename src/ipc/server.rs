@@ -47,7 +47,7 @@ pub async fn ipc_server(
         let stream = listener.accept().await?;
         tokio::spawn(async move {
             serve(&wg, stream).await.unwrap_or_else(|e| {
-                warn!("Error serving IPC connection: {}", e);
+                warn!("Error serving IPC connection: {:#}", e);
             });
         });
     }
@@ -80,7 +80,7 @@ pub async fn ipc_server(
             let wg = wg.clone();
             tokio::spawn(async move {
                 serve(&wg, stream).await.unwrap_or_else(|e| {
-                    warn!("Error serving IPC connection: {}", e);
+                    warn!("Error serving IPC connection: {:#}", e);
                 });
             });
         }
@@ -168,14 +168,14 @@ async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) -> io::Result<
     if let Some(p) = command.listen_port {
         info!("set listen port");
         wg.set_port(p).await.map_err(|e| {
-            warn!("failed to set port: {}", e);
+            warn!("failed to set port: {:#}", e);
             e
         })?;
     }
     if let Some(fwmark) = command.fwmark {
         info!("set fwmark");
         wg.set_fwmark(fwmark).map_err(|e| {
-            warn!("failed to set fwmark: {}", e);
+            warn!("failed to set fwmark: {:#}", e);
             e
         })?;
     }

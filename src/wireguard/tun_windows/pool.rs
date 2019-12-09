@@ -546,7 +546,7 @@ impl Pool {
 
             let wintun = match Interface::new(dev_info, &mut device_info_data, self) {
                 Err(e) => {
-                    warn!("failed Interface::new: {}", e);
+                    warn!("failed Interface::new: {:#}", e);
                     continue;
                 }
                 Ok(w) => w,
@@ -764,7 +764,7 @@ impl Pool {
 
         let mut device_info_data = scopeguard::guard(device_info_data, |mut device_info_data| {
             remove_device(dev_info, &mut *device_info_data).unwrap_or_else(|e| {
-                warn!("failed to remove device: {}", e);
+                warn!("failed to remove device: {:#}", e);
             });
         });
 
