@@ -70,7 +70,7 @@ fn main() {
             .expect("set_service_status");
 
         real_main(Some(stop_rx)).unwrap_or_else(|e| {
-            eprint!("Error: {:?}", e);
+            eprintln!("Error: {:?}", e);
             std::process::exit(1);
         });
 
@@ -198,15 +198,11 @@ fn main() {
                 loop {
                     line.clear();
                     match log_pipe.read_line(&mut line).await {
-                        Err(e) => {
-                            break if false {
-                                /* help type inference */
-                                Ok(())
-                            } else {
-                                Err(e)
-                            };
-                        }
+                        Err(e) => break Err(e),
                         Ok(_) => {
+                            if line.is_empty() {
+                                break Ok(());
+                            }
                             let line = format!(">>> {}", line);
                             let _ = stderr.write_all(line.as_bytes()).await;
                         }
@@ -243,7 +239,7 @@ fn main() {
             {
                 // This process is not running as a service. Create a service and start it.
                 maybe_run_as_service().unwrap_or_else(|e| {
-                    eprint!("Error: {:?}", e);
+                    eprintln!("Error: {:?}", e);
                 });
             }
             _ => {
@@ -257,7 +253,7 @@ fn main() {
 #[cfg(not(windows))]
 fn main() {
     real_main(None).unwrap_or_else(|e| {
-        eprint!("Error: {:?}", e);
+        eprintln!("Error: {:?}", e);
         std::process::exit(1);
     });
 }
