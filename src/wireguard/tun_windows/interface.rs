@@ -42,7 +42,7 @@ fn clsid_from_string(clsid_str: &str) -> anyhow::Result<CLSID> {
 
 fn clsid_to_string(clsid: &CLSID) -> String {
     let mut result: *mut u16 = null_mut();
-    unsafe_b!(StringFromCLSID(clsid, &mut result,)).expect("StringFromCLSID");
+    unsafe_l!(StringFromCLSID(clsid, &mut result)).expect("StringFromCLSID");
     scopeguard::defer! {{
         unsafe { CoTaskMemFree(result as *mut _); }
     }};

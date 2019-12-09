@@ -57,9 +57,6 @@ use winapi::um::winnt::*;
 use winapi::um::winreg::*;
 use winreg::RegKey;
 
-// Can't get create_interface to work. Use the wireguard-go dll for now.
-const USE_RUST_SETUP_API: bool = false;
-
 macro_rules! unsafe_b {
     ($e:expr) => {{
         if unsafe { $e } == 0 {
@@ -234,23 +231,12 @@ impl Tun {
     /// Open a handle to a wintun interface.
     pub fn open(name: &OsStr) -> anyhow::Result<Tun> {
         info!("opening wintun device {}", name.to_string_lossy());
-        let handle = if USE_RUST_SETUP_API {
-            let interface = WINTUN_POOL.get_interface(name)?;
-            if let Some(interface) = interface {
-                interface.delete()?;
-            }
-            let interface = WINTUN_POOL.create_interface(name)?;
-            interface.handle()?
-        } else {
-            let name = name
-                .to_str()
-                .ok_or_else(|| anyhow::anyhow!("invalid name"))?;
-            let handle = unsafe { WintunOpen(name.as_ptr(), name.len() as i32) };
-            if handle.is_null() {
-                bail!("wintun_create failed");
-            }
-            HandleWrapper(handle)
-        };
+        let interface = WINTUN_POOL.get_interface(name)?;
+        if let Some(interface) = interface {
+            interface.delete()?;
+        }
+        let interface = WINTUN_POOL.create_interface(name)?;
+        let handle = interface.handle()?;
         let mut rings = TunRegisterRings::new()?;
         let mut _bytes_returned = 0u32;
         unsafe_b!(DeviceIoControl(
@@ -302,22 +288,13 @@ impl Tun {
 
     fn close(&self) -> anyhow::Result<()> {
         info!("closing wintun interface");
-        if USE_RUST_SETUP_API {
-            let it = WINTUN_POOL
-                .get_interface(&self.name)
-                .context("get_iterface")?
-                .ok_or_else(|| anyhow::anyhow!("get_interface None"))?;
-            it.delete().context("delete")?;
-            info!("closed wintun interface");
-            Ok(())
-        } else {
-            let name = self.name.to_str().unwrap();
-            unsafe {
-                WintunClose(name.as_ptr(), name.len() as i32);
-            }
-            info!("closed wintun interface");
-            Ok(())
-        }
+        let it = WINTUN_POOL
+            .get_interface(&self.name)
+            .context("get_iterface")?
+            .ok_or_else(|| anyhow::anyhow!("get_interface None"))?;
+        it.delete().context("delete")?;
+        info!("closed wintun interface");
+        Ok(())
     }
 }
 

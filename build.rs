@@ -49,7 +49,6 @@ fn main() {
     } else if std::env::var_os("CARGO_CFG_WINDOWS").is_some() {
         if std::env::var("CARGO_CFG_TARGET_ENV") == Ok("msvc".into()) {
             msvc_link_dll("NCI", &["NciGetConnectionName", "NciSetConnectionName"]);
-            msvc_link_dll("wintun", &["WintunOpen", "WintunClose"]);
         } else {
             // We only use the windows-gnu target for cross checking. So no need
             // to worry about linking.
