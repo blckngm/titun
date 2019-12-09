@@ -327,7 +327,7 @@ unsafe impl Send for Tun {}
 impl Drop for Tun {
     fn drop(&mut self) {
         self.close()
-            .unwrap_or_else(|e| warn!("failed to close tun: {}", e))
+            .unwrap_or_else(|e| warn!("failed to close tun: {:#}", e))
     }
 }
 

@@ -682,7 +682,7 @@ impl WgState {
                         self.mtu.store(mtu, Ordering::Relaxed);
                     }
                 }
-                Err(e) => warn!("failed to get mtu: {}", e),
+                Err(e) => warn!("failed to get mtu: {:#}", e),
             }
         }
     }
@@ -690,7 +690,7 @@ impl WgState {
     /// TX. Tun -> Socket.
     pub async fn task_tx(self: Arc<WgState>) {
         match tun_packet_processing(self).await {
-            Err(e) => error!("error in tx task: {}", e),
+            Err(e) => error!("error in tx task: {:#}", e),
             _ => unreachable!(),
         }
     }

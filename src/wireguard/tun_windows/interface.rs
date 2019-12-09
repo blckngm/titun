@@ -174,7 +174,7 @@ impl<'a> Interface<'a> {
 
             match Interface::new(dev_info, &mut dev_info_data, &WINTUN_POOL) {
                 Err(e) => {
-                    warn!("failed Interface::new: {}", e);
+                    warn!("failed Interface::new: {:#}", e);
                     continue;
                 }
                 Ok(w) => {

@@ -176,7 +176,7 @@ fn main() {
                                 break;
                             }
                             Err(e) => {
-                                warn!("Error read from stdin: {}", e);
+                                warn!("Error read from stdin: {:#}", e);
                                 break;
                             }
                             _ => (),
