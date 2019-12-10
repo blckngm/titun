@@ -31,7 +31,6 @@ use std::sync::Arc;
 use anyhow::Context;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::Mutex as AsyncMutex;
 use wchar::*;
 use widestring::*;
@@ -48,6 +47,7 @@ use winapi::um::handleapi::*;
 use winapi::um::ioapiset::*;
 use winapi::um::minwinbase::*;
 use winapi::um::namespaceapi::*;
+use winapi::um::processthreadsapi::*;
 use winapi::um::securitybaseapi::*;
 use winapi::um::setupapi::*;
 use winapi::um::synchapi::*;
@@ -110,105 +110,21 @@ use self::interface::*;
 mod buffer;
 use self::buffer::*;
 
-pub struct AsyncTun {
-    tun: Arc<Tun>,
-    channels: AsyncMutex<TunChannels>,
-}
-
-struct TunChannels {
-    read_rx: Receiver<io::Result<(Box<[u8]>, usize)>>,
-    buffer_tx: Sender<Box<[u8]>>,
-}
-
-impl Drop for AsyncTun {
-    fn drop(&mut self) {
-        self.tun.interrupt();
-    }
-}
-
-impl AsyncTun {
-    pub fn open(name: &OsStr) -> anyhow::Result<AsyncTun> {
-        let tun = Tun::open(name)?;
-        Ok(AsyncTun::new(tun))
-    }
-
-    fn new(tun: Tun) -> AsyncTun {
-        let tun = Arc::new(tun);
-        // read thread -> async fn read.
-        let (mut read_tx, read_rx) = channel(2);
-        // async fn read -> read thread, to reuse buffers.
-        let (mut buffer_tx, mut buffer_rx) = channel::<Box<[u8]>>(2);
-        buffer_tx.try_send(vec![0u8; 65536].into()).unwrap();
-        buffer_tx.try_send(vec![0u8; 65536].into()).unwrap();
-        // We run this in a separate thread so that the wintun intance can be
-        // dropped.
-        //
-        // We let tokio manage this thread so that the tokio runtime is not
-        // dropped before the wintun instance.
-        tokio::spawn({
-            let tun = tun.clone();
-            async move {
-                'outer: loop {
-                    let mut buf = match buffer_rx.recv().await {
-                        None => break,
-                        Some(buf) => buf,
-                    };
-                    // We don't want to consume the `buf` when we get an
-                    // `Err`. So loop until we get an `Ok`.
-                    loop {
-                        match tokio::task::block_in_place(|| tun.read(&mut buf[..])) {
-                            Err(e) => {
-                                if read_tx.send(Err(e)).await.is_err() {
-                                    break 'outer;
-                                }
-                            }
-                            Ok(len) => {
-                                if read_tx.send(Ok((buf, len))).await.is_err() {
-                                    break 'outer;
-                                }
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        });
-        AsyncTun {
-            tun,
-            channels: AsyncMutex::new(TunChannels { read_rx, buffer_tx }),
-        }
-    }
-
-    pub(crate) async fn read<'a>(&'a self, buf: &'a mut [u8]) -> io::Result<usize> {
-        // Don't use `blocking` for operations that may block forever.
-
-        let mut channels = self.channels.lock().await;
-
-        let (p, p_len) = channels.read_rx.recv().await.unwrap()?;
-        let len = std::cmp::min(p_len, buf.len());
-        buf[..len].copy_from_slice(&p[..len]);
-        channels.buffer_tx.send(p).await.unwrap();
-        Ok(len)
-    }
-
-    pub(crate) async fn write<'a>(&'a self, buf: &'a [u8]) -> io::Result<usize> {
-        self.tun.write(buf)
-    }
-}
-
 /// A handle to a tun interface.
-struct Tun {
+pub struct AsyncTun {
     handle: HandleWrapper,
     name: OsString,
     rings: TunRegisterRings,
-    read_lock: Mutex<()>,
+    // A clone of `rings.send.tail_moved` (created by `DuplicateHandle`) wrapped
+    // in `Arc` that can be sent to `spawn_blocking`.
+    send_tail_moved_clone: Arc<HandleWrapper>,
+    read_lock: AsyncMutex<()>,
     write_lock: Mutex<()>,
-    cancel_event: HandleWrapper,
 }
 
-impl fmt::Debug for Tun {
+impl fmt::Debug for AsyncTun {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Tun")
+        f.debug_struct("AsyncTun")
             .field("name", &self.name)
             .field("handle", &self.handle.0)
             .finish()
@@ -227,9 +143,9 @@ const TUN_IOCTL_REGISTER_RINGS: u32 = CTL_CODE(
     FILE_READ_DATA | FILE_WRITE_DATA,
 );
 
-impl Tun {
+impl AsyncTun {
     /// Open a handle to a wintun interface.
-    pub fn open(name: &OsStr) -> anyhow::Result<Tun> {
+    pub fn open(name: &OsStr) -> anyhow::Result<AsyncTun> {
         info!("opening wintun device {}", name.to_string_lossy());
         let interface = WINTUN_POOL.get_interface(name)?;
         if let Some(interface) = interface {
@@ -251,39 +167,46 @@ impl Tun {
         ))
         .context("DeviceIoControl TUN_IOCTL_REGISTER_RINGS")?;
 
-        let cancel_event =
-            unsafe_h!(CreateEventW(null_mut(), 1, 0, null_mut())).context("CreateEventW")?;
+        let send_tail_moved_clone = {
+            let mut handle: HANDLE = null_mut();
+            let self_process = unsafe { GetCurrentProcess() };
+            unsafe_b!(DuplicateHandle(
+                self_process,
+                rings.send.tail_moved.0,
+                self_process,
+                &mut handle,
+                0,
+                0,
+                DUPLICATE_SAME_ACCESS,
+            ))
+            .context("DuplicateHandle")?;
+            Arc::new(HandleWrapper(handle))
+        };
 
         Ok(Self {
             handle,
             name: name.into(),
             rings,
-            read_lock: Mutex::new(()),
+            send_tail_moved_clone,
+            read_lock: AsyncMutex::new(()),
             write_lock: Mutex::new(()),
-            cancel_event,
         })
     }
 
     /// Read a packet from the interface.
     ///
     /// Blocking.
-    pub fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
-        let _read_lock_guard = self.read_lock.lock();
-        unsafe { self.rings.read(buf, self.cancel_event.0) }
+    pub async fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
+        let _read_lock_guard = self.read_lock.lock().await;
+        unsafe { self.rings.read(buf, &self.send_tail_moved_clone).await }
     }
 
     /// Write a packet to the interface.
     ///
     /// Does not block.
-    pub fn write(&self, buf: &[u8]) -> io::Result<usize> {
+    pub async fn write(&self, buf: &[u8]) -> io::Result<usize> {
         let _write_lock_guard = self.write_lock.lock();
         unsafe { self.rings.write(buf) }
-    }
-
-    /// Interrupt a blocking read operation on this Tun interface.
-    pub fn interrupt(&self) {
-        debug!("interrupt tun read");
-        unsafe_b!(SetEvent(self.cancel_event.0)).unwrap();
     }
 
     fn close(&self) -> anyhow::Result<()> {
@@ -298,10 +221,7 @@ impl Tun {
     }
 }
 
-unsafe impl Sync for Tun {}
-unsafe impl Send for Tun {}
-
-impl Drop for Tun {
+impl Drop for AsyncTun {
     fn drop(&mut self) {
         self.close()
             .unwrap_or_else(|e| warn!("failed to close tun: {:#}", e))
@@ -321,7 +241,7 @@ mod tests {
     #[test]
     fn test_open_and_close() {
         let _ = env_logger::try_init();
-        let t = Tun::open(OsStr::new("tun0"));
+        let t = AsyncTun::open(OsStr::new("tun0"));
         println!("Tun::open(): {:?}", t);
     }
 }

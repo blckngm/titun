@@ -24,7 +24,7 @@ pub const HARDWARE_ID: &str = "Wintun";
 const HARDWARE_ID_MULTI_SZ: &[u16] = wch!("Wintun\0\0");
 const WAIT_REGISTRY_TIMEOUT: Duration = Duration::from_secs(1);
 
-fn wait_for_single_object(obj: HANDLE, timeout: Option<Duration>) -> io::Result<()> {
+pub fn wait_for_single_object(obj: HANDLE, timeout: Option<Duration>) -> io::Result<()> {
     let timeout_millis = timeout
         .map(|t| {
             let millis = t.as_millis();
@@ -922,34 +922,5 @@ mod tests {
     #[test]
     fn test_mutex_name() {
         assert_eq!(WINTUN_POOL.mutex_name(), "Wintun\\Wintun-Name-Mutex-4843d7de9cb25125d50ac5cec3866519a1cab845a26e84d5593f8ab8bbc5fb2c");
-    }
-
-    // XXX: this test only really works when running as LocalSystem.
-    //
-    // You can use .e.g. psexec (from pstools) to run this test as LocalSystem.
-    #[test]
-    fn test_take_named_mutex() {
-        println!("take_named_mutex: {:?}", WINTUN_POOL.take_named_mutex());
-    }
-
-    // XXX: this test only really works when running as LocalSystem.
-    #[test]
-    fn test_get_interface() {
-        std::env::set_var("RUST_LOG", "warn");
-        let _ = env_logger::try_init();
-        println!(
-            "get_interface: {:?}",
-            WINTUN_POOL.get_interface(OsStr::new("tun0"))
-        );
-    }
-
-    #[test]
-    fn test_create_interface() {
-        std::env::set_var("RUST_LOG", "debug");
-        let _ = env_logger::try_init();
-        println!(
-            "create_interface: {:?}",
-            WINTUN_POOL.create_interface(OsStr::new("tun0")),
-        );
     }
 }
