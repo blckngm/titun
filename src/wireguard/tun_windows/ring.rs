@@ -41,19 +41,21 @@ fn _assert_long_is_i32() {
 }
 
 #[repr(C)]
-struct TunRegisterRing {
+pub struct TunRegisterRing {
     ring_size: u32,
     // ABI compatible with *mut TunRing.
     ring: Box<UnsafeCell<TunRing>>,
     // ABI compatible with HANDLE.
-    tail_moved: HandleWrapper,
+    pub tail_moved: HandleWrapper,
 }
 
 #[repr(C)]
 pub struct TunRegisterRings {
-    send: TunRegisterRing,
+    pub send: TunRegisterRing,
     receive: TunRegisterRing,
 }
+
+unsafe impl Sync for TunRegisterRings {}
 
 fn align_4(len: u32) -> u32 {
     (len + 0b11) & !0b11
@@ -163,22 +165,26 @@ impl TunRegisterRings {
     /// # Safety
     ///
     /// Only one thread should call this.
-    pub unsafe fn read(&self, buf: &mut [u8], canceled: HANDLE) -> io::Result<usize> {
+    pub async unsafe fn read(
+        &self,
+        buf: &mut [u8],
+        send_tail_moved_clone: &Arc<HandleWrapper>,
+    ) -> io::Result<usize> {
         let send_ring = self.send.ring.get().as_mut().unwrap();
-        let events = [self.send.tail_moved.0, canceled];
         loop {
             match send_ring.read(buf) {
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                     send_ring.alertable.store(1, Ordering::SeqCst);
                     match send_ring.read(buf) {
                         Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                            let wait_result =
-                                WaitForMultipleObjects(2, events.as_ptr(), 0, INFINITE);
-                            match wait_result {
-                                0 => (),
-                                1 => return Err(io::ErrorKind::Interrupted.into()),
-                                _ => unreachable!(),
-                            }
+                            let send_tail_moved_clone = send_tail_moved_clone.clone();
+                            // It seems like when the interface is closed, the
+                            // event is automatically signalled, so cancellation
+                            // just works as expected.
+                            let _ = tokio::task::spawn_blocking(move || {
+                                wait_for_single_object(send_tail_moved_clone.0, None)
+                            })
+                            .await;
                             send_ring.alertable.store(0, Ordering::SeqCst);
                             continue;
                         }
