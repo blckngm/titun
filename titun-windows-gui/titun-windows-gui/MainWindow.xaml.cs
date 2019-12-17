@@ -38,10 +38,8 @@ namespace titun_windows_gui
             {
                 status = value;
                 NotifyPropertyChanged();
-                NotifyPropertyChanged("StatusTabEnabled");
             }
         }
-        public bool StatusTabEnabled { get => Status != null; }
 
         private BufferBlock<string> outputBuffer = new BufferBlock<string>();
         private async Task ReceiveAndDisplayOutput()
@@ -270,6 +268,7 @@ namespace titun_windows_gui
             if (titunProcess != null)
             {
                 titunProcess.StandardInput.Close();
+                RunOrStopButton.IsEnabled = false;
                 return;
             }
 
@@ -328,7 +327,7 @@ namespace titun_windows_gui
                 CreateNoWindow = true,
                 UseShellExecute = false
             };
-            info.EnvironmentVariables.Add("RUST_LOG", "info");
+            info.EnvironmentVariables.Add("RUST_LOG", "titun=debug");
             info.EnvironmentVariables.Add("RUST_BACKTRACE", "1");
             var p = titunProcess = new Process()
             {

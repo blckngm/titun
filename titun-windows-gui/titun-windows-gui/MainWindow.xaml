@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="TiTun" Height="500" Width="700">
+        Title="TiTun" Height="500" Width="800">
     <DockPanel LastChildFill="True">
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
@@ -15,14 +15,50 @@
             </MenuItem>
         </Menu>
         <Border Padding="6" DockPanel.Dock="Bottom">
-            <TabControl>
-                <TabItem Header="Run">
-                    <Border Padding="6">
+            <DockPanel>
+                <Button Name="RunOrStopButton" Content="Run" FontSize="20" DockPanel.Dock="Top" Margin="0, 10, 0, 6" Click="OnButtonRunOrStopClicked" HorizontalAlignment="Right"/>
+                <TabControl>
+                    <TabItem Header="Status">
+                        <Border Padding="6">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <Label>Private Key:</Label>
+                                    <Label>(Hidden)</Label>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <Label>Public Key:</Label>
+                                    <Label Content="{Binding Status.public_key}"></Label>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <Label>Listen Port:</Label>
+                                    <Label Content="{Binding Status.listen_port}"/>
+                                </StackPanel>
+                                <Label>Peers:</Label>
+                                <DataGrid ItemsSource="{Binding Status.peers}" IsReadOnly="True" AutoGenerateColumns="False">
+                                    <DataGrid.CellStyle>
+                                        <Style TargetType="DataGridCell">
+                                            <Setter Property="Padding" Value="3"/>
+                                        </Style>
+                                    </DataGrid.CellStyle>
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Public Key" Binding="{Binding public_key_shown}"></DataGridTextColumn>
+                                        <DataGridTextColumn Header="PSK" Binding="{Binding has_psk}"></DataGridTextColumn>
+                                        <DataGridTextColumn Header="Endpoint" Binding="{Binding endpoint}"></DataGridTextColumn>
+                                        <DataGridTextColumn Header="Keepalive" Binding="{Binding persistent_keepalive_interval_shown}"></DataGridTextColumn>
+                                        <DataGridTextColumn Header="Last Handshake" Binding="{Binding last_handshake_shown}"></DataGridTextColumn>
+                                        <DataGridTextColumn Header="Received" Binding="{Binding rx_bytes_shown}"></DataGridTextColumn>
+                                        <DataGridTextColumn Header="Sent" Binding="{Binding tx_bytes_shown}"></DataGridTextColumn>
+                                        <DataGridTextColumn Header="Allowed IPs" Binding="{Binding allowed_ips_shown}"></DataGridTextColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </StackPanel>
+                        </Border>
+                    </TabItem>
+                    <TabItem Header="Log">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="auto"/>
                                 <RowDefinition Height="*"/>
-                                <RowDefinition Height="auto"/>
                             </Grid.RowDefinitions>
                             <DockPanel>
                                 <Button DockPanel.Dock="Right" Click="ClearLogButtonClick" Margin="3,3,0,3">Clear</Button>
@@ -32,56 +68,21 @@
                             <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto">
                                 <TextBlock Name="LogsTextBlock" Background="LightYellow"></TextBlock>
                             </ScrollViewer>
-                            <Button Name="RunOrStopButton" Grid.Row="2" Content="Run" Margin="0, 10, 0, 6" Click="OnButtonRunOrStopClicked" HorizontalAlignment="Right"/>
                         </Grid>
-                    </Border>
-                </TabItem>
-                <TabItem Header="Status" IsEnabled="{Binding StatusTabEnabled}">
-                    <StackPanel>
-                        <StackPanel Orientation="Horizontal">
-                            <Label>Private Key:</Label>
-                            <Label>(Hidden)</Label>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal">
-                            <Label>Public Key:</Label>
-                            <Label Content="{Binding Status.public_key}"></Label>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal">
-                            <Label>Listen Port:</Label>
-                            <Label Content="{Binding Status.listen_port}"/>
-                        </StackPanel>
-                        <Label>Peers:</Label>
-                        <DataGrid ItemsSource="{Binding Status.peers}" IsReadOnly="True" AutoGenerateColumns="False">
-                            <DataGrid.CellStyle>
-                                <Style TargetType="DataGridCell">
-                                    <Setter Property="Padding" Value="3"/>
+                    </TabItem>
+                    <TabItem Header="Utils">
+                        <StackPanel>
+                            <StackPanel.Resources>
+                                <Style TargetType="{x:Type Button}">
+                                    <Setter Property="Margin" Value="10, 10, 10, 0"/>
                                 </Style>
-                            </DataGrid.CellStyle>
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="Public Key" Binding="{Binding public_key_shown}"></DataGridTextColumn>
-                                <DataGridTextColumn Header="PSK" Binding="{Binding has_psk}"></DataGridTextColumn>
-                                <DataGridTextColumn Header="Endpoint" Binding="{Binding endpoint}"></DataGridTextColumn>
-                                <DataGridTextColumn Header="Keepalive" Binding="{Binding persistent_keepalive_interval_shown}"></DataGridTextColumn>
-                                <DataGridTextColumn Header="Last Handshake" Binding="{Binding last_handshake_shown}"></DataGridTextColumn>
-                                <DataGridTextColumn Header="Received" Binding="{Binding rx_bytes_shown}"></DataGridTextColumn>
-                                <DataGridTextColumn Header="Sent" Binding="{Binding tx_bytes_shown}"></DataGridTextColumn>
-                                <DataGridTextColumn Header="Allowed IPs" Binding="{Binding allowed_ips_shown}"></DataGridTextColumn>
-                            </DataGrid.Columns>
-                        </DataGrid>
-                    </StackPanel>
-                </TabItem>
-                <TabItem Header="Utils">
-                    <StackPanel>
-                        <StackPanel.Resources>
-                            <Style TargetType="{x:Type Button}">
-                                <Setter Property="Margin" Value="10, 10, 10, 0"/>
-                            </Style>
-                        </StackPanel.Resources>
-                        <Button Click="GenerateKeyButtonClick">Generate a new keypair</Button>
-                        <Button Click="CalculatePubkeyButtonClick">Calculate public key from private key</Button>
-                    </StackPanel>
-                </TabItem>
-            </TabControl>
+                            </StackPanel.Resources>
+                            <Button Click="GenerateKeyButtonClick">Generate a new keypair</Button>
+                            <Button Click="CalculatePubkeyButtonClick">Calculate public key from private key</Button>
+                        </StackPanel>
+                    </TabItem>
+                </TabControl>
+            </DockPanel>
         </Border>
     </DockPanel>
 </Window>
