@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="TiTun" Height="500" Width="800">
+        Title="TiTun" Height="500" Width="860">
     <DockPanel LastChildFill="True">
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
@@ -20,21 +20,67 @@
                 <TabControl>
                     <TabItem Header="Status">
                         <Border Padding="6">
-                            <StackPanel>
+                            <StackPanel Name="StatusPanel" xml:space="preserve" Visibility="Hidden">
+                                <StackPanel.Resources>
+                                    <Style TargetType="{x:Type Label}">
+                                        <Setter Property="Padding" Value="0, 4, 0, 0"/>
+                                        <Setter Property="FontFamily" Value="Consolas"/>
+                                        <Setter Property="FontSize" Value="13"/>
+                                    </Style>
+                                </StackPanel.Resources>
                                 <StackPanel Orientation="Horizontal">
-                                    <Label>Private Key:</Label>
-                                    <Label>(Hidden)</Label>
+                                    <Label>interface: </Label>
+                                    <Label Content="{Binding InterfaceName}"></Label>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal">
-                                    <Label>Public Key:</Label>
+                                    <Label>  public key: </Label>
                                     <Label Content="{Binding Status.public_key}"></Label>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal">
-                                    <Label>Listen Port:</Label>
+                                    <Label>  private key: </Label>
+                                    <Label>(hidden)</Label>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <Label>  listening port: </Label>
                                     <Label Content="{Binding Status.listen_port}"/>
                                 </StackPanel>
-                                <Label>Peers:</Label>
-                                <DataGrid ItemsSource="{Binding Status.peers}" IsReadOnly="True" AutoGenerateColumns="False">
+                                <ItemsControl ItemsSource="{Binding Status.peers}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Label>peer: </Label>
+                                                    <Label Content="{Binding public_key_shown}"></Label>
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal" Visibility="{Binding preshared_key_visibility}">
+                                                    <Label>  preshared key: </Label>
+                                                    <Label Content="(hidden)"></Label>
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Label>  endpoint: </Label>
+                                                    <Label Content="{Binding endpoint}"></Label>
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Label>  allowed ips: </Label>
+                                                    <Label Content="{Binding allowed_ips_shown}"></Label>
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal" Visibility="{Binding last_handshake_visibility}">
+                                                    <Label>  last handshake: </Label>
+                                                    <Label Content="{Binding last_handshake_shown}"></Label>
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Label>  transfer: </Label>
+                                                    <Label Content="{Binding transfer_shown}"></Label>
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal" Visibility="{Binding persistent_keepalive_visibility}">
+                                                    <Label>  persistent keepalive: </Label>
+                                                    <Label Content="{Binding persistent_keepalive_interval_shown}"></Label>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <!--<DataGrid ItemsSource="{Binding Status.peers}" IsReadOnly="True" AutoGenerateColumns="False">
                                     <DataGrid.CellStyle>
                                         <Style TargetType="DataGridCell">
                                             <Setter Property="Padding" Value="3"/>
@@ -50,7 +96,7 @@
                                         <DataGridTextColumn Header="Sent" Binding="{Binding tx_bytes_shown}"></DataGridTextColumn>
                                         <DataGridTextColumn Header="Allowed IPs" Binding="{Binding allowed_ips_shown}"></DataGridTextColumn>
                                     </DataGrid.Columns>
-                                </DataGrid>
+                                </DataGrid>-->
                             </StackPanel>
                         </Border>
                     </TabItem>
@@ -66,7 +112,7 @@
                                 <Label DockPanel.Dock="Left">Log</Label>
                             </DockPanel>
                             <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto">
-                                <TextBlock Name="LogsTextBlock" Background="LightYellow"></TextBlock>
+                                <TextBlock FontFamily="Consolas" FontSize="13" Name="LogsTextBlock" Background="LightYellow"></TextBlock>
                             </ScrollViewer>
                         </Grid>
                     </TabItem>

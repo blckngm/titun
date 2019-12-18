@@ -435,8 +435,11 @@ namespace titun_windows_gui
                     }
                 }
             }
-            Try($"Set DNS servers.", () => SetDns(index, config.Interface.Dns));
-            Try($"Block other DNS servers", () => BlockOtherDNS(index));
+            if (config.Interface.Dns.Count > 0)
+            {
+                Try($"Set DNS servers.", () => SetDns(index, config.Interface.Dns));
+                Try($"Block other DNS servers", () => BlockOtherDNS(index));
+            }
             output.Post("Done.");
             routesAdded = routes;
         }
@@ -458,7 +461,9 @@ namespace titun_windows_gui
                 }
             }
             // Unblock DNS.
-            Try("Unblock DNS", () => UnBlockDNS());
+            if (config.Interface.Dns.Count > 0) {
+                Try("Unblock DNS", () => UnBlockDNS());
+            }
             // Remove routes.
             output.Post("Remove Routes.");
             foreach(var r in routes)

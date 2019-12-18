@@ -41,6 +41,17 @@ namespace titun_windows_gui
             }
         }
 
+        private string interfaceName;
+        public string InterfaceName
+        {
+            get => interfaceName;
+            set
+            {
+                interfaceName = value;
+                NotifyPropertyChanged();
+            }
+        }
+
         private BufferBlock<string> outputBuffer = new BufferBlock<string>();
         private async Task ReceiveAndDisplayOutput()
         {
@@ -382,6 +393,7 @@ namespace titun_windows_gui
             outputBuffer.Post("TiTun process exited.");
             getStatusCancellationTokenSource?.Cancel();
             Status = null;
+            StatusPanel.Visibility = Visibility.Hidden;
             if (haveRunAutoConfigure)
             {
                 outputBuffer.Post("Undo network config");
@@ -424,6 +436,7 @@ namespace titun_windows_gui
         
         private async Task GetStatus(CancellationToken token, string interfaceName)
         {
+            InterfaceName = interfaceName;
             while (!token.IsCancellationRequested)
             {
                 try
@@ -437,6 +450,7 @@ namespace titun_windows_gui
                             await writer.FlushAsync();
                         }
                         Status = await StatusParser.Parse(conn);
+                        StatusPanel.Visibility = Visibility.Visible;
                     }
                 }
                 catch (TaskCanceledException)

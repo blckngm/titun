@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
+using System.Windows;
 
 namespace titun_windows_gui
 {
@@ -29,24 +30,29 @@ namespace titun_windows_gui
             get => public_key;
         }
 
-        public string has_psk
+        public Visibility preshared_key_visibility
         {
-            get => preshared_key ? "yes" : "no";
+            get => preshared_key ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        public Visibility persistent_keepalive_visibility
+        {
+            get => persistent_keepalive_interval != null && persistent_keepalive_interval > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
         public string persistent_keepalive_interval_shown
         {
-            get => persistent_keepalive_interval != null && persistent_keepalive_interval > 0 ? "Every " + persistent_keepalive_interval.ToString() + " secs" : "no";
+            get => "every " + HumanTime(TimeSpan.FromSeconds((double)persistent_keepalive_interval));
         }
 
-        public string rx_bytes_shown
+        public string transfer_shown
         {
-            get => SizeSuffix(rx_bytes ?? 0);
+            get => SizeSuffix(rx_bytes ?? 0) + " received, " + SizeSuffix(tx_bytes ?? 0) + " sent";
         }
 
-        public string tx_bytes_shown
+        public Visibility last_handshake_visibility
         {
-            get => SizeSuffix(tx_bytes ?? 0);
+            get => last_handshake_time != null ? Visibility.Visible : Visibility.Collapsed;
         }
 
         public string last_handshake_shown
@@ -55,7 +61,16 @@ namespace titun_windows_gui
             {
                 if (last_handshake_time != null)
                 {
-                    return FromUnixTime((long)last_handshake_time).ToLocalTime().ToString();
+                    var t = DateTimeOffset.FromUnixTimeSeconds((long)last_handshake_time);
+                    var timeToNow = DateTimeOffset.Now.Subtract(t);
+                    if (timeToNow.TotalSeconds >= 1)
+                    {
+                        return HumanTime(timeToNow) + " ago";
+                    }
+                    else
+                    {
+                        return "just now";
+                    }
                 }
                 else
                 {
@@ -64,19 +79,54 @@ namespace titun_windows_gui
             }
         }
 
+        private static string HumanTime(TimeSpan timeSpan)
+        {
+            var results = new List<string>();
+            var hours = (int)timeSpan.TotalHours;
+            if (hours > 0)
+            {
+                if (hours > 1)
+                {
+                    results.Add(hours + " hours");
+                }
+                else
+                {
+                    results.Add(hours + " hour");
+                }
+            }
+            if (timeSpan.Minutes > 0)
+            {
+                if (timeSpan.Minutes > 1)
+                {
+                    results.Add(timeSpan.Minutes + " minutes");
+                }
+                else
+                {
+                    results.Add(timeSpan.Minutes + " minute");
+                }
+            }
+            if (timeSpan.Seconds > 0)
+            {
+                if (timeSpan.Seconds > 1)
+                {
+                    results.Add(timeSpan.Seconds + " seconds");
+                }
+                else
+                {
+                    results.Add(timeSpan.Seconds + " second");
+                }
+            }
+
+            return String.Join(", ", results);
+        }
+
         public string allowed_ips_shown
         {
             get => string.Join(", ", allowed_ips);
         }
 
-        public static DateTime FromUnixTime(long unixTime)
-        {
-            return epoch.AddSeconds(unixTime);
-        }
-        private static readonly DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-
         static readonly string[] SizeSuffixes =
-                   { "bytes", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" };
+                   { "B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" };
         static string SizeSuffix(ulong value, int decimalPlaces = 1)
         {
             if (decimalPlaces < 0) { throw new ArgumentOutOfRangeException("decimalPlaces"); }
