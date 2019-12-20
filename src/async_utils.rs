@@ -38,8 +38,8 @@ impl AsyncScope {
             receiver: async move {
                 let _ = receiver.await;
             }
-                .boxed()
-                .shared(),
+            .boxed()
+            .shared(),
             sender: Mutex::new(Some(sender)),
         })
     }

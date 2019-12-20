@@ -159,10 +159,8 @@ pub(super) trait Word:
 
     type InputBytes: Copy;
 
-    #[inline(always)]
     fn from_be_bytes(input: Self::InputBytes) -> Self;
 
-    #[inline]
     fn rotr(self, count: u32) -> Self;
 }
 

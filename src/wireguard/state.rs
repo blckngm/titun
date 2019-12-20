@@ -152,8 +152,8 @@ fn udp_process_handshake_init<'a>(
             return async move {
                 let _ = wg.send_to(&reply[..], addr).await;
             }
-                .left_future()
-                .left_future();
+            .left_future()
+            .left_future();
         } else {
             debug!("Mac2 verify OK.");
         }
@@ -216,8 +216,8 @@ fn udp_process_handshake_init<'a>(
             return async move {
                 let _ = wg.send_to(&response[..], addr).await;
             }
-                .right_future()
-                .left_future();
+            .right_future()
+            .left_future();
         } else {
             debug!("Get handshake init, but can't find peer by pubkey.");
         }
@@ -255,8 +255,8 @@ fn udp_process_handshake_resp<'a>(
             return async move {
                 let _ = wg.send_to(&reply, addr).await;
             }
-                .left_future()
-                .right_future();
+            .left_future()
+            .right_future();
         } else {
             debug!("Mac2 verify OK.");
         }
@@ -331,8 +331,8 @@ fn udp_process_handshake_resp<'a>(
                     let _ = wg.send_to(encrypted, addr).await;
                 }
             }
-                .right_future()
-                .right_future();
+            .right_future()
+            .right_future();
         }
     } else {
         debug!("Get handshake response message, but don't know id.");
