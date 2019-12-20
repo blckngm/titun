@@ -177,6 +177,30 @@ namespace titun_windows_gui
             }
         }
 
+        private static async Task<string> CheckAndTransformConfig(string configFilePath)
+        {
+            var info = new ProcessStartInfo(titunPath, "check --print " + configFilePath)
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using (var p = Process.Start(info))
+            {
+                var stdoutTask = p.StandardOutput.ReadToEndAsync();
+                var stderrTask = p.StandardError.ReadToEndAsync();
+
+                await Task.WhenAll(stdoutTask, stderrTask);
+
+                if (stderrTask.Result.Length > 0)
+                {
+                    throw new Exception(stderrTask.Result);
+                }
+                return stdoutTask.Result;
+            }
+        }
+
         public static async Task<string> CalculatePublicKey(string key)
         {
             var info1 = new ProcessStartInfo(titunPath, "pubkey")
@@ -274,7 +298,7 @@ namespace titun_windows_gui
 
         private Process titunProcess;
 
-        private void OnButtonRunOrStopClicked(object sender, RoutedEventArgs e)
+        private async void OnButtonRunOrStopClicked(object sender, RoutedEventArgs e)
         {
             if (titunProcess != null)
             {
@@ -285,7 +309,7 @@ namespace titun_windows_gui
 
             var dialog = new Microsoft.Win32.OpenFileDialog
             {
-                Filter = "Toml files (*.toml)|*.toml|All files (*.*)|*.*"
+                Filter = "Interface config file (*.toml;*.conf)|*.toml;*.conf|All files (*.*)|*.*"
             };
 
             if (dialog.ShowDialog() == true)
@@ -293,9 +317,9 @@ namespace titun_windows_gui
                 var fileName = dialog.FileName;
                 try
                 {
-                    var configStr = File.ReadAllText(fileName, Encoding.UTF8);
+                    var configToml = await CheckAndTransformConfig(fileName);
 
-                    Run(configStr, fileName);
+                    Run(configToml, fileName);
                 }
                 catch (Exception ex)
                 {
