@@ -55,9 +55,8 @@ pub fn load_config_from_path(p: &Path, print_warnings: bool) -> anyhow::Result<C
             }
         }
     }
-    let config = load_config_from_file(&file, print_warnings)?;
-    #[cfg(unix)]
-    let mut config = config;
+    let mut config = load_config_from_file(&file, print_warnings)?;
+    config.interface.name = Some(p.file_stem().context("file_stem")?.into());
     #[cfg(unix)]
     {
         config.general.config_file_path = Some(p.into());
@@ -164,7 +163,11 @@ impl PartialEq<GeneralConfig> for GeneralConfig {
 #[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct InterfaceConfig {
-    #[serde(default, with = "os_string_actually_string")]
+    // Interface name.
+    //
+    // It is either explicitly set via command line argument or inferred from
+    // the stem of the config file name.
+    #[serde(skip)]
     pub name: Option<OsString>,
 
     #[serde(alias = "Key", with = "base64_u8_array")]
@@ -262,25 +265,6 @@ impl Config<String> {
             interface: self.interface,
             peers,
         })
-    }
-}
-
-mod os_string_actually_string {
-    use super::*;
-
-    pub fn serialize<S: Serializer>(v: &Option<OsString>, s: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::Error;
-
-        if let Some(ref v) = v {
-            s.serialize_some(v.to_str().ok_or_else(|| Error::custom("not utf-8"))?)
-        } else {
-            s.serialize_none()
-        }
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<OsString>, D::Error> {
-        let v: String = Deserialize::deserialize(d)?;
-        Ok(Some(v.into()))
     }
 }
 
@@ -433,7 +417,6 @@ mod tests {
     use noise_protocol::U8Array;
 
     const EXAMPLE_CONFIG: &str = r##"[Interface]
-Name = "tun7"
 ListenPort = 7777
 PrivateKey = "2BJtcgPUjHfKKN3yMvTiVQbJ/UgHj2tcZE6xU/4BdGM="
 FwMark = 33
@@ -484,7 +467,7 @@ Endpoint = "host.no.port.invalid"
             Config {
                 general: GeneralConfig::default(),
                 interface: InterfaceConfig {
-                    name: Some("tun7".into()),
+                    name: None,
                     listen_port: Some(7777),
                     private_key: U8Array::from_slice(
                         &base64::decode("2BJtcgPUjHfKKN3yMvTiVQbJ/UgHj2tcZE6xU/4BdGM=").unwrap()

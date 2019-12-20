@@ -32,7 +32,12 @@ struct Options {
     #[structopt(short, long, help = "Run in foreground (don't daemonize)")]
     foreground: bool,
 
-    #[structopt(short, long, help = "Load initial configuration from TOML file")]
+    #[structopt(
+        short,
+        long,
+        help = "Load initial configuration from TOML file",
+        required_unless = "dev"
+    )]
     config_file: Option<PathBuf>,
 
     #[cfg(windows)]
@@ -67,7 +72,8 @@ struct Options {
     #[structopt(
         value_name = "INTERFACE_NAME",
         help = "Interface name",
-        parse(from_os_str)
+        parse(from_os_str),
+        required_unless = "config-file"
     )]
     dev: Option<OsString>,
 
@@ -152,9 +158,6 @@ impl Options {
 
         if options.dev.is_some() {
             config.interface.name = options.dev;
-        }
-        if config.interface.name.is_none() {
-            bail!("interface name is never specified\nSpecify a interface name via command line arg or in config file in `Interface.Name`.");
         }
 
         let threads = options
@@ -338,9 +341,11 @@ pub fn windows_service_args() -> anyhow::Result<Option<WindowsServiceArgs>> {
             }
         };
 
-        let interface_name = options.dev.clone().or(config.interface.name).ok_or_else(||
-            anyhow::anyhow!("interface name is never specified\nSpecify a interface name via command line arg or in config file in `Interface.Name`.")
-        )?;
+        let interface_name = options
+            .dev
+            .clone()
+            .or(config.interface.name)
+            .expect("interface name is None");
 
         let mut args: Vec<OsString> = Vec::new();
         if let Some(config_file) = options.config_file {

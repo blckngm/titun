@@ -340,7 +340,7 @@ namespace titun_windows_gui
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void AutomaticConfig(Config config, BufferBlock<string> output, out IEnumerable<string> routesAdded)
+        public void AutomaticConfig(string interfaceName, Config config, BufferBlock<string> output, out IEnumerable<string> routesAdded)
         {
             var routes = new List<string>();
             void Try(string description, Action op)
@@ -359,7 +359,7 @@ namespace titun_windows_gui
             uint index;
             try
             {
-                index = FindInterfaceIndexByAlias(config.Interface.Name) ?? throw new Exception($"Failed to find interface {config.Interface.Name}");
+                index = FindInterfaceIndexByAlias(interfaceName) ?? throw new Exception($"Failed to find interface {interfaceName}");
             }
             catch (Exception e)
             {
