@@ -178,7 +178,7 @@ impl Options {
             let mut rt = tokio::runtime::Builder::new()
                 .enable_all()
                 .threaded_scheduler()
-                .num_threads(threads)
+                .core_threads(threads)
                 .build()?;
             rt.block_on(cli::run(config, notify, stop_rx))
         } else {
