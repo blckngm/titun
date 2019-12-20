@@ -5,7 +5,7 @@ Description=TiTun instance %I
 Type=notify
 Environment=RUST_BACKTRACE=1
 
-ExecStart=/usr/bin/titun -c /etc/titun/%I.conf -f %I
+ExecStart=/usr/bin/titun -fc /etc/titun/%I.conf
 ExecStartPost=/bin/sh -c "if [ -x /etc/titun/%I.up.sh ]; then /etc/titun/%I.up.sh; fi"
 ExecStopPost=/bin/sh -c "if [ -x /etc/titun/%I.down.sh ]; then /etc/titun/%I.down.sh; fi"
 

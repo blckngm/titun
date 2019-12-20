@@ -27,7 +27,7 @@ to build a `titun` executable in `target/release`.
 Use
 
 ```sh
-$ sudo titun -c tun0.toml -f tun0
+$ sudo titun -fc tun0.toml
 ```
 
 to run TiTun and open the tun interface `tun0`. Here `-f` tells the program to
@@ -59,8 +59,6 @@ Foreground = true
 Threads = 2
 
 [Interface]
-# Optional. Override by command line argument. NOT applied when reloading.
-Name = "tun7"
 # Optiona. Alias: Port.
 ListenPort = 7777
 # Alias: Key.
@@ -97,7 +95,7 @@ Description=TiTun instance %I
 Type=notify
 Environment=RUST_BACKTRACE=1
 
-ExecStart=/usr/local/bin/titun -f -c /etc/titun/%I.conf %I
+ExecStart=/usr/local/bin/titun -fc /etc/titun/%I.conf
 ExecStartPost=/bin/sh -c "if [ -x /etc/titun/%I.up.sh ]; then /etc/titun/%I.up.sh; fi"
 ExecStopPost=/bin/sh -c "if [ -x /etc/titun/%I.down.sh ]; then /etc/titun/%I.down.sh; fi"
 

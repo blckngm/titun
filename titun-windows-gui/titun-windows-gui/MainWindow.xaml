@@ -80,23 +80,6 @@
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
-                                <!--<DataGrid ItemsSource="{Binding Status.peers}" IsReadOnly="True" AutoGenerateColumns="False">
-                                    <DataGrid.CellStyle>
-                                        <Style TargetType="DataGridCell">
-                                            <Setter Property="Padding" Value="3"/>
-                                        </Style>
-                                    </DataGrid.CellStyle>
-                                    <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Public Key" Binding="{Binding public_key_shown}"></DataGridTextColumn>
-                                        <DataGridTextColumn Header="PSK" Binding="{Binding has_psk}"></DataGridTextColumn>
-                                        <DataGridTextColumn Header="Endpoint" Binding="{Binding endpoint}"></DataGridTextColumn>
-                                        <DataGridTextColumn Header="Keepalive" Binding="{Binding persistent_keepalive_interval_shown}"></DataGridTextColumn>
-                                        <DataGridTextColumn Header="Last Handshake" Binding="{Binding last_handshake_shown}"></DataGridTextColumn>
-                                        <DataGridTextColumn Header="Received" Binding="{Binding rx_bytes_shown}"></DataGridTextColumn>
-                                        <DataGridTextColumn Header="Sent" Binding="{Binding tx_bytes_shown}"></DataGridTextColumn>
-                                        <DataGridTextColumn Header="Allowed IPs" Binding="{Binding allowed_ips_shown}"></DataGridTextColumn>
-                                    </DataGrid.Columns>
-                                </DataGrid>-->
                             </StackPanel>
                         </Border>
                     </TabItem>

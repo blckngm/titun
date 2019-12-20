@@ -25,8 +25,6 @@ namespace titun_windows_gui
 
     public class InterfaceConfig
     {
-        [Required]
-        public string Name { get; set; }
         [Ipv4Addr(ErrorMessage = "Address must be an IPv4 address")]
         public string Address { get; set; }
         [Range(0, 65536)]

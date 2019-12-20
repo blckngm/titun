@@ -367,7 +367,8 @@ namespace titun_windows_gui
             task = ReadStream(titunProcess.StandardOutput.BaseStream);
 
             var getStatusCancellationTokenSource = new CancellationTokenSource();
-            task = GetStatus(getStatusCancellationTokenSource.Token, configObj.Interface.Name);
+            var interfaceName = Path.GetFileNameWithoutExtension(configFilePath);
+            task = GetStatus(getStatusCancellationTokenSource.Token, interfaceName);
 
             var haveRunAutoConfigure = false;
             IEnumerable<string> routes = null;
@@ -381,7 +382,7 @@ namespace titun_windows_gui
                     outputBuffer.Post("Auto config network.");
                     await Task.Run(delegate
                     {
-                        networkConfigManager.AutomaticConfig(configObj, outputBuffer, out routes);
+                        networkConfigManager.AutomaticConfig(interfaceName, configObj, outputBuffer, out routes);
                     });
                 }
             }
