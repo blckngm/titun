@@ -26,13 +26,10 @@ pub fn register_benches(c: &mut Criterion) {
         let mut rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
             let run = Arc::new(AtomicBool::new(false));
-            let t = {
-                let run = run.clone();
-                create_timer_async(move || {
-                    run.store(true, SeqCst);
-                    async {}
-                })
-            };
+            let t = create_timer_async(move || {
+                run.store(true, SeqCst);
+                async {}
+            });
 
             b.iter(|| {
                 t.adjust_and_activate(Duration::from_secs(10));
