@@ -158,7 +158,7 @@ fn main() {
             .enable_all()
             // Have to use threaded because we use `block_in_place`.
             .threaded_scheduler()
-            .num_threads(1)
+            .core_threads(1)
             .build()
             .context("build tokio runtime")?;
 
