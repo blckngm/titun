@@ -121,6 +121,7 @@ impl Options {
                     private_key: X25519::genkey(),
                     fwmark: None,
                     listen_port: None,
+                    dns: vec![],
                 },
                 peers: Vec::new(),
             }
@@ -202,7 +203,11 @@ enum Cmd {
         interfaces: Vec<OsString>,
     },
     #[structopt(about = "Check configuration file validity")]
-    Check { config_file: PathBuf },
+    Check {
+        config_file: PathBuf,
+        #[structopt(long)]
+        print: bool,
+    },
     #[structopt(about = "Generate private key")]
     Genkey,
     #[structopt(about = "Calculate public key from the private key read from stdin")]
@@ -230,8 +235,17 @@ impl Cmd {
                     anyhow::bail!("the show command is not implemented on this platform");
                 }
             }
-            Cmd::Check { config_file: p } => {
-                cli::load_config_from_path(&p, true)?;
+            Cmd::Check {
+                config_file: p,
+                print,
+            } => {
+                let config = cli::load_config_from_path(&p, true)?;
+                if print {
+                    print!(
+                        "{}",
+                        toml::to_string_pretty(&config).context("serialize config file")?
+                    );
+                }
             }
             Cmd::Genpsk => {
                 let mut k = [0u8; 32];
@@ -336,6 +350,7 @@ pub fn windows_service_args() -> anyhow::Result<Option<WindowsServiceArgs>> {
                     private_key: X25519::genkey(),
                     fwmark: None,
                     listen_port: None,
+                    dns: vec![],
                 },
                 peers: Vec::new(),
             }

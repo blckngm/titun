@@ -178,6 +178,11 @@ pub struct InterfaceConfig {
 
     #[serde(rename = "FwMark", alias = "Mark")]
     pub fwmark: Option<u32>,
+
+    // We do not use this field. It is defined so that we can check and
+    // transform it for the GUI.
+    #[serde(rename = "DNS", default, with = "ip_addr_vec")]
+    pub dns: Vec<IpAddr>,
 }
 
 #[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -392,6 +397,64 @@ mod ip_prefix_len {
     }
 }
 
+mod ip_addr_vec {
+    use super::*;
+
+    pub fn serialize<S: Serializer>(t: &[IpAddr], s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeSeq;
+
+        let mut seq = s.serialize_seq(t.len().into())?;
+
+        for addr in t {
+            seq.serialize_element(addr)?;
+        }
+
+        seq.end()
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<IpAddr>, D::Error> {
+        use serde::de::{Error, SeqAccess, Visitor};
+        use std::fmt;
+
+        struct IpAddrVecVisitor;
+
+        impl<'de> Visitor<'de> for IpAddrVecVisitor {
+            type Value = Vec<IpAddr>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(formatter, "an IP address or an array of IP addresses")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                let a: IpAddr = v
+                    .parse()
+                    .map_err(|_| Error::custom("failed to parse ip address"))?;
+                Ok(vec![a])
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, <A as SeqAccess<'de>>::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut result = Vec::new();
+                while let Some(v) = seq.next_element()? {
+                    let v: Cow<'_, str> = v;
+                    let a = v
+                        .parse()
+                        .map_err(|_| Error::custom("failed to parse ip address"))?;
+                    result.push(a);
+                }
+                Ok(result)
+            }
+        }
+
+        d.deserialize_any(IpAddrVecVisitor)
+    }
+}
+
 mod base64_u8_array_optional {
     use super::*;
     use noise_protocol::U8Array;
@@ -420,6 +483,7 @@ mod tests {
 ListenPort = 7777
 PrivateKey = "2BJtcgPUjHfKKN3yMvTiVQbJ/UgHj2tcZE6xU/4BdGM="
 FwMark = 33
+DNS = "1.1.1.1"
 
 [[Peer]]
 PublicKey = "Ck8P+fUguLIf17zmb3eWxxS7PqgN3+ciMFBlSwqRaw4="
@@ -472,6 +536,7 @@ Endpoint = "host.no.port.invalid"
                     private_key: U8Array::from_slice(
                         &base64::decode("2BJtcgPUjHfKKN3yMvTiVQbJ/UgHj2tcZE6xU/4BdGM=").unwrap()
                     ),
+                    dns: vec![IpAddr::V4([1, 1, 1, 1].into())],
                     fwmark: Some(33),
                 },
                 peers: vec![PeerConfig {
