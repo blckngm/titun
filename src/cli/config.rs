@@ -179,6 +179,9 @@ pub struct InterfaceConfig {
     #[serde(rename = "FwMark", alias = "Mark")]
     pub fwmark: Option<u32>,
 
+    // For GUI.
+    pub address: Option<IpAddr>,
+
     // We do not use this field. It is defined so that we can check and
     // transform it for the GUI.
     #[serde(rename = "DNS", default, with = "ip_addr_vec")]
@@ -536,6 +539,7 @@ Endpoint = "host.no.port.invalid"
                     private_key: U8Array::from_slice(
                         &base64::decode("2BJtcgPUjHfKKN3yMvTiVQbJ/UgHj2tcZE6xU/4BdGM=").unwrap()
                     ),
+                    address: None,
                     dns: vec![IpAddr::V4([1, 1, 1, 1].into())],
                     fwmark: Some(33),
                 },
