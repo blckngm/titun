@@ -15,6 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
+use crate::wireguard::re_exports::{DH, X25519};
 use crate::wireguard::{X25519Key, X25519Pubkey};
 use anyhow::Context;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -122,6 +123,24 @@ pub struct Config<Endpoint> {
     pub peers: Vec<PeerConfig<Endpoint>>,
 }
 
+impl<T> Default for Config<T> {
+    fn default() -> Config<T> {
+        Config {
+            general: GeneralConfig::default(),
+            interface: InterfaceConfig {
+                name: None,
+                private_key: X25519::genkey(),
+                fwmark: None,
+                listen_port: None,
+                mtu: None,
+                address: None,
+                dns: vec![],
+            },
+            peers: vec![],
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct GeneralConfig {
@@ -182,9 +201,13 @@ pub struct InterfaceConfig {
     // For GUI.
     pub address: Option<IpAddr>,
 
+    // For GUI.
+    #[serde(rename = "MTU", alias = "Mtu")]
+    pub mtu: Option<u32>,
+
     // We do not use this field. It is defined so that we can check and
     // transform it for the GUI.
-    #[serde(rename = "DNS", default, with = "ip_addr_vec")]
+    #[serde(rename = "DNS", alias = "Dns", default, with = "ip_addr_vec")]
     pub dns: Vec<IpAddr>,
 }
 
@@ -540,6 +563,7 @@ Endpoint = "host.no.port.invalid"
                         &base64::decode("2BJtcgPUjHfKKN3yMvTiVQbJ/UgHj2tcZE6xU/4BdGM=").unwrap()
                     ),
                     address: None,
+                    mtu: None,
                     dns: vec![IpAddr::V4([1, 1, 1, 1].into())],
                     fwmark: Some(33),
                 },

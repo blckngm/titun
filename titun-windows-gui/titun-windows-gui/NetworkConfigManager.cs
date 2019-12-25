@@ -374,7 +374,7 @@ namespace titun_windows_gui
                 {
                     address = config.Interface.Address,
                     prefix = 32,
-                    mtu = config.Interface.Mtu,
+                    mtu = config.Interface.MTU,
                     metric = 1,
                 });
             });
@@ -435,9 +435,9 @@ namespace titun_windows_gui
                     }
                 }
             }
-            if (config.Interface.Dns.Count > 0)
+            if (config.Interface.DNS.Count > 0)
             {
-                Try($"Set DNS servers.", () => SetDns(index, config.Interface.Dns));
+                Try($"Set DNS servers.", () => SetDns(index, config.Interface.DNS));
                 Try($"Block other DNS servers", () => BlockOtherDNS(index));
             }
             output.Post("Done.");
@@ -461,7 +461,7 @@ namespace titun_windows_gui
                 }
             }
             // Unblock DNS.
-            if (config.Interface.Dns.Count > 0) {
+            if (config.Interface.DNS.Count > 0) {
                 Try("Unblock DNS", () => UnBlockDNS());
             }
             // Remove routes.
