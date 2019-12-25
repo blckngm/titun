@@ -114,18 +114,7 @@ impl Options {
         let mut config = if let Some(ref p) = options.config_file {
             cli::load_config_from_path(&p, true)?
         } else {
-            cli::Config {
-                general: Default::default(),
-                interface: cli::InterfaceConfig {
-                    name: None,
-                    private_key: X25519::genkey(),
-                    fwmark: None,
-                    listen_port: None,
-                    address: None,
-                    dns: vec![],
-                },
-                peers: Vec::new(),
-            }
+            cli::Config::default()
         };
 
         if options.foreground {
@@ -344,18 +333,7 @@ pub fn windows_service_args() -> anyhow::Result<Option<WindowsServiceArgs>> {
         let config = if let Some(ref p) = options.config_file {
             cli::load_config_from_path(&p, true)?
         } else {
-            cli::Config {
-                general: Default::default(),
-                interface: cli::InterfaceConfig {
-                    name: None,
-                    private_key: X25519::genkey(),
-                    fwmark: None,
-                    listen_port: None,
-                    address: None,
-                    dns: vec![],
-                },
-                peers: Vec::new(),
-            }
+            cli::Config::default()
         };
 
         let interface_name = options

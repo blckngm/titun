@@ -28,8 +28,8 @@ namespace titun_windows_gui
         [Ipv4Addr(ErrorMessage = "Address must be an IPv4 address")]
         public string Address { get; set; }
         [Range(0, 65536)]
-        public uint? Mtu { get; set; }
-        public List<string> Dns { get; set; } = new List<string>();
+        public uint? MTU { get; set; }
+        public List<string> DNS { get; set; } = new List<string>();
     }
 
     public class PeerConfig
