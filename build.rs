@@ -2,6 +2,18 @@ use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 
+const MANIFEST: &str = r#"
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+<trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+        <requestedPrivileges>
+            <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+        </requestedPrivileges>
+    </security>
+</trustInfo>
+</assembly>
+"#;
+
 fn msvc_link_dll(name: &str, methods: &[&str]) {
     let output_dir = std::env::var("OUT_DIR").unwrap();
     let def_path = Path::new(&output_dir).join(name).with_extension("def");
@@ -48,6 +60,14 @@ fn main() {
             .compile("tun_unix");
     } else if std::env::var_os("CARGO_CFG_WINDOWS").is_some() {
         if std::env::var("CARGO_CFG_TARGET_ENV") == Ok("msvc".into()) {
+            println!("cargo:rerun-if-env-changed=TESTING");
+            if std::env::var_os("TESTING").is_none() {
+                winres::WindowsResource::new()
+                    .set_icon_with_id("src/icon.ico", "APP_ICON")
+                    .set_manifest(MANIFEST)
+                    .compile()
+                    .expect("compile resource");
+            }
             msvc_link_dll("NCI", &["NciGetConnectionName", "NciSetConnectionName"]);
         } else {
             // We only use the windows-gnu target for cross checking. So no need

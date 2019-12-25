@@ -516,6 +516,37 @@ impl<A: Address, T> std::iter::FromIterator<(A, u32, T)> for IpLookupTable<A, T>
     }
 }
 
+pub fn cidr_minus<A: Address, B: From<A>>(
+    addr: A,
+    prefix_len: u32,
+    minus: A,
+    push_into: &mut Vec<(B, u32)>,
+) {
+    let addr = addr.into_integer();
+    let minus = minus.into_integer();
+    let mask = to_mask::<A::U>(prefix_len);
+    if (addr & mask) != (minus & mask) {
+        push_into.push((A::from_integer(addr).into(), prefix_len));
+        return;
+    }
+    if prefix_len == bit_len::<A::U>() {
+        return;
+    }
+
+    cidr_minus(
+        A::from_integer(addr & mask),
+        prefix_len + 1,
+        A::from_integer(minus),
+        push_into,
+    );
+    cidr_minus(
+        A::from_integer(addr & mask | next_bit_mask1(prefix_len)),
+        prefix_len + 1,
+        A::from_integer(minus),
+        push_into,
+    );
+}
+
 #[cfg(test)]
 mod simple;
 
@@ -722,6 +753,55 @@ mod tests {
         assert_eq!(
             table.longest_match("2002:0db8:85a3:0000:0001:8a2e:0370:7334".parse().unwrap()),
             Some(&0)
+        );
+    }
+
+    #[test]
+    fn test_cidr_minus() {
+        let mut result: Vec<(Ipv4Addr, u32)> = Vec::new();
+        cidr_minus(
+            Ipv4Addr::from([0, 0, 0, 0]),
+            0,
+            Ipv4Addr::from([192, 168, 77, 2]),
+            &mut result,
+        );
+
+        assert_eq!(
+            result,
+            vec![
+                ([0, 0, 0, 0].into(), 1),
+                ([128, 0, 0, 0].into(), 2),
+                ([192, 0, 0, 0].into(), 9),
+                ([192, 128, 0, 0].into(), 11),
+                ([192, 160, 0, 0].into(), 13),
+                ([192, 168, 0, 0].into(), 18),
+                ([192, 168, 64, 0].into(), 21),
+                ([192, 168, 72, 0].into(), 22),
+                ([192, 168, 76, 0].into(), 24),
+                ([192, 168, 77, 0].into(), 31),
+                ([192, 168, 77, 3].into(), 32),
+                ([192, 168, 77, 4].into(), 30),
+                ([192, 168, 77, 8].into(), 29),
+                ([192, 168, 77, 16].into(), 28),
+                ([192, 168, 77, 32].into(), 27),
+                ([192, 168, 77, 64].into(), 26),
+                ([192, 168, 77, 128].into(), 25),
+                ([192, 168, 78, 0].into(), 23),
+                ([192, 168, 80, 0].into(), 20),
+                ([192, 168, 96, 0].into(), 19),
+                ([192, 168, 128, 0].into(), 17),
+                ([192, 169, 0, 0].into(), 16),
+                ([192, 170, 0, 0].into(), 15),
+                ([192, 172, 0, 0].into(), 14),
+                ([192, 176, 0, 0].into(), 12),
+                ([192, 192, 0, 0].into(), 10),
+                ([193, 0, 0, 0].into(), 8),
+                ([194, 0, 0, 0].into(), 7),
+                ([196, 0, 0, 0].into(), 6),
+                ([200, 0, 0, 0].into(), 5),
+                ([208, 0, 0, 0].into(), 4),
+                ([224, 0, 0, 0].into(), 3),
+            ],
         );
     }
 }

@@ -19,14 +19,11 @@
 
 use crate::ipc::commands::*;
 use crate::ipc::parse::*;
-use crate::wireguard::re_exports::U8Array;
 use crate::wireguard::{SetPeerCommand, WgState, WgStateOut};
 use anyhow::Context;
-use hex::encode;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::{Arc, Weak};
-use std::time::SystemTime;
 use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
 use tokio::sync::oneshot::Sender;
 
@@ -38,6 +35,7 @@ pub async fn ipc_server(
 ) -> anyhow::Result<()> {
     use crate::ipc::windows_named_pipe::*;
 
+    let name = dev_name.to_string_lossy().into_owned();
     let mut path = Path::new(r#"\\.\pipe\wireguard"#).join(dev_name);
     path.set_extension("sock");
     let mut listener = AsyncPipeListener::bind(path).context("failed to bind IPC socket")?;
@@ -45,8 +43,9 @@ pub async fn ipc_server(
     loop {
         let wg = wg.clone();
         let stream = listener.accept().await?;
+        let name = name.clone();
         tokio::spawn(async move {
-            serve(&wg, stream).await.unwrap_or_else(|e| {
+            serve(&wg, stream, name).await.unwrap_or_else(|e| {
                 warn!("Error serving IPC connection: {:#}", e);
             });
         });
@@ -111,10 +110,15 @@ macro_rules! writeln {
     };
 }
 
+#[cfg(not(windows))]
 async fn write_wg_state(
     mut w: impl AsyncWrite + Unpin + 'static,
-    state: &WgStateOut,
+    state: WgStateOut,
 ) -> io::Result<()> {
+    use crate::wireguard::re_exports::U8Array;
+    use hex::encode;
+    use std::time::SystemTime;
+
     writeln!(w, "private_key={}", encode(state.private_key.as_slice()))?;
     writeln!(w, "listen_port={}", state.listen_port)?;
     if state.fwmark != 0 {
@@ -148,6 +152,18 @@ async fn write_wg_state(
     }
     writeln!(w, "errno=0")?;
     writeln!(w)?;
+    w.flush().await
+}
+
+#[cfg(windows)]
+async fn write_wg_state(
+    mut w: impl AsyncWrite + Unpin + 'static,
+    state: WgStateOut,
+    name: String,
+) -> io::Result<()> {
+    let state: state_json::WgStateOutJson = (name, state).into();
+    let state_json_str = serde_json::to_string(&state).expect("serialize status");
+    w.write_all(state_json_str.as_bytes()).await?;
     w.flush().await
 }
 
@@ -207,7 +223,11 @@ async fn process_wg_set(wg: &Arc<WgState>, command: WgSetCommand) -> io::Result<
     Ok(())
 }
 
-pub async fn serve<S>(wg: &Weak<WgState>, stream: S) -> anyhow::Result<()>
+pub async fn serve<S>(
+    wg: &Weak<WgState>,
+    stream: S,
+    #[cfg(windows)] name: String,
+) -> anyhow::Result<()>
 where
     S: AsyncRead + AsyncWrite + 'static,
 {
@@ -233,7 +253,13 @@ where
     match c {
         WgIpcCommand::Get => {
             let state = wg.get_state();
-            write_wg_state(stream_w, &state).await?;
+            write_wg_state(
+                stream_w,
+                state,
+                #[cfg(windows)]
+                name,
+            )
+            .await?;
         }
         WgIpcCommand::Set(sc) => {
             // FnMut hack.
@@ -245,4 +271,91 @@ where
         }
     }
     Ok(())
+}
+
+#[cfg(windows)]
+mod state_json {
+    use crate::wireguard::types::{PeerStateOut, WgStateOut};
+    use serde::Serialize;
+    use std::net::SocketAddr;
+    use std::time::SystemTime;
+
+    /// State of WireGuard interface.
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct WgStateOutJson {
+        name: String,
+        /// Self public key.
+        public_key: String,
+        /// Peers.
+        peers: Vec<PeerStateOutJson>,
+        /// Port.
+        listen_port: u16,
+        /// Fwmark.
+        fwmark: u32,
+    }
+
+    /// State of a peer.
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct PeerStateOutJson {
+        /// Public key.
+        public_key: String,
+        /// Pre-shared key.
+        preshared_key: bool,
+        /// Endpoint.
+        endpoint: Option<SocketAddr>,
+        /// Last handshake time seconds after UNIX epoch.
+        last_handshake_time_sec: Option<u64>,
+        /// Received bytes.
+        rx_bytes: u64,
+        /// Sent bytes.
+        tx_bytes: u64,
+        /// Persistent keep-alive interval.
+        ///
+        /// Zero value means persistent keepalive is not enabled.
+        persistent_keepalive_interval: u16,
+        /// Allowed IP addresses.
+        allowed_ips: Vec<String>,
+    }
+
+    impl From<(String, WgStateOut)> for WgStateOutJson {
+        fn from((name, state): (String, WgStateOut)) -> WgStateOutJson {
+            WgStateOutJson {
+                name,
+                public_key: base64::encode(state.private_key.public_key()),
+                listen_port: state.listen_port,
+                fwmark: state.fwmark,
+                peers: state.peers.into_iter().map(|p| p.into()).collect(),
+            }
+        }
+    }
+
+    impl From<PeerStateOut> for PeerStateOutJson {
+        fn from(p: PeerStateOut) -> PeerStateOutJson {
+            PeerStateOutJson {
+                public_key: base64::encode(&p.public_key),
+                preshared_key: p.preshared_key.is_some(),
+                endpoint: p.endpoint,
+                last_handshake_time_sec: p
+                    .last_handshake_time
+                    .map(|t| t.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs()),
+                rx_bytes: p.rx_bytes,
+                tx_bytes: p.tx_bytes,
+                persistent_keepalive_interval: p.persistent_keepalive_interval,
+                allowed_ips: p
+                    .allowed_ips
+                    .into_iter()
+                    .map(|(a, p)| {
+                        let max_prefix_len = if a.is_ipv4() { 32 } else { 128 };
+                        if p == max_prefix_len {
+                            format!("{}", a)
+                        } else {
+                            format!("{}/{}", a, p)
+                        }
+                    })
+                    .collect(),
+            }
+        }
+    }
 }

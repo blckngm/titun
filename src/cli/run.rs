@@ -59,6 +59,309 @@ async fn reload_on_sighup(
     Ok(())
 }
 
+#[cfg(windows)]
+#[allow(clippy::cognitive_complexity)]
+#[allow(clippy::range_minus_one)]
+async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
+    use std::net::IpAddr;
+    use tokio::process::Command;
+
+    let name = c.interface.name.as_ref().unwrap();
+
+    let address = if let Some(ref a) = c.interface.address {
+        a
+    } else {
+        return Ok(());
+    };
+    let mask = if address.is_ipv4() {
+        IpAddr::V4(u32::max_value().into())
+    } else {
+        IpAddr::V6(u128::max_value().into())
+    };
+
+    info!("set interface ip address to {}", address);
+    let output = Command::new("netsh")
+        .arg("interface")
+        .arg("ip")
+        .arg("set")
+        .arg("address")
+        .arg(name)
+        .arg("static")
+        .arg(format!("{}", address))
+        .arg(format!("{}", mask))
+        .output()
+        .await
+        .context("run netsh")?;
+    if !output.status.success() {
+        bail!(
+            "failed to set address, command output: {}",
+            String::from_utf8_lossy(&output.stdout),
+        );
+    }
+
+    if !c.interface.dns.is_empty() {
+        for dns in &c.interface.dns {
+            info!("add DNS server {}", dns);
+            let output = Command::new("netsh")
+                .arg("interface")
+                .arg("ip")
+                .arg("set")
+                .arg("dns")
+                .arg(name)
+                .arg("static")
+                .arg(format!("{}", dns))
+                .output()
+                .await
+                .context("run netsh")?;
+            if !output.status.success() {
+                warn!(
+                    "failed to set dns server, command output: {}",
+                    String::from_utf8_lossy(&output.stdout),
+                );
+            }
+        }
+
+        // Block DNS servers on every other addresses.
+        //
+        // We add windows firewall rules to block DNS traffic to the full IPv4
+        // and IPv6 ranges except our servers.
+        //
+        // XXX: What if the user is not using windows firewall.
+
+        let mut ranges_v4 = vec![0..=u32::max_value()];
+        let mut ranges_v6 = vec![0..=u128::max_value()];
+
+        for dns_server in &c.interface.dns {
+            match dns_server {
+                IpAddr::V4(d4) => {
+                    let d4: u32 = (*d4).into();
+                    ranges_v4 = ranges_v4
+                        .into_iter()
+                        .flat_map(|r| {
+                            let mut result = vec![];
+                            if r.contains(&d4) {
+                                if *r.start() == d4 {
+                                    result.push(r.start() + 1..=*r.end());
+                                } else if *r.end() == d4 {
+                                    result.push(*r.start()..=r.end() - 1);
+                                } else {
+                                    result.push(*r.start()..=d4 - 1);
+                                    result.push(d4 + 1..=*r.end());
+                                }
+                            } else {
+                                result.push(r);
+                            }
+                            result
+                        })
+                        .collect();
+                }
+                IpAddr::V6(d6) => {
+                    let d6: u128 = (*d6).into();
+                    ranges_v6 = ranges_v6
+                        .into_iter()
+                        .flat_map(|r| {
+                            let mut result = vec![];
+                            if r.contains(&d6) {
+                                if *r.start() == d6 {
+                                    result.push(r.start() + 1..=*r.end());
+                                } else if *r.end() == d6 {
+                                    result.push(*r.start()..=r.end() - 1);
+                                } else {
+                                    result.push(*r.start()..=d6 - 1);
+                                    result.push(d6 + 1..=*r.end());
+                                }
+                            } else {
+                                result.push(r);
+                            }
+                            result
+                        })
+                        .collect();
+                }
+            }
+        }
+
+        async fn block_inner(start: IpAddr, end: IpAddr) -> anyhow::Result<()> {
+            let script = format!(
+                r#"New-NetFirewallRule -PolicyStore ActiveStore -DisplayName TiTunDNSBlock -Group TiTunDNSBlock -Direction Outbound -Action Block -RemoteAddress {}-{} -RemotePort 53 -Protocol UDP
+New-NetFirewallRule -PolicyStore ActiveStore -DisplayName TiTunDNSBlock -Group TiTunDNSBlock -Direction Outbound -Action Block -RemoteAddress {}-{} -RemotePort 53 -Protocol TCP
+"#,
+                start, end, start, end
+            );
+            let output = Command::new("powershell")
+                .arg("-command")
+                .arg(script)
+                .output()
+                .await
+                .context("run powershell")?;
+            if !output.status.success() {
+                bail!("{}", String::from_utf8_lossy(&output.stderr));
+            }
+            Ok(())
+        }
+
+        async fn block(start: IpAddr, end: IpAddr) {
+            info!("block DNS servers in range {}-{}", start, end);
+            if let Err(e) = block_inner(start, end).await {
+                warn!(
+                    "failed to block DNS servers in range {}-{}: {:#}",
+                    start, end, e
+                );
+            }
+        }
+
+        // It's a bit slow, so do it in the background.
+        tokio::spawn(async move {
+            scopeguard::defer! {{
+                info!("unblock other DNS servers");
+                std::process::Command::new("powershell")
+                    .arg("-command")
+                    .arg("Get-NetFirewallRule -PolicyStore ActiveStore -Group TiTunDNSBlock | Remove-NetFirewallRule")
+                    .output()
+                    .and_then(|o| {
+                        if !o.status.success() {
+                            warn!(
+                                "failed to unblock dns servers: {}",
+                                String::from_utf8_lossy(&o.stderr),
+                            );
+                        }
+                        Ok(())
+                    }).unwrap_or_else(|e| {
+                        warn!("failed to unblock dns servers: failed to run powershell: {}", e);
+                    });
+            }};
+
+            for range in ranges_v4 {
+                block(
+                    IpAddr::V4((*range.start()).into()),
+                    IpAddr::V4((*range.end()).into()),
+                )
+                .await;
+            }
+            for range in ranges_v6 {
+                block(
+                    IpAddr::V6((*range.start()).into()),
+                    IpAddr::V6((*range.end()).into()),
+                )
+                .await;
+            }
+
+            futures::future::pending::<()>().await
+        });
+    }
+
+    if let Some(mtu) = c.interface.mtu {
+        info!("set MTU to {}", mtu);
+
+        let output = Command::new("netsh")
+            .arg("interface")
+            .arg("ipv4")
+            .arg("set")
+            .arg("subinterface")
+            .arg(name)
+            .arg(format!("mtu={}", mtu))
+            .output()
+            .await
+            .context("run netsh")?;
+        if !output.status.success() {
+            warn!(
+                "failed to set mtu, command output: {}",
+                String::from_utf8_lossy(&output.stdout),
+            );
+        }
+    }
+
+    let mut if_index: Option<u32> = None;
+    let output = Command::new("netsh")
+        .arg("interface")
+        .arg("ip")
+        .arg("show")
+        .arg("interfaces")
+        .arg(name)
+        .output()
+        .await
+        .context("run netsh")?;
+    for l in String::from_utf8_lossy(&output.stdout).lines() {
+        if l.starts_with("IfIndex") {
+            if_index = Some(
+                l["IfIndex".len()..]
+                    .trim_matches(|c| c == ' ' || c == ':')
+                    .parse()
+                    .context("parse ifIndex")?,
+            );
+            break;
+        }
+    }
+    let if_index = if_index.context("did not find ifIndex")?;
+
+    for p in &c.peers {
+        let mut routes: Vec<(IpAddr, u32)> = Vec::new();
+        if let Some(ref e) = p.endpoint {
+            // If this peer has an endpoint specified, make sure it's excluded
+            // from the added routes.
+            for &(a, p) in &p.allowed_ips {
+                match (a, e.ip()) {
+                    (IpAddr::V4(a), IpAddr::V4(e)) => {
+                        crate::wireguard::ip_lookup_trie::cidr_minus(a, p, e, &mut routes)
+                    }
+                    (IpAddr::V6(a), IpAddr::V6(e)) => {
+                        crate::wireguard::ip_lookup_trie::cidr_minus(a, p, e, &mut routes)
+                    }
+                    _ => routes.push((a, p)),
+                }
+            }
+        } else {
+            routes.extend(&p.allowed_ips);
+        }
+
+        for (a, p) in routes {
+            info!("add route {}/{}", a, p);
+
+            use num_traits::{PrimInt, Unsigned};
+
+            fn bit_len<K>() -> u32 {
+                (std::mem::size_of::<K>() * 8) as u32
+            }
+
+            fn to_mask<K>(prefix_len: u32) -> K
+            where
+                K: Unsigned + PrimInt,
+            {
+                match prefix_len {
+                    0 => K::zero(),
+                    _ => K::max_value().unsigned_shl(bit_len::<K>() - prefix_len),
+                }
+            }
+
+            let mask = if a.is_ipv4() {
+                IpAddr::V4(to_mask::<u32>(p).into())
+            } else {
+                IpAddr::V6(to_mask::<u128>(p).into())
+            };
+
+            let output = Command::new("route")
+                .arg("add")
+                .arg(format!("{}", a))
+                .arg("mask")
+                .arg(format!("{}", mask))
+                // Gateway is our local address.
+                .arg(format!("{}", address))
+                .arg("if")
+                .arg(format!("{}", if_index))
+                .output()
+                .await
+                .context("run netsh")?;
+            if !output.status.success() {
+                warn!(
+                    "failed to add route, command output: {}",
+                    String::from_utf8_lossy(&output.stderr),
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub async fn run(
     c: Config<SocketAddr>,
     notify: Option<NotifyHandle>,
@@ -90,9 +393,15 @@ pub async fn run(
         info!("Received SIGTERM, shutting down.");
     });
 
-    let dev_name = c.interface.name.unwrap();
+    let dev_name = c.interface.name.clone().unwrap();
 
     let tun = AsyncTun::open(&dev_name).context("failed to open tun interface")?;
+    #[cfg(windows)]
+    {
+        if let Err(e) = network_config(&c).await {
+            warn!("failed to configure network: {:#}", e);
+        }
+    }
 
     let wg = WgState::new(tun)?;
     info!("setting privatge key");
