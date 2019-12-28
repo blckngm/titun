@@ -15,10 +15,30 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
+#![windows_subsystem = "windows"]
+
 use titun::cli::real_main;
 
 #[cfg(windows)]
 fn main() {
+    // +----------------------------+
+    // |                            |
+    // |       +---------------+    |                 +-----------------+
+    // |       |               |    |                 |                 |
+    // |  GUI  |    Webview    |    |      STDIO      | Service Manager |
+    // |   ^   |               |    <----------------->                 |
+    // |   +--->               |    |                 +---^-------------+
+    // |       +---------------+    |                     |
+    // |                            |                     |
+    // +--------------------^-------+                     |  Named Pipe
+    //                      |                             |
+    //                      |                             |
+    //                      |                      +-----------+
+    //                      |     IPC get status   |           |
+    //                      +---------------------->  Service  |
+    //                                             |           |
+    //                                             +-----------+
+
     use std::ffi::OsString;
     use std::path::PathBuf;
 
@@ -39,6 +59,10 @@ fn main() {
         service_dispatcher,
         service_manager::*,
     };
+
+    if std::env::args().count() <= 1 {
+        return titun::windows_gui::run_windows_gui();
+    }
 
     define_windows_service!(ffi_service_main, service_main);
 
@@ -102,7 +126,9 @@ fn main() {
                 match service.stop() {
                     Ok(_) => (),
                     Err(windows_service::Error::Winapi(e))
-                        if e.raw_os_error() == Some(ERROR_SERVICE_NOT_ACTIVE as i32) => {}
+                        if e.raw_os_error() == Some(ERROR_SERVICE_NOT_ACTIVE as i32)
+                            || e.raw_os_error()
+                                == Some(ERROR_SERVICE_CANNOT_ACCEPT_CTRL as i32) => {}
                     Err(e) => return Err(e).context("stop service"),
                 }
                 service.delete().context("delete service")?;

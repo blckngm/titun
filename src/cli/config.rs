@@ -198,15 +198,14 @@ pub struct InterfaceConfig {
     #[serde(rename = "FwMark", alias = "Mark")]
     pub fwmark: Option<u32>,
 
-    // For GUI.
+    // Only supported on Windows for now.
     pub address: Option<IpAddr>,
 
-    // For GUI.
+    // Only supported on Windows for now.
     #[serde(rename = "MTU", alias = "Mtu")]
     pub mtu: Option<u32>,
 
-    // We do not use this field. It is defined so that we can check and
-    // transform it for the GUI.
+    // Only supported on Windows for now.
     #[serde(rename = "DNS", alias = "Dns", default, with = "ip_addr_vec")]
     pub dns: Vec<IpAddr>,
 }
@@ -226,6 +225,7 @@ pub struct PeerConfig<Endpoint> {
     pub endpoint: Option<Endpoint>,
 
     /// Allowed source IPs.
+    // On windows they are automatically added as routes.
     #[serde(
         rename = "AllowedIPs",
         alias = "AllowedIP",

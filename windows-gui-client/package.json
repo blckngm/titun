@@ -1,0 +1,50 @@
+{
+  "name": "titun-windows-gui-client",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@material-ui/core": "^4.8.1",
+    "@testing-library/jest-dom": "^4.2.4",
+    "@testing-library/react": "^9.3.2",
+    "@testing-library/user-event": "^7.1.2",
+    "@types/jest": "^24.0.0",
+    "@types/node": "^12.0.0",
+    "@types/react": "^16.9.0",
+    "@types/react-dom": "^16.9.0",
+    "@types/styled-components": "^4.4.1",
+    "core-js": "^3.6.1",
+    "react": "^16.12.0",
+    "react-app-polyfill": "^1.0.5",
+    "react-dom": "^16.12.0",
+    "react-scripts": "3.3.0",
+    "runtypes": "^4.0.3",
+    "typescript": "~3.7.2"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "set PUBLIC_URL=.&& react-scripts build && inline-assets build/index.html ../src/windows_gui.html",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": "react-app"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all",
+      "ie >= 11"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version",
+      "last 1 edge version",
+      "ie >= 11"
+    ]
+  },
+  "devDependencies": {
+    "inline-assets": "^1.4.5"
+  }
+}

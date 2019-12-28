@@ -1,3 +1,4 @@
 target
 .vscode/
 coverage
+src/windows_gui.html

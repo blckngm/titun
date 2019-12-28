@@ -33,3 +33,5 @@ pub mod wireguard;
 
 #[doc(hidden)]
 pub mod cli;
+#[doc(hidden)]
+pub mod windows_gui;

@@ -54,9 +54,6 @@
 	<Fragment>
 		<ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
       <Component Win64="yes">
-        <File Source="$(var.titun-windows-gui.TargetPath)"/>
-      </Component>
-      <Component Win64="yes">
         <File Source="../../target/release/titun.exe"/>
       </Component>
     </ComponentGroup>
@@ -74,7 +71,7 @@
         <Shortcut Id="ApplicationDesktopShortcut"
             Name="TiTun"
             Description="TiTun"
-            Target="[INSTALLFOLDER]titun-windows-gui.exe"
+            Target="[INSTALLFOLDER]titun.exe"
             WorkingDirectory="INSTALLFOLDER"/>
         <RemoveFolder Id="DesktopFolder" On="uninstall"/>
         <RegistryValue
@@ -92,7 +89,7 @@
     <DirectoryRef Id="ApplicationProgramsFolder">
       <!--Create application shortcut in Program Menu-->
       <Component Id="ApplicationShortcut" Guid="*">
-        <Shortcut Id="ApplicationStartMenuShortcut" Name="TiTun" Description="TiTun" Target="[INSTALLFOLDER]titun-windows-gui.exe" WorkingDirectory="INSTALLFOLDER" />
+        <Shortcut Id="ApplicationStartMenuShortcut" Name="TiTun" Description="TiTun" Target="[INSTALLFOLDER]titun.exe" WorkingDirectory="INSTALLFOLDER" />
         <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall" />
         <RegistryValue Root="HKCU" Key="Software\TiTun" Name="installed" Type="integer" Value="1" KeyPath="yes" />
       </Component>

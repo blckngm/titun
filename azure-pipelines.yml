@@ -118,34 +118,28 @@ jobs:
     - script: cargo test --lib --benches --locked
       displayName: Run tests
 
-# # TODO: x86 build
-# - job: windows_gui
-#   displayName: Build Windows GUI Installer
-#   pool:
-#     vmImage: vs2017-win2016
-#   steps:
-#     - task: NuGetCommand@2
-#       inputs:
-#         solution: titun-windows-gui/titun-windows-gui.sln
-#         command: restore
-#     - task: MSBuild@1
-#       inputs:
-#         solution: titun-windows-gui/titun-windows-gui.sln
-#         configuration: release
-#     - template: ci/azure-install-rust.yml
-#       parameters:
-#         rust_version: stable
-#     - script: cargo build --release
-#       displayName: Build TiTun
-#     - bash: |
-#         set -ex
-#         cp target/release/titun.exe titun-windows-gui/titun.exe
-#         iscc titun-windows-gui/installer/titun.iss
-#       displayName: Build Installer
-#     - task: PublishBuildArtifacts@1
-#       inputs:
-#         pathToPublish: titun-windows-gui\installer\Output\titun-setup.exe
-#         artifactName: titun-setup.exe
+# TODO: x86 build
+- job: windows_gui
+  displayName: Build Windows GUI Installer
+  pool:
+    vmImage: vs2017-win2016
+  steps:
+    - template: ci/azure-install-rust.yml
+      parameters:
+        rust_version: stable
+    - script: cd windows-gui-client && yarn && yarn build
+      displayName: Build Html
+    - script: cargo build --release
+      displayName: Build TiTun
+    - task: MSBuild@1
+      inputs:
+        solution: windows-gui-installer/titun-windows-gui-installer.sln
+        platform: x86
+        configuration: release
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: windows-gui-installer/installer/bin/Release/titun-setup.msi
+        artifactName: titun-setup.exe
 
 - job: check_fuzz
   displayName: Check Fuzz
