@@ -75,3 +75,9 @@ export async function exit(): Promise<void> {
         cmd: "exit"
     });
 }
+
+export async function hide(): Promise<void> {
+    await webviewRequest({
+        cmd: "hide"
+    });
+}

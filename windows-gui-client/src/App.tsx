@@ -1,14 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import AppBar from '@material-ui/core/AppBar';
 import Toolbar from '@material-ui/core/Toolbar';
 import Typography from '@material-ui/core/Typography';
 import Button from '@material-ui/core/Button';
 import Dialog from '@material-ui/core/Dialog';
+import DialogActions from '@material-ui/core/DialogActions';
+import DialogContent from '@material-ui/core/DialogContent';
+import DialogContentText from '@material-ui/core/DialogContentText';
 import { makeStyles } from '@material-ui/core';
 
-import { run, stop, subscribeLog, getStatus, openFile, exit } from './api';
+import { run, stop, subscribeLog, getStatus, openFile, exit, hide } from './api';
 import ShowInterfaceState from './ShowInterfaceState';
 import { InterfaceState } from './InterfaceState';
+
+const notIE = window.navigator.userAgent.indexOf("Trident") < 0;
 
 const useStyles = makeStyles(theme => ({
     root: {
@@ -34,6 +39,9 @@ const useStyles = makeStyles(theme => ({
             fontFamily: 'Consolas , monospace',
             margin: '.3em 0 0 0',
             padding: 0,
+        },
+        '& pre:last-child': {
+            marginBottom: theme.spacing(2),
         }
     },
     lastLogLine: {
@@ -48,6 +56,31 @@ const useStyles = makeStyles(theme => ({
     }
 }));
 
+const ShowLogs: React.FC<{ logLines: string[], className: string }> = ({ logLines, className }) => {
+    const divRef = useRef<HTMLDivElement>(null);
+
+    useLayoutEffect(() => {
+        if (divRef.current) {
+            const el = divRef.current;
+            el.scrollTop = el.scrollHeight - el.clientHeight;
+        }
+    }, []);
+
+    useLayoutEffect(() => {
+        if (divRef.current) {
+            const el = divRef.current;
+            if (el.scrollHeight - el.scrollTop - el.clientHeight <= 20) {
+                el.scrollTop = el.scrollHeight - el.clientHeight;
+            }
+        }
+    }, [logLines]);
+
+    return (<div className={className} ref={divRef}>
+        {logLines.map((l) => <pre key={l}>{l}</pre>)}
+    </div>
+    );
+}
+
 const App: React.FC = () => {
     const classes = useStyles();
 
@@ -55,9 +88,10 @@ const App: React.FC = () => {
     const [busy, setBusy] = useState(false);
     const [interfaceState, setInterfaceState] = useState<null | InterfaceState>(null);
     const [lastLogLine, setLastLogLine] = useState('');
-    const [showLogs, setShowLogs] = useState(false);
+    const [openLogs, setOpenLogs] = useState(false);
     const [logLines, setLogLines] = useState<string[]>([]);
     const [getStatusInterval, setGetStatusInterval] = useState<number>(0);
+    const [openConfirmExit, setOpenConfirmExit] = useState(false);
 
     // Initial loading.
     useEffect(() => {
@@ -89,7 +123,7 @@ const App: React.FC = () => {
         });
     }, []);
 
-    const handleRunOrStopButtonClick = async () => {
+    const handleRunOrStopButtonClick = useCallback(async () => {
         setBusy(true);
         try {
             if (running) {
@@ -119,10 +153,34 @@ const App: React.FC = () => {
         } finally {
             setBusy(false);
         }
-    };
+    }, [running, getStatusInterval]);
 
-    const closeShowLogs = () => setShowLogs(false);
-    const handleExit = () => exit();
+    // Shortcut keys.
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            console.debug(event);
+            if ((notIE && event.target !== document.body) || event.cancelBubble) {
+                return;
+            }
+            switch (event.key) {
+                case 'q':
+                case 'Q':
+                    setOpenConfirmExit(true);
+                    break;
+                case 'Escape':
+                case 'Esc': // IE.
+                    hide();
+                    break;
+                case ' ':
+                case 'Spacebar': // IE.
+                case 'Enter':
+                    handleRunOrStopButtonClick();
+                    break;
+            }
+        };
+        document.addEventListener('keydown', onKeyDown);
+        return () => document.removeEventListener('keydown', onKeyDown);
+    }, [handleRunOrStopButtonClick]);
 
     return <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
         <AppBar position="static">
@@ -137,21 +195,30 @@ const App: React.FC = () => {
                 >
                     {running ? "Stop" : "Run"}
                 </Button>
-                <Button color="inherit" onClick={handleExit}>Exit</Button>
+                <Button color="inherit" onClick={() => setOpenConfirmExit(true)}>Exit</Button>
             </Toolbar>
         </AppBar>
-        <Dialog fullScreen open={showLogs} onClose={closeShowLogs}>
+        <Dialog open={openConfirmExit} onClose={() => setOpenConfirmExit(false)}>
+            <DialogContent>
+                <DialogContentText>
+                    Exit TiTun?
+                </DialogContentText>
+            </DialogContent>
+            <DialogActions>
+                <Button color="primary" onClick={() => setOpenConfirmExit(false)}>No</Button>
+                <Button color="primary" onClick={() => exit()} autoFocus>Yes</Button>
+            </DialogActions>
+        </Dialog>
+        <Dialog fullScreen open={openLogs} onClose={() => setOpenLogs(false)}>
             <AppBar position="static">
                 <Toolbar>
                     <Typography variant="h6" className={classes.title}>
                         Logs
                     </Typography>
-                    <Button color="inherit" onClick={closeShowLogs}>Close</Button>
+                    <Button color="inherit" onClick={() => setOpenLogs(false)}>Close</Button>
                 </Toolbar>
             </AppBar>
-            <div className={classes.showLogs}>
-                {logLines.map((l) => <pre key={l}>{l}</pre>)}
-            </div>
+            <ShowLogs logLines={logLines} className={classes.showLogs} />
         </Dialog>
         <div className={classes.status}>
             {running ?
@@ -161,7 +228,7 @@ const App: React.FC = () => {
                 : undefined
             }
         </div>
-        <div className={classes.lastLogLine} onClick={() => setShowLogs(true)}>
+        <div className={classes.lastLogLine} onClick={() => setOpenLogs(true)}>
             {lastLogLine || <br></br>}
         </div>
     </div>;

@@ -135,6 +135,8 @@ enum Request {
     OpenFile { response_cb: String },
     #[serde(rename_all = "camelCase")]
     Exit { response_cb: String },
+    #[serde(rename_all = "camelCase")]
+    Hide { response_cb: String },
 }
 
 #[derive(Serialize)]
@@ -207,10 +209,19 @@ async fn handle_request_inner(
         }
         Request::Exit { .. } => wv_handle
             .dispatch(|wv| {
-                wv.terminate();
+                wv.exit();
                 Ok(())
             })
             .context("dispatch"),
+        Request::Hide { response_cb } => {
+            wv_handle
+                .dispatch(|wv| {
+                    wv.hide();
+                    Ok(())
+                })
+                .expect("dispatch");
+            eval(response_cb, Ok(()), wv_handle)
+        }
     }
 }
 
