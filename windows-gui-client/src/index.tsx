@@ -14,4 +14,7 @@ const theme = createMuiTheme({
     },
 });
 
+// Call focus so that we receive keyboard events right away.
+document.body.focus();
+
 ReactDOM.render(<ThemeProvider theme={theme}><App /></ThemeProvider>, document.getElementById('root'));

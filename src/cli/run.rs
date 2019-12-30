@@ -22,7 +22,7 @@ use crate::cli::Config;
 use crate::ipc::ipc_server;
 use crate::wireguard::*;
 use anyhow::Context;
-use std::net::SocketAddr;
+use std::net::*;
 use tokio::sync::oneshot;
 
 #[cfg(not(unix))]
@@ -60,10 +60,52 @@ async fn reload_on_sighup(
 }
 
 #[cfg(windows)]
+fn get_block_ranges_v4(dns_servers: &[Ipv4Addr]) -> Vec<(IpAddr, IpAddr)> {
+    let mut result = Vec::with_capacity(dns_servers.len() + 1);
+    let mut previous: u32 = 0;
+    for &server in dns_servers {
+        let server: u32 = server.into();
+        if previous < server {
+            result.push((IpAddr::V4(previous.into()), IpAddr::V4((server - 1).into())));
+        }
+        if server == u32::max_value() {
+            return result;
+        }
+
+        previous = server + 1;
+    }
+    result.push((
+        IpAddr::V4(previous.into()),
+        IpAddr::V4(u32::max_value().into()),
+    ));
+    result
+}
+
+#[cfg(windows)]
+fn get_block_ranges_v6(dns_servers: &[Ipv6Addr]) -> Vec<(IpAddr, IpAddr)> {
+    let mut result = Vec::with_capacity(dns_servers.len() + 1);
+    let mut previous: u128 = 0;
+    for &server in dns_servers {
+        let server: u128 = server.into();
+        if previous < server {
+            result.push((IpAddr::V6(previous.into()), IpAddr::V6((server - 1).into())));
+        }
+        if server == u128::max_value() {
+            return result;
+        }
+
+        previous = server + 1;
+    }
+    result.push((
+        IpAddr::V6(previous.into()),
+        IpAddr::V6(u128::max_value().into()),
+    ));
+    result
+}
+
+#[cfg(windows)]
 #[allow(clippy::cognitive_complexity)]
-#[allow(clippy::range_minus_one)]
 async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
-    use std::net::IpAddr;
     use tokio::process::Command;
 
     let name = c.interface.name.as_ref().unwrap();
@@ -81,10 +123,7 @@ async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
 
     info!("set interface ip address to {}", address);
     let output = Command::new("netsh")
-        .arg("interface")
-        .arg("ip")
-        .arg("set")
-        .arg("address")
+        .args(&["interface", "ip", "set", "address"])
         .arg(name)
         .arg("static")
         .arg(format!("{}", address))
@@ -103,10 +142,7 @@ async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
         for dns in &c.interface.dns {
             info!("add DNS server {}", dns);
             let output = Command::new("netsh")
-                .arg("interface")
-                .arg("ip")
-                .arg("set")
-                .arg("dns")
+                .args(&["interface", "ip", "set", "dns"])
                 .arg(name)
                 .arg("static")
                 .arg(format!("{}", dns))
@@ -128,64 +164,45 @@ async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
         //
         // XXX: What if the user is not using windows firewall.
 
-        let mut ranges_v4 = vec![0..=u32::max_value()];
-        let mut ranges_v6 = vec![0..=u128::max_value()];
+        let mut dns_servers_v4: Vec<Ipv4Addr> = c
+            .interface
+            .dns
+            .iter()
+            .filter_map(|a| match a {
+                IpAddr::V4(a) => Some(*a),
+                _ => None,
+            })
+            .collect();
+        dns_servers_v4.sort();
+        dns_servers_v4.dedup();
 
-        for dns_server in &c.interface.dns {
-            match dns_server {
-                IpAddr::V4(d4) => {
-                    let d4: u32 = (*d4).into();
-                    ranges_v4 = ranges_v4
-                        .into_iter()
-                        .flat_map(|r| {
-                            let mut result = vec![];
-                            if r.contains(&d4) {
-                                if *r.start() == d4 {
-                                    result.push(r.start() + 1..=*r.end());
-                                } else if *r.end() == d4 {
-                                    result.push(*r.start()..=r.end() - 1);
-                                } else {
-                                    result.push(*r.start()..=d4 - 1);
-                                    result.push(d4 + 1..=*r.end());
-                                }
-                            } else {
-                                result.push(r);
-                            }
-                            result
-                        })
-                        .collect();
-                }
-                IpAddr::V6(d6) => {
-                    let d6: u128 = (*d6).into();
-                    ranges_v6 = ranges_v6
-                        .into_iter()
-                        .flat_map(|r| {
-                            let mut result = vec![];
-                            if r.contains(&d6) {
-                                if *r.start() == d6 {
-                                    result.push(r.start() + 1..=*r.end());
-                                } else if *r.end() == d6 {
-                                    result.push(*r.start()..=r.end() - 1);
-                                } else {
-                                    result.push(*r.start()..=d6 - 1);
-                                    result.push(d6 + 1..=*r.end());
-                                }
-                            } else {
-                                result.push(r);
-                            }
-                            result
-                        })
-                        .collect();
-                }
-            }
-        }
+        let mut dns_servers_v6: Vec<Ipv6Addr> = c
+            .interface
+            .dns
+            .iter()
+            .filter_map(|a| match a {
+                IpAddr::V6(a) => Some(*a),
+                _ => None,
+            })
+            .collect();
+        dns_servers_v6.sort();
+        dns_servers_v6.dedup();
 
-        async fn block_inner(start: IpAddr, end: IpAddr) -> anyhow::Result<()> {
+        let ranges_v4 = get_block_ranges_v4(&dns_servers_v4);
+        let ranges_v6 = get_block_ranges_v6(&dns_servers_v6);
+
+        let ranges = ranges_v4.into_iter().chain(ranges_v6.into_iter());
+        let ranges = ranges
+            .map(|(start, end)| format!("{}-{}", start, end))
+            .collect::<Vec<_>>()
+            .join(",");
+
+        async fn block(ranges: &str) -> anyhow::Result<()> {
             let script = format!(
-                r#"New-NetFirewallRule -PolicyStore ActiveStore -DisplayName TiTunDNSBlock -Group TiTunDNSBlock -Direction Outbound -Action Block -RemoteAddress {}-{} -RemotePort 53 -Protocol UDP
-New-NetFirewallRule -PolicyStore ActiveStore -DisplayName TiTunDNSBlock -Group TiTunDNSBlock -Direction Outbound -Action Block -RemoteAddress {}-{} -RemotePort 53 -Protocol TCP
+                r#"New-NetFirewallRule -PolicyStore ActiveStore -DisplayName TiTunDNSBlock -Group TiTunDNSBlock -Direction Outbound -Action Block -RemoteAddress {} -RemotePort 53 -Protocol UDP
+New-NetFirewallRule -PolicyStore ActiveStore -DisplayName TiTunDNSBlock -Group TiTunDNSBlock -Direction Outbound -Action Block -RemoteAddress {} -RemotePort 53 -Protocol TCP
 "#,
-                start, end, start, end
+                ranges, ranges,
             );
             let output = Command::new("powershell")
                 .arg("-command")
@@ -197,16 +214,6 @@ New-NetFirewallRule -PolicyStore ActiveStore -DisplayName TiTunDNSBlock -Group T
                 bail!("{}", String::from_utf8_lossy(&output.stderr));
             }
             Ok(())
-        }
-
-        async fn block(start: IpAddr, end: IpAddr) {
-            info!("block DNS servers in range {}-{}", start, end);
-            if let Err(e) = block_inner(start, end).await {
-                warn!(
-                    "failed to block DNS servers in range {}-{}: {:#}",
-                    start, end, e
-                );
-            }
         }
 
         // It's a bit slow, so do it in the background.
@@ -230,19 +237,9 @@ New-NetFirewallRule -PolicyStore ActiveStore -DisplayName TiTunDNSBlock -Group T
                     });
             }};
 
-            for range in ranges_v4 {
-                block(
-                    IpAddr::V4((*range.start()).into()),
-                    IpAddr::V4((*range.end()).into()),
-                )
-                .await;
-            }
-            for range in ranges_v6 {
-                block(
-                    IpAddr::V6((*range.start()).into()),
-                    IpAddr::V6((*range.end()).into()),
-                )
-                .await;
+            info!("block DNS servers in ranges {}", ranges);
+            if let Err(e) = block(&ranges).await {
+                warn!("failed to block DNS servers in ranges {}: {:#}", ranges, e);
             }
 
             futures::future::pending::<()>().await
@@ -253,10 +250,7 @@ New-NetFirewallRule -PolicyStore ActiveStore -DisplayName TiTunDNSBlock -Group T
         info!("set MTU to {}", mtu);
 
         let output = Command::new("netsh")
-            .arg("interface")
-            .arg("ipv4")
-            .arg("set")
-            .arg("subinterface")
+            .args(&["interface", "ipv4", "set", "subinterface"])
             .arg(name)
             .arg(format!("mtu={}", mtu))
             .output()
@@ -272,10 +266,7 @@ New-NetFirewallRule -PolicyStore ActiveStore -DisplayName TiTunDNSBlock -Group T
 
     let mut if_index: Option<u32> = None;
     let output = Command::new("netsh")
-        .arg("interface")
-        .arg("ip")
-        .arg("show")
-        .arg("interfaces")
+        .args(&["interface", "ip", "show", "interfaces"])
         .arg(name)
         .output()
         .await
