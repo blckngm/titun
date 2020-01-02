@@ -18,6 +18,7 @@
 mod config;
 #[cfg(unix)]
 pub mod daemonize;
+mod network_config;
 mod real_main;
 #[cfg(unix)]
 mod reload;
@@ -28,6 +29,8 @@ mod systemd;
 pub mod transform;
 
 pub use config::*;
+#[cfg(windows)]
+pub(self) use network_config::network_config;
 #[doc(hidden)]
 pub use real_main::*;
 #[cfg(unix)]

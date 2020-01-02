@@ -20,7 +20,7 @@
 //! Wintun support.
 
 use std::cell::UnsafeCell;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::fmt;
 use std::io;
 use std::mem;
@@ -113,7 +113,7 @@ use self::buffer::*;
 /// A handle to a tun interface.
 pub struct AsyncTun {
     handle: HandleWrapper,
-    name: OsString,
+    name: String,
     rings: TunRegisterRings,
     // A clone of `rings.send.tail_moved` (created by `DuplicateHandle`) wrapped
     // in `Arc` that can be sent to `spawn_blocking`.
@@ -145,13 +145,14 @@ const TUN_IOCTL_REGISTER_RINGS: u32 = CTL_CODE(
 
 impl AsyncTun {
     /// Open a handle to a wintun interface.
-    pub fn open(name: &OsStr) -> anyhow::Result<AsyncTun> {
-        info!("opening wintun device {}", name.to_string_lossy());
-        let interface = WINTUN_POOL.get_interface(name)?;
+    pub fn open(name_os: &OsStr) -> anyhow::Result<AsyncTun> {
+        let name = name_os.to_str().context("interface name")?;
+        info!("opening wintun device {}", name);
+        let interface = WINTUN_POOL.get_interface(name_os)?;
         if let Some(interface) = interface {
             interface.delete()?;
         }
-        let interface = WINTUN_POOL.create_interface(name)?;
+        let interface = WINTUN_POOL.create_interface(name_os)?;
         let handle = interface.handle()?;
         let mut rings = TunRegisterRings::new()?;
         let mut _bytes_returned = 0u32;
@@ -212,11 +213,58 @@ impl AsyncTun {
     fn close(&self) -> anyhow::Result<()> {
         info!("closing wintun interface");
         let it = WINTUN_POOL
-            .get_interface(&self.name)
+            .get_interface(self.name.as_ref())
             .context("get_iterface")?
             .ok_or_else(|| anyhow::anyhow!("get_interface None"))?;
         it.delete().context("delete")?;
         info!("closed wintun interface");
+
+        info!("delete network profile");
+        let profiles = RegKey::predef(HKEY_LOCAL_MACHINE)
+            .open_subkey_with_flags(
+                r#"SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles"#,
+                KEY_ALL_ACCESS,
+            )
+            .context("open NetworkList\\Profiles")?;
+        macro_rules! continue_on_error {
+            ($e:expr) => {
+                match $e {
+                    Ok(x) => x,
+                    Err(_) => continue,
+                }
+            };
+        }
+        for p in profiles.enum_keys() {
+            let p = continue_on_error!(p);
+            let pk = continue_on_error!(profiles.open_subkey(&p));
+            let description: String = continue_on_error!(pk.get_value("Description"));
+            drop(pk);
+            if description == self.name {
+                debug!("delete profile {}", p);
+                profiles
+                    .delete_subkey(&p)
+                    .context("delete profile subkey")?;
+
+                let signatures = RegKey::predef(HKEY_LOCAL_MACHINE)
+                    .open_subkey_with_flags(r#"SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Signatures\Unmanaged"#, KEY_ALL_ACCESS)
+                    .context("open NetworkList\\Signatures\\Unmanaged")?;
+
+                for s in signatures.enum_keys() {
+                    let s = continue_on_error!(s);
+                    let ps = continue_on_error!(signatures.open_subkey(&s));
+                    let profile_guid: String = continue_on_error!(ps.get_value("ProfileGuid"));
+                    drop(ps);
+                    if profile_guid == p {
+                        debug!("delete signature {}", s);
+                        signatures.delete_subkey(&s).context("delete signature")?;
+                        break;
+                    }
+                }
+
+                break;
+            }
+        }
+
         Ok(())
     }
 }

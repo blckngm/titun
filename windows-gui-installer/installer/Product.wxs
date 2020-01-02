@@ -76,8 +76,8 @@
         <RemoveFolder Id="DesktopFolder" On="uninstall"/>
         <RegistryValue
             Root="HKCU"
-            Key="Software/TiTun"
-            Name="installed"
+            Key="Software\TiTun"
+            Name="DesktopShortcutInstalled"
             Type="integer"
             Value="1"
             KeyPath="yes"/>
@@ -90,8 +90,19 @@
       <!--Create application shortcut in Program Menu-->
       <Component Id="ApplicationShortcut" Guid="*">
         <Shortcut Id="ApplicationStartMenuShortcut" Name="TiTun" Description="TiTun" Target="[INSTALLFOLDER]titun.exe" WorkingDirectory="INSTALLFOLDER" />
+        <Shortcut Id="UninstallProduct"
+                  Name="Uninstall TiTun"
+                  Target="[SystemFolder]msiexec.exe"
+                  Arguments="/x [ProductCode]"
+                  Description="Uninstalls My Application" />
         <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall" />
-        <RegistryValue Root="HKCU" Key="Software\TiTun" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+        <RegistryValue
+            Root="HKCU"
+            Key="Software\TiTun"
+            Name="ProgramsFolerShortcutInstalled"
+            Type="integer"
+            Value="1"
+            KeyPath="yes"/>
       </Component>
     </DirectoryRef>
   </Fragment>

@@ -133,7 +133,7 @@ impl<T> Default for Config<T> {
                 fwmark: None,
                 listen_port: None,
                 mtu: None,
-                address: None,
+                address: BTreeSet::new(),
                 dns: vec![],
             },
             peers: vec![],
@@ -199,7 +199,8 @@ pub struct InterfaceConfig {
     pub fwmark: Option<u32>,
 
     // Only supported on Windows for now.
-    pub address: Option<IpAddr>,
+    #[serde(default, with = "ip_prefix_len")]
+    pub address: BTreeSet<(IpAddr, u32)>,
 
     // Only supported on Windows for now.
     #[serde(rename = "MTU", alias = "Mtu")]
@@ -562,7 +563,7 @@ Endpoint = "host.no.port.invalid"
                     private_key: U8Array::from_slice(
                         &base64::decode("2BJtcgPUjHfKKN3yMvTiVQbJ/UgHj2tcZE6xU/4BdGM=").unwrap()
                     ),
-                    address: None,
+                    address: BTreeSet::new(),
                     mtu: None,
                     dns: vec![IpAddr::V4([1, 1, 1, 1].into())],
                     fwmark: Some(33),
