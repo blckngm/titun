@@ -1424,7 +1424,7 @@ dependencies = [
 [[package]]
 name = "web-view"
 version = "0.5.4"
-source = "git+https://github.com/sopium/web-view#b6bd412ac61fb1b0ceb47aff762c1f27fb678583"
+source = "git+https://github.com/sopium/web-view#020b75fc6d876d9e83c334a561fada8c79eb3670"
 dependencies = [
  "boxfnonce 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "urlencoding 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1434,7 +1434,7 @@ dependencies = [
 [[package]]
 name = "webview-sys"
 version = "0.3.3"
-source = "git+https://github.com/sopium/web-view#b6bd412ac61fb1b0ceb47aff762c1f27fb678583"
+source = "git+https://github.com/sopium/web-view#020b75fc6d876d9e83c334a561fada8c79eb3670"
 dependencies = [
  "bitflags 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "cc 1.0.48 (registry+https://github.com/rust-lang/crates.io-index)",
