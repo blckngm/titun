@@ -66,7 +66,7 @@ async fn run(
         .creation_flags(0x0800_0000)
         .spawn()
         .context("spawn titun.exe")?;
-    let stderr = child.stderr().take().expect("child stderr");
+    let stderr = child.stderr.take().expect("child stderr");
     tokio::spawn(async move {
         let stderr = BufReader::new(stderr);
         let mut stderr_lines = stderr.lines();
@@ -93,7 +93,7 @@ async fn stop(state: &Mutex<State>) -> anyhow::Result<ExitStatus> {
     let mut state = state.lock().await;
     state.interface_name = None;
     if let Some(mut child) = state.child.take() {
-        let mut stdin = child.stdin().take().expect("child stdin");
+        let mut stdin = child.stdin.take().expect("child stdin");
         ignore_error(stdin.shutdown().await);
         drop(stdin);
         child.await.context("awaiting child")
