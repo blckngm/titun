@@ -1,5 +1,3 @@
-use std::io::Write;
-use std::path::Path;
 use std::process::Command;
 
 const MANIFEST: &str = r#"
@@ -13,32 +11,6 @@ const MANIFEST: &str = r#"
 </trustInfo>
 </assembly>
 "#;
-
-fn msvc_link_dll(name: &str, methods: &[&str]) {
-    let output_dir = std::env::var("OUT_DIR").unwrap();
-    let def_path = Path::new(&output_dir).join(name).with_extension("def");
-    let lib_path = Path::new(&output_dir).join(name).with_extension("lib");
-
-    let mut def_file = std::fs::File::create(&def_path).expect("create def_file");
-    writeln!(def_file, "LIBRARY {}.dll", name).expect("def_file write");
-    writeln!(def_file, "EXPORTS").expect("def_file write");
-    for method in methods {
-        writeln!(def_file, "{}", method).expect("def_file write");
-    }
-    def_file.flush().expect("def_file flush");
-    drop(def_file);
-
-    let mut lib_exe =
-        cc::windows_registry::find(&std::env::var("TARGET").unwrap(), "lib.exe").unwrap();
-    lib_exe
-        .arg(format!("/def:{}", def_path.display()))
-        .arg(format!("/out:{}", lib_path.display()))
-        .status()
-        .unwrap();
-
-    println!("cargo:rustc-link-lib=static={}", name);
-    println!("cargo:rustc-link-search=native={}", output_dir);
-}
 
 fn main() {
     let git_hash = Command::new("git")
@@ -68,7 +40,37 @@ fn main() {
                     .compile()
                     .expect("compile resource");
             }
-            msvc_link_dll("NCI", &["NciGetConnectionName", "NciSetConnectionName"]);
+
+            // Use rustc to build import library for NCI.dll.
+            //
+            // We do not use a def file and lib.exe because that alone won't
+            // work for x86. We need `name type: undecorated` exports:
+            //
+            // https://qualapps.blogspot.com/2007/08/how-to-create-32-bit-import-libraries.html
+            //
+            // Good news is rustc also generate such exports for stdcall
+            // functions. So we use rustc to build a dummy DLL and use the
+            // generated lib file.
+            let out_dir = std::env::var("OUT_DIR").unwrap();
+            let rustc_status = Command::new(std::env::var_os("RUSTC").unwrap())
+                .arg("--crate-name=nci")
+                .arg("--crate-type=cdylib")
+                .arg("--out-dir")
+                .arg(&out_dir)
+                .arg("--target")
+                .arg(std::env::var_os("TARGET").unwrap())
+                .arg("src/nci-import.rs")
+                .status()
+                .unwrap();
+            if !rustc_status.success() {
+                panic!(
+                    "failed to build import lib for NCI.dll, rustc exit status: {}",
+                    rustc_status
+                );
+            }
+            // The lib file is named `nci.dll.lib`.
+            println!("cargo:rustc-link-lib=static=nci.dll");
+            println!("cargo:rustc-link-search=native={}", out_dir);
         } else {
             // We only use the windows-gnu target for cross checking. So no need
             // to worry about linking.
