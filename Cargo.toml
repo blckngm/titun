@@ -54,7 +54,7 @@ atty = "0.2.13"
 serde = { version = "1.0.104", features = ["derive"] }
 toml = "0.5.5"
 anyhow = "1.0.26"
-num-traits = "0.2.10"
+num-traits = "0.2.11"
 tokio-util = { version = "0.2.0", features = ["codec"] }
 
 [dependencies.tokio]
