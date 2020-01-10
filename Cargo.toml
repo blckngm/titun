@@ -45,7 +45,7 @@ noise-protocol = "0.1.1"
 num_cpus = "1.11.1"
 parking_lot = "0.10.0"
 pin-utils = "0.1.0-alpha.4"
-rand = "0.7.2"
+rand = "0.7.3"
 ring = { path = "patched/ring" }
 structopt = "0.3.7"
 tai64 = "3.1.0"
