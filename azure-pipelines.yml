@@ -139,7 +139,29 @@ jobs:
     - task: PublishBuildArtifacts@1
       inputs:
         pathToPublish: windows-gui-installer/installer/bin/Release/titun-setup.msi
-        artifactName: titun-setup.exe
+        artifactName: titun-setup
+
+- job: windows_gui_x86
+  displayName: Build Windows GUI Installer (x86)
+  pool:
+    vmImage: vs2017-win2016
+  steps:
+    - template: ci/azure-install-rust.yml
+      parameters:
+        rust_version: stable-i686-pc-windows-msvc
+    - script: cd windows-gui-client && yarn && yarn build
+      displayName: Build Html
+    - script: cargo build --release
+      displayName: Build TiTun
+    - task: MSBuild@1
+      inputs:
+        solution: windows-gui-installer/titun-windows-gui-installer.sln
+        platform: x86
+        configuration: release
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: windows-gui-installer/installer/bin/Release/titun-setup.msi
+        artifactName: titun-setup-x86
 
 - job: check_fuzz
   displayName: Check Fuzz
