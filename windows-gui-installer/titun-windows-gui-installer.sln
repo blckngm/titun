@@ -7,17 +7,18 @@ Project("{930C7802-8A8C-48F9-8165-68863BCCD9DD}") = "installer", "installer\inst
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
 		Debug|x86 = Debug|x86
-		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{BED850D5-0C11-4BA5-92A7-FAD4430D0B13}.Debug|Any CPU.ActiveCfg = Debug|x86
+		{BED850D5-0C11-4BA5-92A7-FAD4430D0B13}.Debug|x64.ActiveCfg = Debug|x64
+		{BED850D5-0C11-4BA5-92A7-FAD4430D0B13}.Debug|x64.Build.0 = Debug|x64
 		{BED850D5-0C11-4BA5-92A7-FAD4430D0B13}.Debug|x86.ActiveCfg = Debug|x86
 		{BED850D5-0C11-4BA5-92A7-FAD4430D0B13}.Debug|x86.Build.0 = Debug|x86
-		{BED850D5-0C11-4BA5-92A7-FAD4430D0B13}.Release|Any CPU.ActiveCfg = Release|x86
-		{BED850D5-0C11-4BA5-92A7-FAD4430D0B13}.Release|Any CPU.Build.0 = Release|x86
+		{BED850D5-0C11-4BA5-92A7-FAD4430D0B13}.Release|x64.ActiveCfg = Release|x64
+		{BED850D5-0C11-4BA5-92A7-FAD4430D0B13}.Release|x64.Build.0 = Release|x64
 		{BED850D5-0C11-4BA5-92A7-FAD4430D0B13}.Release|x86.ActiveCfg = Release|x86
 		{BED850D5-0C11-4BA5-92A7-FAD4430D0B13}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
