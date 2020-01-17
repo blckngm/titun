@@ -118,7 +118,6 @@ jobs:
     - script: cargo test --lib --benches --locked
       displayName: Run tests
 
-# TODO: x86 build
 - job: windows_gui
   displayName: Build Windows GUI Installer
   pool:
@@ -134,12 +133,12 @@ jobs:
     - task: MSBuild@1
       inputs:
         solution: windows-gui-installer/titun-windows-gui-installer.sln
-        platform: x86
+        platform: x64
         configuration: release
     - task: PublishBuildArtifacts@1
       inputs:
-        pathToPublish: windows-gui-installer/installer/bin/Release/titun-setup.msi
-        artifactName: titun-setup
+        pathToPublish: windows-gui-installer/installer/bin/Release/titun.msi
+        artifactName: titun-installer
 
 - job: windows_gui_x86
   displayName: Build Windows GUI Installer (x86)
@@ -160,8 +159,8 @@ jobs:
         configuration: release
     - task: PublishBuildArtifacts@1
       inputs:
-        pathToPublish: windows-gui-installer/installer/bin/Release/titun-setup.msi
-        artifactName: titun-setup-x86
+        pathToPublish: windows-gui-installer/installer/bin/Release/titun.msi
+        artifactName: titun-installer-x86
 
 - job: check_fuzz
   displayName: Check Fuzz
