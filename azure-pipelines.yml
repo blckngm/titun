@@ -122,6 +122,8 @@ jobs:
   displayName: Build Windows GUI Installer
   pool:
     vmImage: vs2017-win2016
+  variables:
+    RUSTFLAGS: -C target-feature=+crt-static,+fast-variable-shuffle
   steps:
     - template: ci/azure-install-rust.yml
       parameters:
@@ -144,6 +146,8 @@ jobs:
   displayName: Build Windows GUI Installer (x86)
   pool:
     vmImage: vs2017-win2016
+  variables:
+    RUSTFLAGS: -C target-feature=+crt-static,+fast-variable-shuffle
   steps:
     - template: ci/azure-install-rust.yml
       parameters:
