@@ -98,7 +98,7 @@ jobs:
   steps:
     - template: ci/azure-install-rust.yml
       parameters:
-        rust_version: stable
+        rust_version: stable-x86_64-pc-windows-msvc
     - bash: |
         rustup component add clippy &&
         cargo clippy --all-targets -- -D clippy::all
@@ -114,7 +114,7 @@ jobs:
   steps:
     - template: ci/azure-install-rust.yml
       parameters:
-        rust_version: stable
+        rust_version: stable-x86_64-pc-windows-msvc
     - script: cargo test --lib --benches --locked
       displayName: Run tests
 
@@ -127,7 +127,7 @@ jobs:
   steps:
     - template: ci/azure-install-rust.yml
       parameters:
-        rust_version: stable
+        rust_version: stable-x86_64-pc-windows-msvc
     - script: cd windows-gui-client && yarn && yarn build
       displayName: Build Html
     - script: cargo build --release
