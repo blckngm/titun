@@ -38,6 +38,8 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
         .to_str()
         .context("interface name")?;
 
+    let mut tasks: Vec<tokio::task::JoinHandle<anyhow::Result<()>>> = Vec::new();
+
     for &(address, prefix_len) in &c.interface.address {
         let mask = if address.is_ipv4() {
             IpAddr::V4(to_mask::<u32>(prefix_len).into())
@@ -71,6 +73,7 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
                 .arg(name)
                 .arg("static")
                 .arg(format!("{}", dns))
+                .arg("validate=no")
                 .output()
                 .await
                 .context("run netsh")?;
@@ -122,34 +125,34 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
             .collect::<Vec<_>>()
             .join(",");
 
-        // It's a bit slow, so do it in the background.
-        tokio::spawn(async move {
-            scopeguard::defer! {{
-                info!("unblock other DNS servers");
-                std::process::Command::new("powershell")
-                    .arg("-command")
-                    .arg("Get-NetFirewallRule -PolicyStore ActiveStore -Group TiTunDNSBlock | Remove-NetFirewallRule")
-                    .output()
-                    .and_then(|o| {
-                        if !o.status.success() {
-                            warn!(
-                                "failed to unblock dns servers: {}",
-                                String::from_utf8_lossy(&o.stderr),
-                            );
-                        }
-                        Ok(())
-                    }).unwrap_or_else(|e| {
-                        warn!("failed to unblock dns servers: failed to run powershell: {}", e);
-                    });
-            }};
-
+        tasks.push(tokio::spawn(async move {
             info!("block other DNS servers");
-            if let Err(e) = block_dns(&ranges).await {
-                warn!("failed to block DNS servers in ranges {}: {:#}", ranges, e);
-            }
+            block_dns(&ranges).await.context("block other dns servers")?;
+            info!("blocked other DNS servers");
 
-            futures::future::pending::<()>().await
-        });
+            tokio::spawn(async move {
+                scopeguard::defer! {{
+                    info!("unblock other DNS servers");
+                    std::process::Command::new("powershell")
+                        .arg("-command")
+                        .arg("Get-NetFirewallRule -PolicyStore ActiveStore -Group TiTunDNSBlock | Remove-NetFirewallRule")
+                        .output()
+                        .and_then(|o| {
+                            if !o.status.success() {
+                                warn!(
+                                    "failed to unblock dns servers: {}",
+                                    String::from_utf8_lossy(&o.stderr),
+                                );
+                            }
+                            Ok(())
+                        }).unwrap_or_else(|e| {
+                            warn!("failed to unblock dns servers: failed to run powershell: {}", e);
+                        });
+                }};
+                futures::future::pending::<()>().await;
+            });
+            Ok(())
+        }));
     }
 
     if let Some(mtu) = c.interface.mtu {
@@ -170,68 +173,86 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
         }
     }
 
+    let mut routes = Vec::new();
+
     for p in &c.peers {
         if let Some(ref e) = p.endpoint {
             let e = e.ip();
             let len = if e.is_ipv4() { 32 } else { 128 };
-            info!("fixate route to {}", e);
-            let script = format!("$r = (Find-NetRoute -RemoteIpAddress {})[1];
-                New-NetRoute -PolicyStore ActiveStore -DestinationPrefix {}/{} -NextHop $r.NextHop -ifIndex $r.ifIndex",
-                e,
-                e,
-                len,
-            );
-            let output = Command::new("powershell")
-                .arg("-command")
-                .arg(script)
-                .output()
-                .await
-                .context("run powershell")?;
-            if !output.status.success() {
-                warn!(
-                    "failed to fixate route to {}, command output: {}",
+            tasks.push(tokio::spawn(async move {
+                info!("fixate route to {}", e);
+                let script = format!("$r = (Find-NetRoute -RemoteIpAddress {})[1];
+                    New-NetRoute -PolicyStore ActiveStore -DestinationPrefix {}/{} -NextHop $r.NextHop -ifIndex $r.ifIndex",
                     e,
-                    String::from_utf8_lossy(&output.stderr),
+                    e,
+                    len,
                 );
-            } else {
-                tokio::spawn(async move {
-                    scopeguard::defer! {{
-                        info!("delete route to {}", e);
-                        std::process::Command::new("powershell")
-                            .arg("-command")
-                            .arg(format!("Remove-NetRoute -PolicyStore ActiveStore -DestinationPrefix {}/{} -Confirm:$false", e, len))
-                            .output()
-                            .and_then(|o| {
-                                if !o.status.success() {
-                                    warn!(
-                                        "failed to delete route to {}: {}",
-                                        e,
-                                        String::from_utf8_lossy(&o.stderr),
-                                    );
-                                }
-                                Ok(())
-                            }).unwrap_or_else(|err| {
-                                warn!("failed to delete route to {}, failed to run powershell: {}", e, err);
-                            });
-                    }};
+                let output = Command::new("powershell")
+                    .arg("-command")
+                    .arg(script)
+                    .output()
+                    .await
+                    .context("run powershell")?;
+                if !output.status.success() {
+                    warn!(
+                        "failed to fixate route to {}, command output: {}",
+                        e,
+                        String::from_utf8_lossy(&output.stderr),
+                    );
+                } else {
+                    info!("fixated route to {}", e);
+                    tokio::spawn(async move {
+                        scopeguard::defer! {{
+                            info!("delete route to {}", e);
+                            std::process::Command::new("powershell")
+                                .arg("-command")
+                                .arg(format!("Remove-NetRoute -PolicyStore ActiveStore -DestinationPrefix {}/{} -Confirm:$false", e, len))
+                                .output()
+                                .and_then(|o| {
+                                    if !o.status.success() {
+                                        warn!(
+                                            "failed to delete route to {}: {}",
+                                            e,
+                                            String::from_utf8_lossy(&o.stderr),
+                                        );
+                                    }
+                                    Ok(())
+                                }).unwrap_or_else(|err| {
+                                    warn!("failed to delete route to {}, failed to run powershell: {}", e, err);
+                                });
+                        }};
 
-                    futures::future::pending::<()>().await;
-                });
-            }
+                        futures::future::pending::<()>().await;
+                    });
+                }
+                Ok(())
+            }));
         }
 
         for &(a, p) in &p.allowed_ips {
             if p == 0 {
                 if a.is_ipv4() {
-                    add_route(name, IpAddr::V4(0.into()), 1).await?;
-                    add_route(name, IpAddr::V4([128, 0, 0, 1].into()), 1).await?;
+                    routes.push((IpAddr::V4(0.into()), 1));
+                    routes.push((IpAddr::V4([128, 0, 0, 1].into()), 1));
                 } else {
-                    add_route(name, IpAddr::V6(0.into()), 1).await?;
-                    add_route(name, IpAddr::V6((1u128 << 127).into()), 1).await?;
+                    routes.push((IpAddr::V6(0.into()), 1));
+                    routes.push((IpAddr::V6((1u128 << 127).into()), 1));
                 }
             } else {
-                add_route(name, a, p).await?;
+                routes.push((a, p));
             }
+        }
+    }
+
+    let name: String = name.into();
+    tasks.push(tokio::spawn(async move {
+        add_routes(&name, routes).await?;
+        Ok(())
+    }));
+
+    for h in tasks {
+        if let Ok(Err(e)) = h.await {
+            warn!("{:#}", e);
         }
     }
 
@@ -298,18 +319,26 @@ async fn block_dns(ranges: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn add_route(interface_name: &str, address: IpAddr, prefix_len: u32) -> anyhow::Result<()> {
-    info!("add route {}/{}", address, prefix_len);
+async fn add_routes(
+    interface_name: &str,
+    routes: impl IntoIterator<Item = (IpAddr, u32)>,
+) -> anyhow::Result<()> {
+    let mut script = String::new();
 
-    let address: IpAddr = match address {
-        IpAddr::V4(a4) => Ipv4Addr::from(u32::from(a4) & to_mask::<u32>(prefix_len)).into(),
-        IpAddr::V6(a6) => Ipv6Addr::from(u128::from(a6) & to_mask::<u128>(prefix_len)).into(),
-    };
-
-    let script = format!(
-        "New-NetRoute -DestinationPrefix {}/{} -InterfaceAlias {}",
-        address, prefix_len, interface_name,
-    );
+    for (address, prefix_len) in routes {
+        use std::fmt::Write;
+        info!("add route {}/{}", address, prefix_len);
+        let address: IpAddr = match address {
+            IpAddr::V4(a4) => Ipv4Addr::from(u32::from(a4) & to_mask::<u32>(prefix_len)).into(),
+            IpAddr::V6(a6) => Ipv6Addr::from(u128::from(a6) & to_mask::<u128>(prefix_len)).into(),
+        };
+        writeln!(
+            script,
+            "New-NetRoute -DestinationPrefix {}/{} -InterfaceAlias {}",
+            address, prefix_len, interface_name
+        )
+        .unwrap();
+    }
 
     let output = Command::new("powershell")
         .arg("-command")
@@ -319,9 +348,11 @@ async fn add_route(interface_name: &str, address: IpAddr, prefix_len: u32) -> an
         .context("run powershell")?;
     if !output.status.success() {
         warn!(
-            "failed to add route, command output: {}",
+            "failed to add routes, command output: {}",
             String::from_utf8_lossy(&output.stderr),
         );
+    } else {
+        info!("added routes");
     }
 
     Ok(())
