@@ -47,7 +47,6 @@ fn main() {
 
     use anyhow::Context;
     use log::*;
-    use pin_utils::pin_mut;
     use rand::prelude::*;
     use tokio::io::{stderr, stdin, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
     use tokio::sync::oneshot;
@@ -218,7 +217,7 @@ fn main() {
                 .await
                 .context("log_pipe_listener accept")?;
             let mut stderr = stderr();
-            let copy = tokio::spawn(async move {
+            let mut copy = tokio::spawn(async move {
                 let mut log_pipe = BufReader::new(log_pipe);
                 let mut line = String::new();
                 loop {
@@ -236,20 +235,20 @@ fn main() {
                 }
             });
             let ctrl_c = tokio::signal::ctrl_c();
-            pin_mut!(ctrl_c);
-            let ctrl_c_or_stdin_eof = futures::future::select(ctrl_c, stdin_eof);
-            match futures::future::select(copy, ctrl_c_or_stdin_eof).await {
-                futures::future::Either::Left((copy_result, _)) => {
-                    info!("service unexpectedly stopped: {:?}", copy_result);
-                    service.delete().context("delete service")?;
-                }
-                futures::future::Either::Right((_, copy)) => {
-                    info!("received ctrl-c or stdin eof, will stop and delete service");
-                    service.stop().context("stop service")?;
-                    // Drain log_pipe.
-                    let _ = copy.await;
-                    service.delete().context("delete service")?;
-                }
+            let ctrl_c_or_stdin_eof = tokio::select! {
+                _ = ctrl_c => true,
+                _ = stdin_eof => true,
+                _ = &mut copy => false,
+            };
+            if ctrl_c_or_stdin_eof {
+                info!("received ctrl-c or stdin eof, will stop and delete service");
+                service.stop().context("stop service")?;
+                // Drain log_pipe.
+                let _ = copy.await;
+                service.delete().context("delete service")?;
+            } else {
+                info!("service unexpectedly stopped");
+                service.delete().context("delete service")?;
             }
             let r: anyhow::Result<()> = Ok(());
             r

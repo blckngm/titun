@@ -15,11 +15,9 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use futures::future::select;
 use futures::future::Shared;
 use futures::prelude::*;
 use parking_lot::Mutex;
-use pin_utils::pin_mut;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -84,9 +82,10 @@ impl AsyncScope {
     {
         let cancelled = self.cancelled();
         tokio::spawn(async move {
-            pin_mut!(future);
-
-            select(future, cancelled).await;
+            tokio::select! {
+                _ = cancelled => {}
+                _ = future => {}
+            }
         });
     }
 }

@@ -20,11 +20,9 @@ use crate::wireguard::re_exports::{DH, X25519};
 use crate::wireguard::*;
 use anyhow::Context;
 use fnv::FnvHashMap;
-use futures::future::{select, Either};
 use futures::prelude::*;
 use noise_protocol::U8Array;
 use parking_lot::{Mutex, RwLock};
-use pin_utils::pin_mut;
 use rand::prelude::*;
 use rand::rngs::OsRng;
 use std::collections::BTreeSet;
@@ -447,22 +445,22 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
         for _ in 0..1024 {
             let (len, addr) = {
                 let socket = wg.socket.lock().clone();
-                let recv = socket.recv_from(&mut p);
-                pin_mut!(recv);
-                let recv_socket = receiver.recv();
-                pin_mut!(recv_socket);
-                match select(recv, recv_socket).await {
-                    Either::Left((recv_result, _)) => recv_result.unwrap(),
-                    Either::Right((socket, _)) => {
-                        if let Some(socket) = socket {
-                            *wg.socket.lock() = Arc::new(socket);
-                            continue;
-                        } else {
-                            // The sender is dropped, this means that there is
-                            // now another rx task, and we should return.
-                            return;
+                loop {
+                    tokio::select! {
+                        recv_result = socket.recv_from(&mut p) => {
+                            break recv_result.unwrap();
                         }
-                    }
+                        socket = receiver.next() => {
+                            if let Some(socket) = socket {
+                                *wg.socket.lock() = Arc::new(socket);
+                                continue;
+                            } else {
+                                // The sender is dropped, this means that there is
+                                // now another rx task, and we should return.
+                                return;
+                            }
+                        }
+                    };
                 }
             };
 
