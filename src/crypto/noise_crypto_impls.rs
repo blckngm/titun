@@ -15,16 +15,18 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
+use libsodium_sys::*;
 use noise_protocol::*;
 use rand::prelude::*;
 use rand::rngs::OsRng;
-use ring::aead::*;
-use ring::agreement::*;
+use sodiumoxide::crypto::scalarmult::curve25519;
+use sodiumoxide::utils::memzero;
 use std::fmt;
+use std::ptr::{null, null_mut};
 
 #[derive(Eq, PartialEq)]
 pub struct X25519Key {
-    key: Sensitive<[u8; 32]>,
+    key: curve25519::Scalar,
     public_key: [u8; 32],
 }
 
@@ -50,9 +52,8 @@ impl U8Array for X25519Key {
     }
 
     fn from_slice(s: &[u8]) -> Self {
-        let s = Sensitive::from_slice(s);
-        let e = EphemeralPrivateKey::actually_static(&X25519, s.as_slice()).unwrap();
-        let pk = U8Array::from_slice(e.compute_public_key().unwrap().as_ref());
+        let s = curve25519::Scalar::from_slice(s).unwrap();
+        let pk = curve25519::scalarmult_base(&s).0;
         X25519Key {
             key: s,
             public_key: pk,
@@ -87,12 +88,8 @@ impl<A> Drop for Sensitive<A>
 where
     A: U8Array,
 {
-    #[inline(never)]
     fn drop(&mut self) {
-        let s = self.0.as_mut();
-        for b in s {
-            *b = 0;
-        }
+        memzero(self.0.as_mut())
     }
 }
 
@@ -153,9 +150,8 @@ impl DH for X25519 {
 
     /// Returns `Err(())` if DH output is all-zero.
     fn dh(k: &Self::Key, pk: &Self::Pubkey) -> Result<Self::Output, ()> {
-        let e = EphemeralPrivateKey::actually_static(&X25519, k.as_slice()).unwrap();
-        let mut out = Sensitive([0u8; 32]);
-        agree(e, pk, out.as_mut()).map(|_| out).map_err(|_| ())
+        let pk = curve25519::GroupElement(*pk);
+        curve25519::scalarmult(&k.key, &pk).map(|x| Sensitive(x.0))
     }
 }
 
@@ -172,11 +168,19 @@ impl Cipher for ChaCha20Poly1305 {
         let mut n = [0u8; 12];
         n[4..].copy_from_slice(&nonce.to_le_bytes());
 
-        let k = LessSafeKey::new(UnboundKey::new(&CHACHA20_POLY1305, k.as_slice()).unwrap());
-        let aad = Aad::from(ad);
-        let n = Nonce::assume_unique_for_key(n);
-
-        k.seal(n, aad, plaintext, out).unwrap();
+        unsafe {
+            crypto_aead_chacha20poly1305_ietf_encrypt(
+                out.as_mut_ptr(),
+                null_mut(),
+                plaintext.as_ptr(),
+                plaintext.len() as u64,
+                ad.as_ptr(),
+                ad.len() as u64,
+                null(),
+                n.as_ptr(),
+                k.0.as_ptr(),
+            );
+        }
     }
 
     fn decrypt(
@@ -191,10 +195,24 @@ impl Cipher for ChaCha20Poly1305 {
         let mut n = [0u8; 12];
         n[4..].copy_from_slice(&nonce.to_le_bytes());
 
-        let k = LessSafeKey::new(UnboundKey::new(&CHACHA20_POLY1305, k.as_slice()).unwrap());
-        let aad = Aad::from(ad);
-        let n = Nonce::assume_unique_for_key(n);
+        let ret = unsafe {
+            crypto_aead_chacha20poly1305_ietf_decrypt(
+                out.as_mut_ptr(),
+                null_mut(),
+                null_mut(),
+                ciphertext.as_ptr(),
+                ciphertext.len() as u64,
+                ad.as_ptr(),
+                ad.len() as u64,
+                n.as_ptr(),
+                k.0.as_ptr(),
+            )
+        };
 
-        k.open(n, aad, ciphertext, out).map_err(|_| ())
+        if ret == 0 {
+            Ok(())
+        } else {
+            Err(())
+        }
     }
 }

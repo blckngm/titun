@@ -16,8 +16,11 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use super::simd::{u32x4, BaselineMachine, Machine};
-use ring::aead::*;
+use libsodium_sys::{
+    crypto_aead_chacha20poly1305_ietf_decrypt, crypto_aead_chacha20poly1305_ietf_encrypt,
+};
 use std::convert::TryInto;
+use std::ptr::{null, null_mut};
 
 // Adapted from chacha20-poly1305-aead[1], which is licensed as:
 //
@@ -125,11 +128,21 @@ pub fn encrypt(key: &[u8], nonce: &[u8], ad: &[u8], p: &[u8], out: &mut [u8]) {
     let mut real_nonce = [0u8; 12];
     real_nonce[4..].copy_from_slice(chacha_nonce);
 
-    let key = LessSafeKey::new(UnboundKey::new(&CHACHA20_POLY1305, &real_key).unwrap());
-    let aad = Aad::from(ad);
-    let nonce = Nonce::assume_unique_for_key(real_nonce);
+    let mut out_len = out.len() as u64;
 
-    key.seal(nonce, aad, p, out).unwrap();
+    unsafe {
+        crypto_aead_chacha20poly1305_ietf_encrypt(
+            out.as_mut_ptr(),
+            &mut out_len,
+            p.as_ptr(),
+            p.len() as u64,
+            ad.as_ptr(),
+            ad.len() as u64,
+            null(),
+            real_nonce.as_ptr(),
+            real_key.as_ptr(),
+        );
+    }
 }
 
 pub fn decrypt(key: &[u8], nonce: &[u8], ad: &[u8], c: &[u8], out: &mut [u8]) -> Result<(), ()> {
@@ -142,11 +155,26 @@ pub fn decrypt(key: &[u8], nonce: &[u8], ad: &[u8], c: &[u8], out: &mut [u8]) ->
     let mut real_nonce = [0u8; 12];
     real_nonce[4..].copy_from_slice(chacha_nonce);
 
-    let key = LessSafeKey::new(UnboundKey::new(&CHACHA20_POLY1305, &real_key).unwrap());
-    let aad = Aad::from(ad);
-    let nonce = Nonce::assume_unique_for_key(real_nonce);
+    let mut out_len = out.len() as u64;
 
-    key.open(nonce, aad, c, out).map_err(|_| ())
+    let r = unsafe {
+        crypto_aead_chacha20poly1305_ietf_decrypt(
+            out.as_mut_ptr(),
+            &mut out_len,
+            null_mut(),
+            c.as_ptr(),
+            c.len() as u64,
+            ad.as_ptr(),
+            ad.len() as u64,
+            real_nonce.as_ptr(),
+            real_key.as_ptr(),
+        )
+    };
+    if r != 0 {
+        Err(())
+    } else {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
