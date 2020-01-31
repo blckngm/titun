@@ -23,7 +23,7 @@ fn main() {
                 .take(10)
                 .collect()
         })
-        .unwrap_or("".to_string());
+        .unwrap_or_else(|_| "".to_string());
     println!("cargo:rustc-env=GIT_HASH={}", git_hash);
 
     if std::env::var_os("CARGO_CFG_UNIX").is_some() {
