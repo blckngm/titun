@@ -134,6 +134,7 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
                 scopeguard::defer! {{
                     info!("unblock other DNS servers");
                     std::process::Command::new("powershell")
+                        .arg("-noprofile")
                         .arg("-command")
                         .arg("Get-NetFirewallRule -PolicyStore ActiveStore -Group TiTunDNSBlock | Remove-NetFirewallRule")
                         .output()
@@ -179,15 +180,24 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
         if let Some(ref e) = p.endpoint {
             let e = e.ip();
             let len = if e.is_ipv4() { 32 } else { 128 };
+            let e_default = if e.is_ipv4() { "0.0.0.0/0" } else { "::/0" };
             tasks.push(tokio::spawn(async move {
                 info!("fixate route to {}", e);
-                let script = format!("$r = (Find-NetRoute -RemoteIpAddress {})[1];
-                    New-NetRoute -PolicyStore ActiveStore -DestinationPrefix {}/{} -NextHop $r.NextHop -ifIndex $r.ifIndex",
+                let script = format!(r##"$r = try {{
+    (Find-NetRoute -RemoteIpAddress {})[1]
+}} catch {{
+    Write-Host $_
+    (Get-NetRoute {})
+}}
+Write-Host "nextHop:" $r.NextHop "ifIndex:" $r.ifIndex
+[void](New-NetRoute -PolicyStore ActiveStore -DestinationPrefix {}/{} -NextHop $r.NextHop -ifIndex $r.ifIndex)"##,
                     e,
+                    e_default,
                     e,
                     len,
                 );
                 let output = Command::new("powershell")
+                    .arg("-noprofile")
                     .arg("-command")
                     .arg(script)
                     .output()
@@ -200,7 +210,7 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
                         String::from_utf8_lossy(&output.stderr),
                     );
                 } else {
-                    info!("fixated route to {}", e);
+                    info!("fixated route to {}: {}", e, String::from_utf8_lossy(&output.stdout).trim());
                     tokio::spawn(async move {
                         scopeguard::defer! {{
                             info!("delete route to {}", e);
@@ -308,6 +318,7 @@ async fn block_dns(ranges: &str) -> anyhow::Result<()> {
         ranges, ranges,
     );
     let output = Command::new("powershell")
+        .arg("-noprofile")
         .arg("-command")
         .arg(script)
         .output()
@@ -341,6 +352,7 @@ async fn add_routes(
     }
 
     let output = Command::new("powershell")
+        .arg("-noprofile")
         .arg("-command")
         .arg(script)
         .output()
