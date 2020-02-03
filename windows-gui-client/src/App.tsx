@@ -215,6 +215,13 @@ const App: React.FC = () => {
                     <Typography variant="h6" className={classes.title}>
                         Logs
                     </Typography>
+                    <Button
+                        color="inherit"
+                        disabled={busy}
+                        onClick={handleRunOrStopButtonClick}
+                    >
+                        {running ? "Stop" : "Run"}
+                    </Button>
                     <Button color="inherit" onClick={() => setOpenLogs(false)}>Close</Button>
                 </Toolbar>
             </AppBar>
