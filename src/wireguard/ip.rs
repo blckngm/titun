@@ -65,9 +65,26 @@ pub fn map_ipv4_to_ipv6(addr: SocketAddr) -> SocketAddrV6 {
 
 /// Convert IPv4-mapped IPv6 address back to IPv4.
 pub fn unmap_ipv4_from_ipv6(addr: SocketAddrV6) -> SocketAddr {
-    if let Some(a4) = addr.ip().to_ipv4() {
-        From::from((a4, addr.port()))
+    if addr.ip().segments()[..6] == [0, 0, 0, 0, 0, 0xffff] {
+        (addr.ip().to_ipv4().unwrap(), addr.port()).into()
     } else {
-        From::from(addr)
+        addr.into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use quickcheck_macros::quickcheck;
+
+    #[quickcheck]
+    fn qc_ipv4_map_unmap(addr: SocketAddr) {
+        assert_eq!(addr, unmap_ipv4_from_ipv6(map_ipv4_to_ipv6(addr)));
+    }
+
+    #[test]
+    fn ipv4_map_unmap_v6_localhost() {
+        let addr = "[::1]:7819".parse().unwrap();
+        assert_eq!(addr, unmap_ipv4_from_ipv6(map_ipv4_to_ipv6(addr)));
     }
 }
