@@ -741,6 +741,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50e4785f2c3b7589a0d0c1dd60285e1188adac4006e8abd6dd578e1567027363"
+dependencies = [
+ "bitflags",
+ "cc",
+ "cfg-if",
+ "libc",
+ "void",
+]
+
+[[package]]
 name = "noise-protocol"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -857,7 +870,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "939fa7cbfef9c15c65cf2fb3ed57f3f2a14dca1757a556aa1ba4a7f998b2b479"
 dependencies = [
  "libc",
- "nix",
+ "nix 0.16.1",
 ]
 
 [[package]]
@@ -1349,7 +1362,7 @@ dependencies = [
  "log",
  "mio",
  "net2",
- "nix",
+ "nix 0.17.0",
  "noise-protocol",
  "num-traits",
  "num_cpus",
