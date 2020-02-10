@@ -76,15 +76,18 @@ pub async fn reload(wg: &Arc<WgState>, new_config: Config<SocketAddr>) -> anyhow
     }
 
     for pk in existing.intersection(&new) {
+        let new = new_map.remove(pk).unwrap();
         let existing = existing_map.remove(pk).unwrap();
         let existing = PeerConfig {
             public_key: existing.public_key,
             preshared_key: existing.preshared_key,
             endpoint: existing.endpoint,
+            // We don't have this in PeerState.
+            // Use same value from new config, so that it does not affect comparison.
+            true_endpoint: new.true_endpoint,
             allowed_ips: existing.allowed_ips,
             keepalive: NonZeroU16::new(existing.persistent_keepalive_interval),
         };
-        let new = new_map.remove(pk).unwrap();
 
         // Don't even call `set_peer` if nothing changes.
         if new != existing {
