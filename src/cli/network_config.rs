@@ -177,7 +177,7 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
     let mut routes = Vec::new();
 
     for p in &c.peers {
-        if let Some(ref e) = p.endpoint {
+        if let Some(e) = p.true_endpoint.as_ref().or_else(|| p.endpoint.as_ref()) {
             let e = e.ip();
             let len = if e.is_ipv4() { 32 } else { 128 };
             let e_default = if e.is_ipv4() { "0.0.0.0/0" } else { "::/0" };
