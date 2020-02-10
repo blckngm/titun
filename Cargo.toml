@@ -91,6 +91,7 @@ winapi = { version = "0.3.8", features = [
     "devguid",
     "combaseapi",
     "cfgmgr32",
+    "mswsock",
 ] }
 winreg = "0.6.2"
 scopeguard = "1.0.0"
