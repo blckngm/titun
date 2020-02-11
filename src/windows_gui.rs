@@ -55,6 +55,7 @@ async fn run(
         .context("invalid file path, non utf-8?")?
         .to_string();
     let mut child = Command::new("titun.exe")
+        .env("RUST_BACKTRACE", "1")
         .arg("--exit-stdin-eof")
         .arg("--log=titun=debug")
         .arg("-c")
