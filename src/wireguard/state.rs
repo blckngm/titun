@@ -530,7 +530,7 @@ fn padding() {
 
 async fn tun_packet_processing(wg: Arc<WgState>) -> anyhow::Result<()> {
     let mut pkt = vec![0u8; BUFSIZE];
-    let mut encrypted = vec![0u8; BUFSIZE];
+    let mut encrypted = vec![0u8; BUFSIZE + 32];
     loop {
         for _ in 0..1024 {
             let len = wg
