@@ -43,9 +43,9 @@ fn clsid_from_string(clsid_str: &str) -> anyhow::Result<CLSID> {
 fn clsid_to_string(clsid: &CLSID) -> String {
     let mut result: *mut u16 = null_mut();
     unsafe_l!(StringFromCLSID(clsid, &mut result)).expect("StringFromCLSID");
-    scopeguard::defer! {{
+    scopeguard::defer! {
         unsafe { CoTaskMemFree(result as *mut _); }
-    }};
+    };
     unsafe { WideCStr::from_ptr_str(result) }.to_string_lossy()
 }
 
@@ -148,9 +148,9 @@ impl<'a> Interface<'a> {
         ))
         .context("SetupDiGetClassDevsEx")?
         .into_inner();
-        scopeguard::defer! {{
+        scopeguard::defer! {
             unsafe_b!(SetupDiDestroyDeviceInfoList(dev_info)).unwrap();
-        }};
+        };
 
         let mut dev_info_data: SP_DEVINFO_DATA = unsafe { mem::zeroed() };
         dev_info_data.cbSize = mem::size_of::<SP_DEVINFO_DATA>() as u32;

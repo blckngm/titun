@@ -512,9 +512,9 @@ impl Pool {
         ))
         .context("SetupDiGetClassDevsExA")?
         .into_inner();
-        scopeguard::defer! {{
+        scopeguard::defer! {
             unsafe_b!(SetupDiDestroyDeviceInfoList(dev_info)).unwrap();
-        }};
+        };
         let ifname = ifname
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("ifname to_str failed"))?
@@ -612,9 +612,9 @@ impl Pool {
         ))
         .context("SetupDiCreateDeviceInfoListExW")?
         .into_inner();
-        scopeguard::defer! {{
+        scopeguard::defer! {
             unsafe_b!(SetupDiDestroyDeviceInfoList(dev_info)).unwrap();
-        }};
+        };
 
         // Get the device class name from GUID.
         let class_name = {
