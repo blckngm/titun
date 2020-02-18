@@ -131,7 +131,7 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
             info!("blocked other DNS servers");
 
             tokio::spawn(async move {
-                scopeguard::defer! {{
+                scopeguard::defer! {
                     info!("unblock other DNS servers");
                     std::process::Command::new("powershell")
                         .arg("-noprofile")
@@ -149,7 +149,7 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
                         }).unwrap_or_else(|e| {
                             warn!("failed to unblock dns servers: failed to run powershell: {}", e);
                         });
-                }};
+                };
                 futures::future::pending::<()>().await;
             });
             Ok(())
@@ -212,7 +212,7 @@ Write-Host "nextHop:" $r.NextHop "ifIndex:" $r.ifIndex
                 } else {
                     info!("fixated route to {}: {}", e, String::from_utf8_lossy(&output.stdout).trim());
                     tokio::spawn(async move {
-                        scopeguard::defer! {{
+                        scopeguard::defer! {
                             info!("delete route to {}", e);
                             std::process::Command::new("powershell")
                                 .arg("-command")
@@ -230,7 +230,7 @@ Write-Host "nextHop:" $r.NextHop "ifIndex:" $r.ifIndex
                                 }).unwrap_or_else(|err| {
                                     warn!("failed to delete route to {}, failed to run powershell: {}", e, err);
                                 });
-                        }};
+                        };
 
                         futures::future::pending::<()>().await;
                     });
