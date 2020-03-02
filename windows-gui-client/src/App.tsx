@@ -99,7 +99,7 @@ const App: React.FC = () => {
             if (status != null) {
                 setInterfaceState(status);
                 setRunning(true);
-                setGetStatusInterval(setInterval(async () => {
+                setGetStatusInterval(window.setInterval(async () => {
                     try {
                         setInterfaceState(await getStatus());
                     } catch (e) {
@@ -140,7 +140,7 @@ const App: React.FC = () => {
                 setLogLines([]);
                 await run(fileName);
                 setRunning(true);
-                setGetStatusInterval(setInterval(async () => {
+                setGetStatusInterval(window.setInterval(async () => {
                     try {
                         setInterfaceState(await getStatus());
                     } catch (e) {
