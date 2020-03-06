@@ -1255,8 +1255,8 @@ dependencies = [
 
 [[package]]
 name = "web-view"
-version = "0.5.4"
-source = "git+https://github.com/sopium/web-view#020b75fc6d876d9e83c334a561fada8c79eb3670"
+version = "0.6.0"
+source = "git+https://github.com/sopium/web-view#f54aa9a7b7c8b67aa8b3d0874ac268c79eefc7bc"
 dependencies = [
  "boxfnonce",
  "urlencoding",
@@ -1265,8 +1265,8 @@ dependencies = [
 
 [[package]]
 name = "webview-sys"
-version = "0.3.3"
-source = "git+https://github.com/sopium/web-view#020b75fc6d876d9e83c334a561fada8c79eb3670"
+version = "0.4.0"
+source = "git+https://github.com/sopium/web-view#f54aa9a7b7c8b67aa8b3d0874ac268c79eefc7bc"
 dependencies = [
  "bitflags",
  "cc",
