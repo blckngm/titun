@@ -1,12 +1,10 @@
-import 'react-app-polyfill/ie11';
-import 'core-js/features/math/trunc';
-
 import React from 'react';
 import ReactDOM from 'react-dom';
 import { ThemeProvider, createMuiTheme } from '@material-ui/core/styles';
 
 import './style.css';
 import App from './App';
+import { focus } from './api';
 
 const theme = createMuiTheme({
     typography: {
@@ -14,7 +12,6 @@ const theme = createMuiTheme({
     },
 });
 
-// Call focus so that we receive keyboard events right away.
-document.body.focus();
+focus().catch(e => console.error(e));
 
 ReactDOM.render(<ThemeProvider theme={theme}><App /></ThemeProvider>, document.getElementById('root'));

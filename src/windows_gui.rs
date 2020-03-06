@@ -18,8 +18,12 @@
 #![cfg(windows)]
 #![windows_subsystem = "windows"]
 
-use std::path::Path;
+use std::cell::RefCell;
+use std::mem;
+use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
+use std::ptr;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::{bail, Context};
@@ -28,7 +32,23 @@ use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
-use web_view::*;
+use webview2;
+use widestring::WideCStr;
+use winapi::shared::basetsd::*;
+use winapi::shared::minwindef::*;
+use winapi::shared::windef::*;
+use winapi::um::combaseapi::*;
+use winapi::um::commctrl::*;
+use winapi::um::knownfolders::*;
+use winapi::um::libloaderapi::*;
+use winapi::um::shellapi::*;
+use winapi::um::shlobj::*;
+use winapi::um::winuser::*;
+use winit::dpi::Size;
+use winit::event::{Event, WindowEvent};
+use winit::event_loop::{ControlFlow, EventLoop, EventLoopProxy};
+use winit::platform::windows::WindowExtWindows;
+use winit::window::WindowBuilder;
 
 use crate::ipc::windows_named_pipe::PipeStream;
 
@@ -39,10 +59,22 @@ struct State {
     interface_name: Option<String>,
 }
 
+#[derive(Debug)]
+enum MyEvent {
+    ExecuteScript(String),
+    OpenFile(tokio::sync::oneshot::Sender<webview2::Result<Option<PathBuf>>>),
+    Show,
+    Hide,
+    Exit,
+    Minimized,
+    Restored,
+    Focus,
+}
+
 async fn run(
     state: &Mutex<State>,
     config_file_path: String,
-    handle: Handle<()>,
+    proxy: EventLoopProxy<MyEvent>,
 ) -> anyhow::Result<()> {
     let mut state = state.lock().await;
     if state.child.is_some() {
@@ -73,15 +105,11 @@ async fn run(
         let mut stderr_lines = stderr.lines();
         while let Some(Ok(line)) = stderr_lines.next().await {
             log::debug!("process log: {}", line);
-            handle
-                .dispatch(move |wv| {
-                    ignore_error(wv.eval(&format!(
-                        "onLog({})",
-                        serde_json::to_string(&line).expect("to_json log line")
-                    )));
-                    Ok(())
-                })
-                .expect("dispatch");
+            let script = format!(
+                "onLog({})",
+                serde_json::to_string(&line).expect("to_json log line")
+            );
+            ignore_error(proxy.send_event(MyEvent::ExecuteScript(script)));
         }
     });
     state.child = Some(child);
@@ -138,6 +166,8 @@ enum Request {
     Exit { response_cb: String },
     #[serde(rename_all = "camelCase")]
     Hide { response_cb: String },
+    #[serde(rename_all = "camelCase")]
+    Focus { response_cb: String },
 }
 
 #[derive(Serialize)]
@@ -147,17 +177,68 @@ enum Response<T> {
     Error(String),
 }
 
+fn open_file_dialog(hwnd: HWND) -> webview2::Result<Option<PathBuf>> {
+    use std::ffi::c_void;
+    use webview2::check_hresult;
+    use winapi::shared::winerror::{ERROR_CANCELLED, HRESULT_FROM_WIN32};
+    use winapi::um::shobjidl::*;
+    use winapi::um::shobjidl_core::*;
+    use winapi::Interface;
+
+    unsafe {
+        let mut dialog: *mut IFileOpenDialog = ptr::null_mut();
+        check_hresult(CoCreateInstance(
+            &CLSID_FileOpenDialog,
+            ptr::null_mut(),
+            CLSCTX_ALL,
+            &IFileOpenDialog::uuidof(),
+            &mut dialog as *mut *mut IFileOpenDialog as *mut *mut c_void,
+        ))?;
+        let dialog: &IFileOpenDialog = &*dialog;
+        scopeguard::defer! {
+            dialog.Release();
+        };
+
+        let mut options = 0;
+        check_hresult(dialog.GetOptions(&mut options))?;
+        options |= FOS_NOCHANGEDIR | FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST;
+        check_hresult(dialog.SetOptions(options))?;
+
+        match check_hresult(dialog.Show(hwnd)) {
+            Ok(_) => {}
+            Err(e) if e.hresult() == HRESULT_FROM_WIN32(ERROR_CANCELLED) => {
+                return Ok(None);
+            }
+            Err(e) => return Err(e),
+        };
+
+        let mut result: *mut IShellItem = ptr::null_mut();
+        check_hresult(dialog.GetResult(&mut result as *mut *mut _))?;
+        let result = &*result;
+        scopeguard::defer! {
+            result.Release();
+        }
+
+        let mut path = ptr::null_mut();
+        check_hresult(result.GetDisplayName(SIGDN_FILESYSPATH, &mut path))?;
+        let path1 = WideCStr::from_ptr_str(path);
+        CoTaskMemFree(path as _);
+
+        Ok(Some(PathBuf::from(path1.to_os_string())))
+    }
+}
+
 async fn handle_request_inner(
     state: &Mutex<State>,
     request: String,
-    wv_handle: &Handle<()>,
+    proxy: EventLoopProxy<MyEvent>,
 ) -> anyhow::Result<()> {
     let request: Request = serde_json::from_str(&request).context("deserialize request")?;
     // log::debug!("request: {:?}", request);
     fn eval<S: Serialize>(
         cb: String,
         response: anyhow::Result<S>,
-        wv_handle: &Handle<()>,
+        proxy: EventLoopProxy<MyEvent>,
     ) -> anyhow::Result<()> {
         let response_json = serde_json::to_string(&match response {
             Ok(r) => Response::Data(r),
@@ -165,29 +246,23 @@ async fn handle_request_inner(
         })
         .context("serialize response")?;
         let script = format!("{}({})", cb, response_json);
-        wv_handle
-            .dispatch(move |wv| {
-                // log::debug!("eval: {}", script);
-                ignore_error(wv.eval(&script));
-                Ok(())
-            })
-            .context("dispatch")
+        proxy
+            .send_event(MyEvent::ExecuteScript(script))
+            .context("proxy.send_event")
     }
     match request {
         Request::GetStatus { response_cb } => {
             let status_or_error = get_interface_status(state).await;
-            eval(response_cb, status_or_error, wv_handle)
+            eval(response_cb, status_or_error, proxy)
         }
         Request::OpenFile { response_cb } => {
             let (tx, rx) = tokio::sync::oneshot::channel();
-            wv_handle
-                .dispatch(move |wv| {
-                    let file = wv.dialog().open_file("open", "");
-                    tx.send(file).expect("send");
-                    Ok(())
-                })
-                .expect("dispatch");
-            let file = match rx.await.expect("receive open file name") {
+
+            proxy
+                .send_event(MyEvent::OpenFile(tx))
+                .context("proxy.send_event")?;
+
+            let file = match rx.await.context("received opened file")? {
                 Ok(Some(f)) => match f.to_str() {
                     Some(f) => Ok(Some(f.to_string())),
                     None => Err(anyhow::anyhow!("file name is not utf-8")),
@@ -195,42 +270,44 @@ async fn handle_request_inner(
                 Ok(None) => Ok(None),
                 Err(e) => Err(e.into()),
             };
-            eval(response_cb, file, wv_handle)
+            eval(response_cb, file, proxy)
         }
         Request::Stop { response_cb } => {
             let stop_result = stop(state).await.map(|_| ());
-            eval(response_cb, stop_result, wv_handle)
+            eval(response_cb, stop_result, proxy)
         }
         Request::Run {
             config_file_path,
             response_cb,
         } => {
-            let run_result = run(state, config_file_path, wv_handle.clone()).await;
-            eval(response_cb, run_result, wv_handle)
+            let proxy1 = proxy.clone();
+            let run_result = run(state, config_file_path, proxy1).await;
+            eval(response_cb, run_result, proxy)
         }
-        Request::Exit { .. } => wv_handle
-            .dispatch(|wv| {
-                wv.exit();
-                Ok(())
-            })
-            .context("dispatch"),
+        Request::Exit { .. } => proxy.send_event(MyEvent::Exit).map_err(|e| e.into()),
         Request::Hide { response_cb } => {
-            wv_handle
-                .dispatch(|wv| {
-                    wv.hide();
-                    Ok(())
-                })
-                .expect("dispatch");
-            eval(response_cb, Ok(()), wv_handle)
+            proxy
+                .send_event(MyEvent::Hide)
+                .context("proxy.send_event")?;
+            eval(response_cb, Ok(()), proxy)
+        }
+        Request::Focus { response_cb } => {
+            proxy
+                .send_event(MyEvent::Focus)
+                .context("proxy.send_event")?;
+            eval(response_cb, Ok(()), proxy)
         }
     }
 }
 
-async fn handle_request(state: Arc<Mutex<State>>, request: String, wv_handle: Handle<()>) {
-    if let Err(e) = handle_request_inner(&state, request, &wv_handle).await {
+async fn handle_request(state: Arc<Mutex<State>>, request: String, proxy: EventLoopProxy<MyEvent>) {
+    if let Err(e) = handle_request_inner(&state, request, proxy).await {
         log::error!("failed to handle request: {:#}", e);
     }
 }
+
+const WM_NOTIFY_ICON: u32 = WM_APP + 1;
+const COMMAND_EXIT: u32 = 1;
 
 pub fn run_windows_gui() {
     env_logger::init();
@@ -244,9 +321,7 @@ pub fn run_windows_gui() {
             .core_threads(1)
             .build()
             .unwrap();
-        rt_handle_tx
-            .send(rt.handle().clone())
-            .expect("send rt handle");
+        ignore_error(rt_handle_tx.send(rt.handle().clone()));
         rt.block_on(futures::future::pending::<()>());
     });
 
@@ -256,22 +331,288 @@ pub fn run_windows_gui() {
         interface_name: None,
     }));
 
-    #[cfg(debug_assertions)]
-    let content = Content::Url("http://localhost:3000");
-    #[cfg(not(debug_assertions))]
-    let content = Content::Html(include_str!("windows_gui.html"));
-
-    builder()
-        .title("TiTun")
-        .content(content)
-        .size(1024, 768)
-        .resizable(true)
-        .user_data(())
-        .debug(cfg!(debug_assertions))
-        .invoke_handler(|wv, arg| {
-            rt_handle.spawn(handle_request(state.clone(), arg.into(), wv.handle()));
-            Ok(())
-        })
-        .run()
+    let event_loop = EventLoop::<MyEvent>::with_user_event();
+    let proxy = event_loop.create_proxy();
+    let window = WindowBuilder::new()
+        .with_title("TiTun")
+        .with_inner_size(Size::Logical((1024, 768).into()))
+        .build(&event_loop)
         .unwrap();
+
+    let icon = unsafe {
+        LoadIconA(
+            GetModuleHandleA(ptr::null()),
+            "APP_ICON\0".as_ptr() as *const i8,
+        )
+    };
+
+    let mut notify_icon_data = unsafe {
+        NOTIFYICONDATAA {
+            cbSize: std::mem::size_of::<NOTIFYICONDATAA>() as _,
+            hWnd: window.hwnd() as HWND,
+            uFlags: NIF_MESSAGE | NIF_ICON,
+            uCallbackMessage: WM_NOTIFY_ICON,
+            hIcon: icon,
+            ..mem::zeroed()
+        }
+    };
+
+    #[allow(non_snake_case)]
+    extern "system" fn subclass_wnd_proc(
+        hWnd: HWND,
+        uMsg: UINT,
+        wParam: WPARAM,
+        lParam: LPARAM,
+        _uIdSubclass: UINT_PTR,
+        dwRefData: DWORD_PTR,
+    ) -> LRESULT {
+        let proxy_ptr = dwRefData as *mut EventLoopProxy<MyEvent>;
+
+        match uMsg {
+            WM_NOTIFY_ICON => match lParam as u32 {
+                WM_LBUTTONDOWN => {
+                    let proxy = unsafe { &*proxy_ptr };
+                    ignore_error(proxy.send_event(MyEvent::Show));
+                    return 0;
+                }
+                WM_RBUTTONUP => unsafe {
+                    let menu = CreatePopupMenu();
+                    InsertMenuA(
+                        menu,
+                        0,
+                        MF_BYPOSITION,
+                        COMMAND_EXIT as usize,
+                        b"Exit\0".as_ptr() as *const i8,
+                    );
+                    let mut point = mem::zeroed();
+                    GetCursorPos(&mut point);
+                    SetForegroundWindow(hWnd);
+                    TrackPopupMenu(
+                        menu,
+                        TPM_RIGHTBUTTON,
+                        point.x,
+                        point.y,
+                        0,
+                        hWnd,
+                        ptr::null(),
+                    );
+                    PostMessageA(hWnd, WM_NULL, 0, 0);
+                    DestroyMenu(menu);
+                },
+                _ => {}
+            },
+            WM_COMMAND if wParam as u32 == COMMAND_EXIT => {
+                let proxy = unsafe { &*proxy_ptr };
+                ignore_error(proxy.send_event(MyEvent::Exit));
+            }
+            WM_SYSCOMMAND => match wParam {
+                SC_MINIMIZE => {
+                    let proxy = unsafe { &*proxy_ptr };
+                    ignore_error(proxy.send_event(MyEvent::Minimized));
+                }
+                SC_RESTORE => {
+                    let proxy = unsafe { &*proxy_ptr };
+                    ignore_error(proxy.send_event(MyEvent::Restored));
+                }
+                _ => {}
+            },
+            WM_DESTROY => unsafe {
+                RemoveWindowSubclass(hWnd, Some(subclass_wnd_proc), 0);
+                Box::from_raw(dwRefData as *mut EventLoopProxy<MyEvent>);
+            },
+            _ => {}
+        }
+        unsafe { DefSubclassProc(hWnd, uMsg, wParam, lParam) }
+    }
+
+    let proxy_ptr = Box::into_raw(Box::new(proxy.clone()));
+
+    unsafe {
+        SendMessageA(window.hwnd() as HWND, WM_SETICON, ICON_BIG as _, icon as _);
+        Shell_NotifyIconA(NIM_ADD, &mut notify_icon_data);
+        SetWindowSubclass(
+            window.hwnd() as HWND,
+            Some(subclass_wnd_proc),
+            0,
+            proxy_ptr as DWORD_PTR,
+        );
+    }
+
+    let webview: Rc<RefCell<Option<webview2::WebView>>> = Rc::new(RefCell::new(None));
+    let webview_host: Rc<RefCell<Option<webview2::Host>>> = Rc::new(RefCell::new(None));
+
+    let create_result = {
+        let webview = webview.clone();
+        let webview_host = webview_host.clone();
+        let hwnd = window.hwnd() as HWND;
+
+        // We can't and should not put the user data folder in `Program Files`.
+        // So put it in the user's `AppData/Local` folder.
+        let user_data_folder = unsafe {
+            let mut app_data_local_path: *mut u16 = ptr::null_mut();
+            SHGetKnownFolderPath(
+                &FOLDERID_LocalAppData,
+                0,
+                ptr::null_mut(),
+                &mut app_data_local_path,
+            );
+            let app_data_local_path1 = WideCStr::from_ptr_str(app_data_local_path);
+            CoTaskMemFree(app_data_local_path as _);
+            let mut path = PathBuf::from(app_data_local_path1.to_os_string());
+            path.push("titun.exe.WebView2");
+            path
+        };
+
+        webview2::EnvironmentBuilder::new()
+            .with_user_data_folder(&user_data_folder)
+            .build(move |env| {
+                env.unwrap().create_host(hwnd, move |h| {
+                    let h = h.unwrap();
+                    let w = h.get_webview().unwrap();
+
+                    let _ = w.get_settings().map(|settings| {
+                        let _ = settings.put_is_status_bar_enabled(false);
+                        let _ = settings.put_are_default_context_menu_enabled(false);
+                        let _ = settings.put_is_zoom_control_enabled(false);
+                    });
+
+                    unsafe {
+                        let mut rect = mem::zeroed();
+                        GetClientRect(hwnd, &mut rect);
+                        ignore_error(h.put_bounds(rect));
+                    }
+
+                    w.add_web_message_received(move |_, args| {
+                        let message = args.get_web_message_as_string()?;
+                        rt_handle.spawn(handle_request(state.clone(), message, proxy.clone()));
+                        Ok(())
+                    })
+                    .unwrap();
+
+                    #[cfg(debug_assertions)]
+                    w.navigate("http://localhost:3000").expect("navigate");
+                    #[cfg(not(debug_assertions))]
+                    w.navigate_to_string(include_str!("windows_gui.html"))
+                        .expect("navigate_to_string");
+
+                    *webview_host.borrow_mut() = Some(h);
+                    *webview.borrow_mut() = Some(w);
+                    Ok(())
+                })
+            })
+    };
+
+    if let Err(error) = create_result {
+        let text = widestring::WideCString::from_str(format!(
+            "Failed to create webview environment: {}.\nIs the new edge browser installed?",
+            error
+        ))
+        .unwrap();
+        let caption = wchar::wch_c!("Error").as_ptr();
+        unsafe {
+            MessageBoxW(
+                window.hwnd() as HWND,
+                text.as_ptr(),
+                caption,
+                MB_OK | MB_ICONERROR,
+            );
+            Shell_NotifyIconA(NIM_DELETE, &mut notify_icon_data);
+        }
+        return;
+    }
+
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = ControlFlow::Wait;
+
+        match event {
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::CloseRequested => {
+                    window.set_visible(false);
+                }
+                // Notify the webview when the parent window is moved.
+                WindowEvent::Moved(_) => {
+                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                        ignore_error(host.notify_parent_window_position_changed());
+                    }
+                }
+                WindowEvent::Focused(true) => {
+                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                        ignore_error(host.put_is_visible(true));
+                        ignore_error(host.move_focus(webview2::MoveFocusReason::Programmatic));
+                    }
+                }
+                // Update webview bounds when the parent window is resized.
+                WindowEvent::Resized(new_size) => {
+                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                        let r = RECT {
+                            left: 0,
+                            top: 0,
+                            right: new_size.width as i32,
+                            bottom: new_size.height as i32,
+                        };
+                        host.put_bounds(r).unwrap();
+                    }
+                }
+                _ => {}
+            },
+            Event::UserEvent(my_event) => match my_event {
+                MyEvent::Exit => {
+                    unsafe {
+                        Shell_NotifyIconA(NIM_DELETE, &mut notify_icon_data);
+                    }
+                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                        ignore_error(host.close());
+                    }
+                    *control_flow = ControlFlow::Exit;
+                }
+                MyEvent::Hide => {
+                    window.set_visible(false);
+                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                        ignore_error(host.put_is_visible(false));
+                    }
+                }
+                MyEvent::Show => {
+                    window.set_visible(true);
+                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                        ignore_error(host.put_is_visible(true));
+                        ignore_error(host.move_focus(webview2::MoveFocusReason::Programmatic));
+                    }
+                }
+                MyEvent::Focus => {
+                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                        ignore_error(host.move_focus(webview2::MoveFocusReason::Programmatic));
+                    }
+                }
+                MyEvent::ExecuteScript(script) => {
+                    if let Some(ref webview) = webview.borrow().as_ref() {
+                        if let Err(error) = webview.execute_script(&script) {
+                            log::error!("failed to execute script: {}", error);
+                        }
+                    }
+                }
+                MyEvent::OpenFile(tx) => {
+                    ignore_error(tx.send(open_file_dialog(window.hwnd() as HWND)));
+                }
+                MyEvent::Minimized => {
+                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                        ignore_error(host.put_is_visible(false));
+                    }
+                }
+                MyEvent::Restored => {
+                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                        ignore_error(host.put_is_visible(true));
+                        ignore_error(host.move_focus(webview2::MoveFocusReason::Programmatic));
+                    }
+                }
+            },
+            Event::MainEventsCleared => {
+                // Application update code.
+
+                // Queue a RedrawRequested event.
+                window.request_redraw();
+            }
+            Event::RedrawRequested(_) => {}
+            _ => (),
+        }
+    });
 }
