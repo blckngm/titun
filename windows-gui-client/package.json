@@ -11,9 +11,7 @@
     "@types/node": "^13.7.7",
     "@types/react": "^16.9.0",
     "@types/react-dom": "^16.9.0",
-    "core-js": "^3.6.1",
     "react": "^16.12.0",
-    "react-app-polyfill": "^1.0.5",
     "react-dom": "^16.12.0",
     "react-scripts": "3.4.0",
     "runtypes": "^4.0.3",
@@ -32,15 +30,12 @@
     "production": [
       ">0.2%",
       "not dead",
-      "not op_mini all",
-      "ie >= 11"
+      "not op_mini all"
     ],
     "development": [
       "last 1 chrome version",
       "last 1 firefox version",
-      "last 1 safari version",
-      "last 1 edge version",
-      "ie >= 11"
+      "last 1 safari version"
     ]
   },
   "devDependencies": {

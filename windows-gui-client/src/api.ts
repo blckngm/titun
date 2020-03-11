@@ -30,7 +30,7 @@ function webviewRequest(request: { cmd: string, [x: string]: any }): Promise<any
                 delete (window as any)[respnoseCb];
             }
         }
-        (window as any).external.invoke(JSON.stringify(request));
+        (window as any).chrome.webview.postMessage(JSON.stringify(request));
     });
 }
 
@@ -79,5 +79,11 @@ export async function exit(): Promise<void> {
 export async function hide(): Promise<void> {
     await webviewRequest({
         cmd: "hide"
+    });
+}
+
+export async function focus(): Promise<void> {
+    await webviewRequest({
+        cmd: "focus"
     });
 }

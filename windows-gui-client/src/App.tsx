@@ -13,8 +13,6 @@ import { run, stop, subscribeLog, getStatus, openFile, exit, hide } from './api'
 import ShowInterfaceState from './ShowInterfaceState';
 import { InterfaceState } from './InterfaceState';
 
-const notIE = window.navigator.userAgent.indexOf("Trident") < 0;
-
 const useStyles = makeStyles(theme => ({
     root: {
         flexGrow: 1,
@@ -159,7 +157,7 @@ const App: React.FC = () => {
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
             console.debug(event);
-            if ((notIE && event.target !== document.body) || event.cancelBubble) {
+            if (event.target !== document.body) {
                 return;
             }
             switch (event.key) {
@@ -168,11 +166,9 @@ const App: React.FC = () => {
                     setOpenConfirmExit(true);
                     break;
                 case 'Escape':
-                case 'Esc': // IE.
                     hide();
                     break;
                 case ' ':
-                case 'Spacebar': // IE.
                 case 'Enter':
                     handleRunOrStopButtonClick();
                     break;
