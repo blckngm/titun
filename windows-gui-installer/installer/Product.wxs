@@ -65,6 +65,7 @@
 		<ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
       <Component Win64="$(var.Win64)">
         <File Source="../../target/release/titun.exe"/>
+        <RemoveFile Id="PurgeWebView2Loader.dll" Name="WebView2Loader.dll" On="uninstall"/>
       </Component>
     </ComponentGroup>
 	</Fragment>
