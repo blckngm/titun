@@ -134,9 +134,8 @@ impl Options {
 
         let log = options
             .log
-            .as_ref()
-            .map(|x| x.as_str())
-            .or_else(|| config.general.log.as_ref().map(|x| x.as_str()))
+            .as_deref()
+            .or_else(|| config.general.log.as_deref())
             .unwrap_or("warn");
         std::env::set_var("RUST_LOG", log);
         let mut builder = env_logger::Builder::from_default_env();
