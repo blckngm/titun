@@ -339,6 +339,15 @@ pub fn run_windows_gui() {
         .build(&event_loop)
         .unwrap();
 
+    // The window need to be in foreground to show the popup menu from the
+    // notify icon. We do not want to bring the main window to foreground, so
+    // use another window for the notify icon.
+    let notify_icon_window = WindowBuilder::new()
+        .with_title("TiTun - NotifyIcon")
+        .with_visible(false)
+        .build(&event_loop)
+        .unwrap();
+
     let icon = unsafe {
         LoadIconA(
             GetModuleHandleA(ptr::null()),
@@ -349,7 +358,7 @@ pub fn run_windows_gui() {
     let mut notify_icon_data = unsafe {
         NOTIFYICONDATAA {
             cbSize: std::mem::size_of::<NOTIFYICONDATAA>() as _,
-            hWnd: window.hwnd() as HWND,
+            hWnd: notify_icon_window.hwnd() as HWND,
             uFlags: NIF_MESSAGE | NIF_ICON,
             uCallbackMessage: WM_NOTIFY_ICON,
             hIcon: icon,
@@ -359,6 +368,38 @@ pub fn run_windows_gui() {
 
     #[allow(non_snake_case)]
     extern "system" fn subclass_wnd_proc(
+        hWnd: HWND,
+        uMsg: UINT,
+        wParam: WPARAM,
+        lParam: LPARAM,
+        _uIdSubclass: UINT_PTR,
+        dwRefData: DWORD_PTR,
+    ) -> LRESULT {
+        let proxy_ptr = dwRefData as *mut EventLoopProxy<MyEvent>;
+
+        match uMsg {
+            WM_SYSCOMMAND => match wParam {
+                SC_MINIMIZE => {
+                    let proxy = unsafe { &*proxy_ptr };
+                    ignore_error(proxy.send_event(MyEvent::Minimized));
+                }
+                SC_RESTORE => {
+                    let proxy = unsafe { &*proxy_ptr };
+                    ignore_error(proxy.send_event(MyEvent::Restored));
+                }
+                _ => {}
+            },
+            WM_DESTROY => unsafe {
+                RemoveWindowSubclass(hWnd, Some(subclass_wnd_proc), 0);
+                Box::from_raw(dwRefData as *mut EventLoopProxy<MyEvent>);
+            },
+            _ => {}
+        }
+        unsafe { DefSubclassProc(hWnd, uMsg, wParam, lParam) }
+    }
+
+    #[allow(non_snake_case)]
+    extern "system" fn notify_icon_window_subclass_wnd_proc(
         hWnd: HWND,
         uMsg: UINT,
         wParam: WPARAM,
@@ -405,19 +446,8 @@ pub fn run_windows_gui() {
                 let proxy = unsafe { &*proxy_ptr };
                 ignore_error(proxy.send_event(MyEvent::Exit));
             }
-            WM_SYSCOMMAND => match wParam {
-                SC_MINIMIZE => {
-                    let proxy = unsafe { &*proxy_ptr };
-                    ignore_error(proxy.send_event(MyEvent::Minimized));
-                }
-                SC_RESTORE => {
-                    let proxy = unsafe { &*proxy_ptr };
-                    ignore_error(proxy.send_event(MyEvent::Restored));
-                }
-                _ => {}
-            },
             WM_DESTROY => unsafe {
-                RemoveWindowSubclass(hWnd, Some(subclass_wnd_proc), 0);
+                RemoveWindowSubclass(hWnd, Some(notify_icon_window_subclass_wnd_proc), 0);
                 Box::from_raw(dwRefData as *mut EventLoopProxy<MyEvent>);
             },
             _ => {}
@@ -425,14 +455,20 @@ pub fn run_windows_gui() {
         unsafe { DefSubclassProc(hWnd, uMsg, wParam, lParam) }
     }
 
-    let proxy_ptr = Box::into_raw(Box::new(proxy.clone()));
-
     unsafe {
         SendMessageA(window.hwnd() as HWND, WM_SETICON, ICON_BIG as _, icon as _);
         Shell_NotifyIconA(NIM_ADD, &mut notify_icon_data);
+        let proxy_ptr = Box::into_raw(Box::new(proxy.clone()));
         SetWindowSubclass(
             window.hwnd() as HWND,
             Some(subclass_wnd_proc),
+            0,
+            proxy_ptr as DWORD_PTR,
+        );
+        let proxy_ptr = Box::into_raw(Box::new(proxy.clone()));
+        SetWindowSubclass(
+            notify_icon_window.hwnd() as HWND,
+            Some(notify_icon_window_subclass_wnd_proc),
             0,
             proxy_ptr as DWORD_PTR,
         );
@@ -525,7 +561,7 @@ pub fn run_windows_gui() {
         *control_flow = ControlFlow::Wait;
 
         match event {
-            Event::WindowEvent { event, .. } => match event {
+            Event::WindowEvent { event, window_id } if window_id == window.id() => match event {
                 WindowEvent::CloseRequested => {
                     window.set_visible(false);
                 }
@@ -573,6 +609,10 @@ pub fn run_windows_gui() {
                 }
                 MyEvent::Show => {
                     window.set_visible(true);
+                    window.set_minimized(false);
+                    unsafe {
+                        SetForegroundWindow(window.hwnd() as _);
+                    }
                     if let Some(ref host) = webview_host.borrow().as_ref() {
                         ignore_error(host.put_is_visible(true));
                         ignore_error(host.move_focus(webview2::MoveFocusReason::Programmatic));
