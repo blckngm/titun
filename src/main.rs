@@ -65,6 +65,12 @@ fn main() {
         return titun::windows_gui::run_windows_gui();
     }
 
+    // When running from the command line directly, this allows us to get
+    // ctrl-c. When launched by the GUI, this will fail but we do not care.
+    unsafe {
+        winapi::um::wincon::AttachConsole(-1i32 as u32);
+    }
+
     define_windows_service!(ffi_service_main, service_main);
 
     fn service_main(_args: Vec<OsString>) {
