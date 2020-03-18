@@ -508,7 +508,7 @@ pub fn run_windows_gui() {
 
                     let _ = w.get_settings().map(|settings| {
                         let _ = settings.put_is_status_bar_enabled(false);
-                        let _ = settings.put_are_default_context_menu_enabled(false);
+                        let _ = settings.put_are_default_context_menus_enabled(false);
                         let _ = settings.put_is_zoom_control_enabled(false);
                     });
 
@@ -574,7 +574,7 @@ pub fn run_windows_gui() {
                 WindowEvent::Focused(true) => {
                     if let Some(ref host) = webview_host.borrow().as_ref() {
                         ignore_error(host.put_is_visible(true));
-                        ignore_error(host.move_focus(webview2::MoveFocusReason::Programmatic));
+                        ignore_error(host.move_focus(webview2::MoveFocusReason::CORE_WEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC));
                     }
                 }
                 // Update webview bounds when the parent window is resized.
@@ -615,17 +615,17 @@ pub fn run_windows_gui() {
                     }
                     if let Some(ref host) = webview_host.borrow().as_ref() {
                         ignore_error(host.put_is_visible(true));
-                        ignore_error(host.move_focus(webview2::MoveFocusReason::Programmatic));
+                        ignore_error(host.move_focus(webview2::MoveFocusReason::CORE_WEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC));
                     }
                 }
                 MyEvent::Focus => {
                     if let Some(ref host) = webview_host.borrow().as_ref() {
-                        ignore_error(host.move_focus(webview2::MoveFocusReason::Programmatic));
+                        ignore_error(host.move_focus(webview2::MoveFocusReason::CORE_WEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC));
                     }
                 }
                 MyEvent::ExecuteScript(script) => {
                     if let Some(ref webview) = webview.borrow().as_ref() {
-                        if let Err(error) = webview.execute_script(&script) {
+                        if let Err(error) = webview.execute_script(&script, |_| Ok(())) {
                             log::error!("failed to execute script: {}", error);
                         }
                     }
@@ -641,7 +641,7 @@ pub fn run_windows_gui() {
                 MyEvent::Restored => {
                     if let Some(ref host) = webview_host.borrow().as_ref() {
                         ignore_error(host.put_is_visible(true));
-                        ignore_error(host.move_focus(webview2::MoveFocusReason::Programmatic));
+                        ignore_error(host.move_focus(webview2::MoveFocusReason::CORE_WEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC));
                     }
                 }
             },
