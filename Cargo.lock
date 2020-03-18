@@ -251,7 +251,7 @@ dependencies = [
 [[package]]
 name = "com"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/com-rs.git#25851eedad035239062f07f4016126bb073821ab"
+source = "git+https://github.com/microsoft/com-rs.git#324aac6f6f98fa69a38411a93351dc53f0e7da1f"
 dependencies = [
  "com_macros",
 ]
@@ -259,7 +259,7 @@ dependencies = [
 [[package]]
 name = "com_macros"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/com-rs.git#25851eedad035239062f07f4016126bb073821ab"
+source = "git+https://github.com/microsoft/com-rs.git#324aac6f6f98fa69a38411a93351dc53f0e7da1f"
 dependencies = [
  "com_macros_support",
  "proc-macro2 1.0.8",
@@ -269,7 +269,7 @@ dependencies = [
 [[package]]
 name = "com_macros_support"
 version = "0.1.0"
-source = "git+https://github.com/microsoft/com-rs.git#25851eedad035239062f07f4016126bb073821ab"
+source = "git+https://github.com/microsoft/com-rs.git#324aac6f6f98fa69a38411a93351dc53f0e7da1f"
 dependencies = [
  "proc-macro2 1.0.8",
  "quote 1.0.2",
@@ -2020,7 +2020,7 @@ dependencies = [
 [[package]]
 name = "webview2"
 version = "0.1.0"
-source = "git+https://github.com/sopium/webview2.git#d2382909e13231bd4ef372d1890654c48013416f"
+source = "git+https://github.com/sopium/webview2.git#8f71f5cd1cef82a0e5d75250a2a208334a2dc007"
 dependencies = [
  "com",
  "widestring 0.4.0",
