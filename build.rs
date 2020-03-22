@@ -35,7 +35,8 @@ fn main() {
             println!("cargo:rerun-if-env-changed=TESTING");
             if std::env::var_os("TESTING").is_none() {
                 winres::WindowsResource::new()
-                    .set_icon_with_id("src/icon.ico", "APP_ICON")
+                    .set_icon("src/icon.ico")
+                    .set_icon_with_id("src/icon-red.ico", "2")
                     .set_manifest(MANIFEST)
                     .compile()
                     .expect("compile resource");
