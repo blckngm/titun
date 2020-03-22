@@ -69,6 +69,8 @@ enum MyEvent {
     Minimized,
     Restored,
     Focus,
+    Running,
+    Stopped,
 }
 
 async fn run(
@@ -100,6 +102,7 @@ async fn run(
         .spawn()
         .context("spawn titun.exe")?;
     let stderr = child.stderr.take().expect("child stderr");
+    ignore_error(proxy.send_event(MyEvent::Running));
     tokio::spawn(async move {
         let stderr = BufReader::new(stderr);
         let mut stderr_lines = stderr.lines();
@@ -111,6 +114,7 @@ async fn run(
             );
             ignore_error(proxy.send_event(MyEvent::ExecuteScript(script)));
         }
+        ignore_error(proxy.send_event(MyEvent::Stopped));
     });
     state.child = Some(child);
     state.interface_name = Some(interface_name);
@@ -348,12 +352,9 @@ pub fn run_windows_gui() {
         .build(&event_loop)
         .unwrap();
 
-    let icon = unsafe {
-        LoadIconA(
-            GetModuleHandleA(ptr::null()),
-            "APP_ICON\0".as_ptr() as *const i8,
-        )
-    };
+    let icon = unsafe { LoadIconA(GetModuleHandleA(ptr::null()), MAKEINTRESOURCEA(1)) };
+
+    let icon_red = unsafe { LoadIconA(GetModuleHandleA(ptr::null()), MAKEINTRESOURCEA(2)) };
 
     let mut notify_icon_data = unsafe {
         NOTIFYICONDATAA {
@@ -361,7 +362,7 @@ pub fn run_windows_gui() {
             hWnd: notify_icon_window.hwnd() as HWND,
             uFlags: NIF_MESSAGE | NIF_ICON,
             uCallbackMessage: WM_NOTIFY_ICON,
-            hIcon: icon,
+            hIcon: icon_red,
             ..mem::zeroed()
         }
     };
@@ -456,7 +457,12 @@ pub fn run_windows_gui() {
     }
 
     unsafe {
-        SendMessageA(window.hwnd() as HWND, WM_SETICON, ICON_BIG as _, icon as _);
+        SendMessageA(
+            window.hwnd() as HWND,
+            WM_SETICON,
+            ICON_BIG as _,
+            icon_red as _,
+        );
         Shell_NotifyIconA(NIM_ADD, &mut notify_icon_data);
         let proxy_ptr = Box::into_raw(Box::new(proxy.clone()));
         SetWindowSubclass(
@@ -642,6 +648,20 @@ pub fn run_windows_gui() {
                     if let Some(ref host) = webview_host.borrow().as_ref() {
                         ignore_error(host.put_is_visible(true));
                         ignore_error(host.move_focus(webview2::MoveFocusReason::CORE_WEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC));
+                    }
+                }
+                MyEvent::Running => {
+                    unsafe {
+                        SendMessageA(window.hwnd() as HWND, WM_SETICON, ICON_BIG as _, icon as _);
+                        notify_icon_data.hIcon = icon;
+                        Shell_NotifyIconA(NIM_MODIFY, &mut notify_icon_data);
+                    }
+                }
+                MyEvent::Stopped => {
+                    unsafe {
+                        SendMessageA(window.hwnd() as HWND, WM_SETICON, ICON_BIG as _, icon_red as _);
+                        notify_icon_data.hIcon = icon_red;
+                        Shell_NotifyIconA(NIM_MODIFY, &mut notify_icon_data);
                     }
                 }
             },
