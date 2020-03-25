@@ -30,7 +30,7 @@ function webviewRequest(request: { cmd: string, [x: string]: any }): Promise<any
                 delete (window as any)[respnoseCb];
             }
         }
-        (window as any).chrome.webview.postMessage(JSON.stringify(request));
+        (window as any).chrome.webview.postMessage(request);
     });
 }
 
