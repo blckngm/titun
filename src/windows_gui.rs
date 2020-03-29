@@ -525,7 +525,7 @@ pub fn run_windows_gui() {
                     }
 
                     w.add_web_message_received(move |_, args| {
-                        let message = args.get_web_message_as_string()?;
+                        let message = args.get_web_message_as_json()?;
                         rt_handle.spawn(handle_request(state.clone(), message, proxy.clone()));
                         Ok(())
                     })
