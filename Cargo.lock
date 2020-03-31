@@ -2020,7 +2020,7 @@ dependencies = [
 [[package]]
 name = "webview2"
 version = "0.1.0"
-source = "git+https://github.com/sopium/webview2.git#50b3f4e1a6f0777e0ef13b61db60d6756209ff6f"
+source = "git+https://github.com/sopium/webview2.git#f76d5f038141ac1caa5c564e5ab1eab0883a1459"
 dependencies = [
  "com",
  "widestring 0.4.0",
