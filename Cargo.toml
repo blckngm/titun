@@ -45,7 +45,7 @@ noise-protocol = "0.1.1"
 num_cpus = "1.12.0"
 parking_lot = "0.10.0"
 rand = "0.7.3"
-structopt = "0.3.12"
+structopt = "0.3.13"
 tai64 = "3.1.0"
 ansi_term = "0.12.1"
 atty = "0.2.13"
@@ -58,7 +58,7 @@ sodiumoxide = "0.2.5"
 libsodium-sys = "0.2.5"
 
 [dependencies.tokio]
-version = "0.2.16"
+version = "0.2.17"
 features = [
     "io-std",
     "io-driver",
