@@ -104,7 +104,7 @@ wchar = "0.6.0"
 windows-service = "0.2.0"
 serde_json = "1.0.51"
 webview2 = "0.1.0-alpha.3"
-winit = "0.22.0"
+winit = "0.22.1"
 
 [target.'cfg(unix)'.dependencies]
 privdrop = "0.3.4"
