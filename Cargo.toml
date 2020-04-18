@@ -103,7 +103,7 @@ widestring = "0.4.0"
 wchar = "0.6.0"
 windows-service = "0.2.0"
 serde_json = "1.0.51"
-webview2 = { git = "https://github.com/sopium/webview2.git" }
+webview2 = "0.1.0-alpha.3"
 winit = "0.22.0"
 
 [target.'cfg(unix)'.dependencies]

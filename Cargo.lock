@@ -250,16 +250,18 @@ dependencies = [
 
 [[package]]
 name = "com"
-version = "0.1.0"
-source = "git+https://github.com/microsoft/com-rs.git#6480617692106b88f69d4a5ff5e3a9d0921837b6"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a30a2b2a013da986dc5cc3eda3d19c0d59d53f835be1b2356eb8d00f000c793"
 dependencies = [
  "com_macros",
 ]
 
 [[package]]
 name = "com_macros"
-version = "0.1.0"
-source = "git+https://github.com/microsoft/com-rs.git#6480617692106b88f69d4a5ff5e3a9d0921837b6"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7606b05842fea68ddcc89e8053b8860ebcb2a0ba8d6abfe3a148e5d5a8d3f0c1"
 dependencies = [
  "com_macros_support",
  "proc-macro2 1.0.8",
@@ -268,8 +270,9 @@ dependencies = [
 
 [[package]]
 name = "com_macros_support"
-version = "0.1.0"
-source = "git+https://github.com/microsoft/com-rs.git#6480617692106b88f69d4a5ff5e3a9d0921837b6"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97e9a6d20f4ac8830e309a455d7e9416e65c6af5a97c88c55fbb4c2012e107da"
 dependencies = [
  "proc-macro2 1.0.8",
  "quote 1.0.2",
@@ -866,6 +869,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75189eb85871ea5c2e2c15abbdd541185f63b408415e5051f5cac122d8c774b9"
 dependencies = [
  "rustc_version",
+]
+
+[[package]]
+name = "memory-module-sys"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3bbdce2925c681860b08875119254fb5543dbf6337c56ff93afebeed9c686da3"
+dependencies = [
+ "cc",
+ "libc",
+ "winapi 0.3.8",
 ]
 
 [[package]]
@@ -2014,10 +2028,13 @@ dependencies = [
 
 [[package]]
 name = "webview2"
-version = "0.1.0"
-source = "git+https://github.com/sopium/webview2.git#50b3f4e1a6f0777e0ef13b61db60d6756209ff6f"
+version = "0.1.0-alpha.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4681049b7ec0345929a58c35a042f413a01c72a8ff81ca150715d0043bdd74a6"
 dependencies = [
  "com",
+ "memory-module-sys",
+ "once_cell",
  "widestring 0.4.0",
  "winapi 0.3.8",
 ]
