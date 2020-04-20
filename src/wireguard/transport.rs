@@ -21,7 +21,7 @@ use crate::wireguard::*;
 use noise_protocol::Cipher;
 use parking_lot::Mutex;
 use std::convert::TryInto;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::delay_for;
@@ -49,7 +49,7 @@ pub struct Transport {
     pub created: Instant,
 
     pub send_key: SecretKey,
-    pub send_counter: AtomicU64,
+    pub send_counter: U64Counter,
 
     pub recv_key: SecretKey,
     pub recv_ar: Mutex<AntiReplay>,
@@ -79,7 +79,7 @@ impl Transport {
             recv_key: rk,
             created: Instant::now(),
             recv_ar: Mutex::new(AntiReplay::new()),
-            send_counter: AtomicU64::new(0),
+            send_counter: U64Counter::new(0),
             scope: AsyncScope::new(),
         });
 
@@ -124,7 +124,7 @@ impl Transport {
     ///
     /// Length: out.len() = msg.len() + 32.
     pub fn encrypt(&self, msg: &[u8], out: &mut [u8]) -> (Result<(), ()>, bool) {
-        let c = self.send_counter.fetch_add(1, Ordering::Relaxed);
+        let c = self.send_counter.fetch_add(1);
         let should_rekey = self.is_initiator
             && (self.should_handshake.load(Ordering::Relaxed) || c >= REKEY_AFTER_MESSAGES);
 

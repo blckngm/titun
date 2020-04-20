@@ -819,8 +819,8 @@ impl WgState {
                         preshared_key: peer.info.psk,
                         endpoint: peer.info.endpoint.map(unmap_ipv4_from_ipv6),
                         last_handshake_time: peer.get_last_handshake_time(),
-                        rx_bytes: peer.rx_bytes.load(Ordering::Relaxed),
-                        tx_bytes: peer.tx_bytes.load(Ordering::Relaxed),
+                        rx_bytes: peer.rx_bytes.load(),
+                        tx_bytes: peer.tx_bytes.load(),
                         persistent_keepalive_interval: peer.info.keepalive.map_or(0, |x| x.get()),
                         allowed_ips: peer.info.allowed_ips.clone(),
                     }

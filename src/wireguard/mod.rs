@@ -44,6 +44,7 @@ mod transport;
 /// Common types.
 #[doc(hidden)]
 pub mod types;
+mod u64_counter;
 
 /// Tun interface support on linux and BSDs.
 mod tun_unix;
@@ -71,3 +72,4 @@ use self::types::*;
 #[doc(hidden)]
 pub use self::types::{PeerInfo, WgInfo};
 pub use self::types::{PeerStateOut, WgStateOut, X25519Key, X25519Pubkey};
+use self::u64_counter::U64Counter;
