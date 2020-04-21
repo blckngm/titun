@@ -67,18 +67,21 @@ pub async fn wait_delete(path: &Path, ready: Sender<()>) -> anyhow::Result<()> {
 #[cfg(target_os = "linux")]
 pub async fn wait_delete(p: &Path, ready: Sender<()>) -> anyhow::Result<()> {
     // Use inotify on linux.
+    use anyhow::Context;
     use futures::StreamExt;
     use inotify::{EventMask, Inotify, WatchMask};
 
     let file_name = p.file_name().unwrap().into();
     let parent_dir = p.parent().unwrap();
-    let mut inotify = Inotify::init()?;
-    inotify.add_watch(parent_dir, WatchMask::DELETE)?;
+    let mut inotify = Inotify::init().context("init")?;
+    inotify
+        .add_watch(parent_dir, WatchMask::DELETE)
+        .context("add_watch")?;
     let _ = ready.send(());
     let buf = vec![0u8; 1024];
-    let mut stream = inotify.event_stream(buf)?;
+    let mut stream = inotify.event_stream(buf).context("event_stream")?;
     loop {
-        let event = stream.next().await.unwrap()?;
+        let event = stream.next().await.unwrap().context("next")?;
         if event.mask == EventMask::DELETE && event.name.as_ref() == Some(&file_name) {
             break;
         }
@@ -88,10 +91,12 @@ pub async fn wait_delete(p: &Path, ready: Sender<()>) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
+    // XXX: On mips/mipsel, `INotify::init` (`inotify_init1`) returns an
+    // `EINVAL` error *in CI*. Ignore the test for now.
+    #[cfg(not(target_arch = "mips"))]
     #[tokio::test]
     async fn test_wait_delete() {
+        use super::*;
         use nix::unistd::{mkstemp, unlink};
 
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();

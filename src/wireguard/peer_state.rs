@@ -23,7 +23,6 @@ use rand::{thread_rng, Rng};
 use std::collections::VecDeque;
 use std::net::SocketAddrV6;
 use std::ops::Deref;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use tai64::TAI64N;
@@ -63,8 +62,8 @@ pub struct PeerState {
     pub handshake: Option<Handshake>,
     pub handshake_resend_scope: Option<Arc<AsyncScope>>,
 
-    pub rx_bytes: AtomicU64,
-    pub tx_bytes: AtomicU64,
+    pub rx_bytes: U64Counter,
+    pub tx_bytes: U64Counter,
 
     pub queue: Mutex<VecDeque<Vec<u8>>>,
 
@@ -131,12 +130,12 @@ impl PeerState {
 
     /// Add `size` bytes to the received bytes counter.
     pub fn count_recv(&self, size: usize) {
-        self.rx_bytes.fetch_add(size as u64, Ordering::Relaxed);
+        self.rx_bytes.fetch_add(size as u64);
     }
 
     /// Add `size` bytes to the sent bytes counter.
     pub fn count_send(&self, size: usize) {
-        self.tx_bytes.fetch_add(size as u64, Ordering::Relaxed);
+        self.tx_bytes.fetch_add(size as u64);
     }
 
     pub fn on_recv(&self, is_keepalive: bool) {
@@ -253,8 +252,8 @@ pub(crate) fn wg_add_peer(wg: &Arc<WgState>, public_key: &X25519Pubkey) -> anyho
         cookie: None,
         handshake: None,
         handshake_resend_scope: None,
-        rx_bytes: AtomicU64::new(0),
-        tx_bytes: AtomicU64::new(0),
+        rx_bytes: U64Counter::new(0),
+        tx_bytes: U64Counter::new(0),
         queue: Mutex::new(VecDeque::with_capacity(QUEUE_SIZE)),
         transports: ArrayVec::new(),
         rekey_no_recv: None.into(),
