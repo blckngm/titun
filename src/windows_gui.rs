@@ -32,7 +32,6 @@ use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
-use webview2;
 use widestring::WideCStr;
 use winapi::shared::basetsd::*;
 use winapi::shared::minwindef::*;
@@ -580,7 +579,7 @@ pub fn run_windows_gui() {
                 WindowEvent::Focused(true) => {
                     if let Some(ref host) = webview_host.borrow().as_ref() {
                         ignore_error(host.put_is_visible(true));
-                        ignore_error(host.move_focus(webview2::MoveFocusReason::CORE_WEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC));
+                        ignore_error(host.move_focus(webview2::MoveFocusReason::Programmatic));
                     }
                 }
                 // Update webview bounds when the parent window is resized.
@@ -621,12 +620,12 @@ pub fn run_windows_gui() {
                     }
                     if let Some(ref host) = webview_host.borrow().as_ref() {
                         ignore_error(host.put_is_visible(true));
-                        ignore_error(host.move_focus(webview2::MoveFocusReason::CORE_WEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC));
+                        ignore_error(host.move_focus(webview2::MoveFocusReason::Programmatic));
                     }
                 }
                 MyEvent::Focus => {
                     if let Some(ref host) = webview_host.borrow().as_ref() {
-                        ignore_error(host.move_focus(webview2::MoveFocusReason::CORE_WEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC));
+                        ignore_error(host.move_focus(webview2::MoveFocusReason::Programmatic));
                     }
                 }
                 MyEvent::ExecuteScript(script) => {
@@ -647,23 +646,24 @@ pub fn run_windows_gui() {
                 MyEvent::Restored => {
                     if let Some(ref host) = webview_host.borrow().as_ref() {
                         ignore_error(host.put_is_visible(true));
-                        ignore_error(host.move_focus(webview2::MoveFocusReason::CORE_WEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC));
+                        ignore_error(host.move_focus(webview2::MoveFocusReason::Programmatic));
                     }
                 }
-                MyEvent::Running => {
-                    unsafe {
-                        SendMessageA(window.hwnd() as HWND, WM_SETICON, ICON_BIG as _, icon as _);
-                        notify_icon_data.hIcon = icon;
-                        Shell_NotifyIconA(NIM_MODIFY, &mut notify_icon_data);
-                    }
-                }
-                MyEvent::Stopped => {
-                    unsafe {
-                        SendMessageA(window.hwnd() as HWND, WM_SETICON, ICON_BIG as _, icon_red as _);
-                        notify_icon_data.hIcon = icon_red;
-                        Shell_NotifyIconA(NIM_MODIFY, &mut notify_icon_data);
-                    }
-                }
+                MyEvent::Running => unsafe {
+                    SendMessageA(window.hwnd() as HWND, WM_SETICON, ICON_BIG as _, icon as _);
+                    notify_icon_data.hIcon = icon;
+                    Shell_NotifyIconA(NIM_MODIFY, &mut notify_icon_data);
+                },
+                MyEvent::Stopped => unsafe {
+                    SendMessageA(
+                        window.hwnd() as HWND,
+                        WM_SETICON,
+                        ICON_BIG as _,
+                        icon_red as _,
+                    );
+                    notify_icon_data.hIcon = icon_red;
+                    Shell_NotifyIconA(NIM_MODIFY, &mut notify_icon_data);
+                },
             },
             Event::MainEventsCleared => {
                 // Application update code.
