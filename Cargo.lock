@@ -199,9 +199,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.0.51"
+version = "1.0.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c9384ca4b90c0ea47e19a5c996d6643a3e73dedf9b89c65efb67587e34da1bb"
+checksum = "c3d87b23d6a92cd03af510a5ade527033f6aa6fa92161e2d5863a907d4c5e31d"
 
 [[package]]
 name = "cfg-if"
@@ -1735,9 +1735,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "0.2.18"
+version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34ef16d072d2b6dc8b4a56c70f5c5ced1a37752116f8e7c1e80c659aa7cb6713"
+checksum = "7d9c43f1bb96970e153bcbae39a65e249ccb942bd9d36dbdf086024920417c9c"
 dependencies = [
  "bytes",
  "fnv",
@@ -2028,9 +2028,9 @@ dependencies = [
 
 [[package]]
 name = "webview2"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3633e5b877d5f41cf626a69355b218ce331842e12d0c5cc34430264e2d987f6"
+checksum = "17680fe47d974fbcdcf52e75efecb91d31cc7ca702be040db0681c1582e08186"
 dependencies = [
  "com",
  "memory-module-sys",
@@ -2042,9 +2042,9 @@ dependencies = [
 
 [[package]]
 name = "webview2-sys"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72efb2d13080fc2d7c1bdeeaa2c29ab60631d122d748ef0e97eae4157a1295e7"
+checksum = "5f5c5000b5f4f6b02609bd446ba10833d2ed8057ea11317ffbbcb1134a0c3ff6"
 dependencies = [
  "com",
  "winapi 0.3.8",
