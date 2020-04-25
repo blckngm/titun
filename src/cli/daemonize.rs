@@ -16,7 +16,6 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use anyhow::Context;
-use nix;
 use nix::sys::stat::{umask, Mode};
 use nix::unistd::*;
 use std::os::unix::io::RawFd;
