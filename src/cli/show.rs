@@ -18,7 +18,6 @@
 use crate::wireguard::re_exports::{DH, X25519};
 use ansi_term::{Color, Style};
 use anyhow::Context;
-use base64;
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
 use std::time::Duration;
