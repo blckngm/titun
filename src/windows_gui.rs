@@ -480,7 +480,8 @@ pub fn run_windows_gui() {
     }
 
     let webview: Rc<RefCell<Option<webview2::WebView>>> = Rc::new(RefCell::new(None));
-    let webview_host: Rc<RefCell<Option<webview2::Host>>> = Rc::new(RefCell::new(None));
+    // `webview2::Controller` is previously named `webview2::Host`.
+    let webview_host: Rc<RefCell<Option<webview2::Controller>>> = Rc::new(RefCell::new(None));
 
     let create_result = {
         let webview = webview.clone();
@@ -507,7 +508,7 @@ pub fn run_windows_gui() {
         webview2::EnvironmentBuilder::new()
             .with_user_data_folder(&user_data_folder)
             .build(move |env| {
-                env.unwrap().create_host(hwnd, move |h| {
+                env.unwrap().create_controller(hwnd, move |h| {
                     let h = h.unwrap();
                     let w = h.get_webview().unwrap();
 
