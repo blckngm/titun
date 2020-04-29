@@ -58,7 +58,7 @@ sodiumoxide = "0.2.5"
 libsodium-sys = "0.2.5"
 
 [dependencies.tokio]
-version = "0.2.19"
+version = "0.2.20"
 features = [
     "io-std",
     "io-driver",
