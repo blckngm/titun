@@ -103,7 +103,7 @@ widestring = "0.4.0"
 wchar = "0.6.0"
 windows-service = "0.2.0"
 serde_json = "1.0.52"
-webview2 = "0.1.0-alpha.6"
+webview2 = "0.1.0-alpha.7"
 winit = "0.22.1"
 
 [target.'cfg(unix)'.dependencies]
