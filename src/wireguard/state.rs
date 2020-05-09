@@ -702,8 +702,12 @@ impl WgState {
 
     // Create a new socket, set IPv6 only to false, set fwmark, and bind.
     fn prepare_socket(port: &mut u16, fwmark: u32) -> io::Result<UdpSocket> {
-        let builder = net2::UdpBuilder::new_v6()?;
-        builder.only_v6(false)?;
+        use socket2::*;
+
+        let socket = Socket::new(Domain::ipv6(), Type::dgram(), Protocol::udp().into())?;
+        socket.set_only_v6(false)?;
+        socket.set_nonblocking(true)?;
+
         #[cfg(windows)]
         {
             use std::os::windows::io::AsRawSocket;
@@ -716,7 +720,7 @@ impl WgState {
 
             let r = unsafe {
                 WSAIoctl(
-                    builder.as_raw_socket() as usize,
+                    socket.as_raw_socket() as usize,
                     SIO_UDP_CONNRESET,
                     &mut new_behaviour as *mut _ as *mut _,
                     4,
@@ -731,7 +735,8 @@ impl WgState {
                 return Err(io::Error::last_os_error());
             }
         }
-        let socket = builder.bind((Ipv6Addr::UNSPECIFIED, *port))?;
+        socket.bind(&SocketAddr::from((Ipv6Addr::UNSPECIFIED, *port)).into())?;
+        let socket = socket.into_udp_socket();
 
         if *port == 0 {
             *port = socket.local_addr()?.port();
