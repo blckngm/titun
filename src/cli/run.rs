@@ -46,7 +46,8 @@ async fn reload_on_sighup(
     weak: std::sync::Weak<WgState>,
 ) -> anyhow::Result<()> {
     use tokio::signal::unix::{signal, SignalKind};
-    while let Some(_) = signal(SignalKind::hangup())?.recv().await {
+    let mut hangups = signal(SignalKind::hangup())?;
+    while hangups.recv().await.is_some() {
         if let Some(ref config_file_path) = config_file_path {
             if let Some(wg) = weak.upgrade() {
                 info!("reloading");
