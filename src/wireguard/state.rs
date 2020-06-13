@@ -761,9 +761,8 @@ impl WgState {
     }
 
     /// Add a pper.
-    // XXX: change to `self: &Arc<Self>` once it's allowed in stable.
-    pub fn add_peer(self: Arc<Self>, public_key: &X25519Pubkey) -> anyhow::Result<()> {
-        wg_add_peer(&self, public_key)
+    pub fn add_peer(self: &Arc<Self>, public_key: &X25519Pubkey) -> anyhow::Result<()> {
+        wg_add_peer(self, public_key)
     }
 
     fn find_peer_by_id(&self, id: Id) -> Option<SharedPeerState> {

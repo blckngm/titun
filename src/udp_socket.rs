@@ -16,6 +16,7 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use futures::future::poll_fn;
+use futures::lock::Mutex;
 use futures::ready;
 use mio::net::UdpSocket as MioUdpSocket;
 use std::io;
@@ -24,12 +25,10 @@ use std::net::SocketAddr;
 use std::os::unix::io::AsRawFd;
 use std::task::{Context, Poll};
 use tokio::io::PollEvented;
-use tokio::sync::Mutex;
 
 /// Like tokio UdpSocket, but can be used from multiple tasks concurrently.
 pub struct UdpSocket {
     socket: PollEvented<MioUdpSocket>,
-    send_lock: Mutex<()>,
     recv_lock: Mutex<()>,
 }
 
@@ -39,7 +38,6 @@ impl UdpSocket {
         let socket = PollEvented::new(MioUdpSocket::from_socket(socket)?)?;
         Ok(UdpSocket {
             socket,
-            send_lock: Mutex::new(()),
             recv_lock: Mutex::new(()),
         })
     }
@@ -60,31 +58,13 @@ impl UdpSocket {
         }
     }
 
-    fn poll_send_to(
-        &self,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-        target: &SocketAddr,
-    ) -> Poll<io::Result<usize>> {
-        ready!(self.socket.poll_write_ready(cx))?;
-
-        match self.socket.get_ref().send_to(buf, target) {
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                self.socket.clear_write_ready(cx)?;
-                Poll::Pending
-            }
-            x => Poll::Ready(x),
-        }
-    }
-
     pub async fn recv_from<'a>(&'a self, buf: &'a mut [u8]) -> io::Result<(usize, SocketAddr)> {
         let _guard = self.recv_lock.lock().await;
         poll_fn(move |cx| self.poll_recv_from(cx, buf)).await
     }
 
     pub async fn send_to<'a>(&'a self, buf: &'a [u8], target: &'a SocketAddr) -> io::Result<usize> {
-        let _guard = self.send_lock.lock().await;
-        poll_fn(|cx| self.poll_send_to(cx, buf, target)).await
+        self.socket.get_ref().send_to(buf, target)
     }
 }
 
