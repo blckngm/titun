@@ -69,7 +69,7 @@ pub async fn run(
     let mut c = c;
     let scope0 = AsyncScope::new();
 
-    scope0.clone().spawn_canceller(async move {
+    scope0.spawn_canceller(async move {
         tokio::signal::ctrl_c()
             .await
             .unwrap_or_else(|e| warn!("ctrl_c failed: {:#}", e));
@@ -77,13 +77,13 @@ pub async fn run(
     });
 
     if let Some(stop_rx) = stop_rx {
-        scope0.clone().spawn_canceller(async move {
+        scope0.spawn_canceller(async move {
             stop_rx.await.unwrap();
         });
     }
 
     #[cfg(unix)]
-    scope0.clone().spawn_canceller(async move {
+    scope0.spawn_canceller(async move {
         use tokio::signal::unix::{signal, SignalKind};
 
         let mut term = signal(SignalKind::terminate()).unwrap();
@@ -115,7 +115,7 @@ pub async fn run(
 
     for p in c.peers {
         info!("adding peer {}", base64::encode(&p.public_key));
-        wg.clone().add_peer(&p.public_key)?;
+        wg.add_peer(&p.public_key)?;
         wg.set_peer(SetPeerCommand {
             public_key: p.public_key,
             preshared_key: p.preshared_key,
@@ -128,19 +128,17 @@ pub async fn run(
 
     let weak = std::sync::Arc::downgrade(&wg);
 
-    scope0
-        .clone()
-        .spawn_canceller(wg.clone().task_update_cookie_secret());
+    scope0.spawn_canceller(wg.clone().task_update_cookie_secret());
     #[cfg(not(windows))]
-    scope0.clone().spawn_canceller(wg.clone().task_update_mtu());
-    scope0.clone().spawn_canceller(wg.clone().task_rx());
-    scope0.clone().spawn_canceller(wg.clone().task_tx());
+    scope0.spawn_canceller(wg.clone().task_update_mtu());
+    scope0.spawn_canceller(wg.clone().task_rx());
+    scope0.spawn_canceller(wg.clone().task_tx());
 
     #[cfg(unix)]
     {
         let weak1 = weak.clone();
         let config_file_path = c.general.config_file_path.take();
-        scope0.clone().spawn_canceller(async move {
+        scope0.spawn_canceller(async move {
             reload_on_sighup(config_file_path, weak1)
                 .await
                 .unwrap_or_else(|e| warn!("error in reload_on_sighup: {:#}", e))
@@ -149,7 +147,7 @@ pub async fn run(
 
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
 
-    scope0.clone().spawn_canceller(async move {
+    scope0.spawn_canceller(async move {
         ipc_server(weak, &dev_name, ready_tx)
             .await
             .unwrap_or_else(|e| error!("IPC server error: {:#}", e))

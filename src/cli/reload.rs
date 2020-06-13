@@ -110,7 +110,7 @@ pub async fn reload(wg: &Arc<WgState>, new_config: Config<SocketAddr>) -> anyhow
     for (_, new_peer) in new_map {
         info!("adding peer {}", base64::encode(&new_peer.public_key));
 
-        wg.clone().add_peer(&new_peer.public_key)?;
+        wg.add_peer(&new_peer.public_key)?;
 
         wg.set_peer(SetPeerCommand {
             public_key: new_peer.public_key,
