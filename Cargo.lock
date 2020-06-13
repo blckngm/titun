@@ -1081,9 +1081,9 @@ dependencies = [
 
 [[package]]
 name = "num-traits"
-version = "0.2.11"
+version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c62be47e61d1842b9170f0fdeec8eba98e60e90e5446449a0545e5152acd7096"
+checksum = "ac267bcc07f48ee5f8935ab0d24f316fb722d7a1292e2913f0cc196b29ffd611"
 dependencies = [
  "autocfg 1.0.0",
 ]
@@ -1575,9 +1575,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.53"
+version = "1.0.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "993948e75b189211a9b31a7528f950c6adc21f9720b6438ff80a7fa2f864cea2"
+checksum = "ec2c5d7e739bc07a3e73381a39d61fdb5f671c60c1df26a130690665803d8226"
 dependencies = [
  "itoa",
  "ryu",
@@ -1828,7 +1828,7 @@ dependencies = [
  "walkdir",
  "wchar",
  "webview2",
- "widestring 0.4.0",
+ "widestring 0.4.1",
  "winapi 0.3.8",
  "windows-service",
  "winit",
@@ -2139,7 +2139,7 @@ dependencies = [
  "memory-module-sys",
  "once_cell",
  "webview2-sys",
- "widestring 0.4.0",
+ "widestring 0.4.1",
  "winapi 0.3.8",
 ]
 
@@ -2170,9 +2170,9 @@ checksum = "a212922ea58fbf5044f83663aa4fc6281ff890f1fd7546c0c3f52f5290831781"
 
 [[package]]
 name = "widestring"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "effc0e4ff8085673ea7b9b2e3c73f6bd4d118810c9009ed8f1e16bd96c331db6"
+checksum = "89c533c67dfe1f6a8983e8db54c55bfb2b3e494f5dfbbfe13ce09525f622461a"
 
 [[package]]
 name = "winapi"
