@@ -31,7 +31,7 @@ sudo-tests = []
 
 [dependencies]
 arrayvec = "0.5.1"
-base64 = "0.12.1"
+base64 = "0.12.3"
 blake2s_simd = "0.5.10"
 env_logger = "0.7.1"
 fnv = "1.0.7"
