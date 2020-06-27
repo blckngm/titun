@@ -31,7 +31,7 @@ sudo-tests = []
 
 [dependencies]
 arrayvec = "0.5.1"
-base64 = "0.12.1"
+base64 = "0.12.3"
 blake2s_simd = "0.5.10"
 env_logger = "0.7.1"
 fnv = "1.0.7"
@@ -48,7 +48,7 @@ structopt = "0.3.15"
 tai64 = "3.1.0"
 ansi_term = "0.12.1"
 atty = "0.2.13"
-serde = { version = "1.0.111", features = ["derive"] }
+serde = { version = "1.0.114", features = ["derive"] }
 toml = "0.5.6"
 anyhow = "1.0.31"
 num-traits = "0.2.12"
