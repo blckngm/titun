@@ -355,14 +355,14 @@ dependencies = [
 
 [[package]]
 name = "err-derive"
-version = "0.1.6"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b41487fadaa500d02a819eefcde5f713599a01dd51626ef25d2d72d87115667b"
+checksum = "22deed3a8124cff5fa835713fa105621e43bbdc46690c3a6b68328a012d350d4"
 dependencies = [
- "proc-macro-error 0.2.6",
+ "proc-macro-error",
  "proc-macro2 1.0.18",
  "quote 1.0.2",
- "rustc_version",
+ "rustversion",
  "syn",
  "synstructure",
 ]
@@ -1073,17 +1073,6 @@ dependencies = [
 
 [[package]]
 name = "proc-macro-error"
-version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aeccfe4d5d8ea175d5f0e4a2ad0637e0f4121d63bd99d356fb1f39ab2e7c6097"
-dependencies = [
- "proc-macro2 1.0.18",
- "quote 1.0.2",
- "syn",
-]
-
-[[package]]
-name = "proc-macro-error"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8931031034aa65c73f3f1a05c3ec0fa51287fcd06557ecf4e88b2768bdca375e"
@@ -1248,15 +1237,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cabe4fa914dec5870285fa7f71f602645da47c486e68486d2b4ceb4a343e90ac"
 
 [[package]]
-name = "rustc_version"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "138e3e0acb6c9fb258b19b67cb8abd63c00679d2851805ea151465464fe9030a"
-dependencies = [
- "semver",
-]
-
-[[package]]
 name = "rusttype"
 version = "0.7.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1275,6 +1255,17 @@ dependencies = [
  "arrayvec",
  "ordered-float",
  "stb_truetype",
+]
+
+[[package]]
+name = "rustversion"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9bdc5e856e51e685846fb6c13a1f5e5432946c2c90501bdc76a1319f19e29da"
+dependencies = [
+ "proc-macro2 1.0.18",
+ "quote 1.0.2",
+ "syn",
 ]
 
 [[package]]
@@ -1297,21 +1288,6 @@ name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
-
-[[package]]
-name = "semver"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d7eb9ef2c18661902cc47e535f9bc51b78acd254da71d375c2f6720d9a40403"
-dependencies = [
- "semver-parser",
-]
-
-[[package]]
-name = "semver-parser"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 
 [[package]]
 name = "serde"
@@ -1438,7 +1414,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "510413f9de616762a4fbeab62509bf15c729603b72d7cd71280fbca431b1c118"
 dependencies = [
  "heck",
- "proc-macro-error 1.0.1",
+ "proc-macro-error",
  "proc-macro2 1.0.18",
  "quote 1.0.2",
  "syn",
@@ -1568,7 +1544,7 @@ dependencies = [
  "toml",
  "wchar",
  "webview2",
- "widestring 0.4.2",
+ "widestring",
  "winapi 0.3.9",
  "windows-service",
  "winit",
@@ -1800,7 +1776,7 @@ dependencies = [
  "memory-module-sys",
  "once_cell",
  "webview2-sys",
- "widestring 0.4.2",
+ "widestring",
  "winapi 0.3.9",
 ]
 
@@ -1813,12 +1789,6 @@ dependencies = [
  "com",
  "winapi 0.3.9",
 ]
-
-[[package]]
-name = "widestring"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a212922ea58fbf5044f83663aa4fc6281ff890f1fd7546c0c3f52f5290831781"
 
 [[package]]
 name = "widestring"
@@ -1871,13 +1841,13 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "windows-service"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "048b185a91d03beafe88c5db975c42c12b9462bc939f92ca863c88785a33a6ab"
+checksum = "ec02723e93664f41cc0540260697352a5efcddd837900d7ef208dc16674d5717"
 dependencies = [
  "bitflags",
  "err-derive",
- "widestring 0.3.0",
+ "widestring",
  "winapi 0.3.9",
 ]
 
