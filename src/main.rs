@@ -96,6 +96,7 @@ fn main() {
                 controls_accepted: ServiceControlAccept::STOP,
                 exit_code: ServiceExitCode::Win32(0),
                 checkpoint: 0,
+                process_id: None,
                 wait_hint: std::time::Duration::default(),
             })
             .expect("set_service_status");
@@ -169,8 +170,7 @@ fn main() {
             account_password: None,
         };
         let service = loop {
-            match service_manager.create_service(create_service_info.clone(), ServiceAccess::all())
-            {
+            match service_manager.create_service(&create_service_info, ServiceAccess::all()) {
                 Ok(s) => break s,
                 Err(e) => {
                     if let windows_service::Error::Winapi(ref e) = e {
