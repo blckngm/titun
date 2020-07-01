@@ -15,18 +15,20 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use libsodium_sys::*;
+use core::convert::TryInto;
+use core::sync::atomic::{compiler_fence, Ordering};
 use noise_protocol::*;
 use rand::prelude::*;
 use rand::rngs::OsRng;
-use sodiumoxide::crypto::scalarmult::curve25519;
-use sodiumoxide::utils::memzero;
 use std::fmt;
-use std::ptr::{null, null_mut};
+use titun_hacl::{
+    chacha20_poly1305_multiplexed_aead_decrypt, chacha20_poly1305_multiplexed_aead_encrypt,
+    curve25519_multiplexed_ecdh, curve25519_multiplexed_secret_to_public,
+};
 
 #[derive(Eq, PartialEq)]
 pub struct X25519Key {
-    key: curve25519::Scalar,
+    key: Sensitive<[u8; 32]>,
     public_key: [u8; 32],
 }
 
@@ -52,8 +54,8 @@ impl U8Array for X25519Key {
     }
 
     fn from_slice(s: &[u8]) -> Self {
-        let s = curve25519::Scalar::from_slice(s).unwrap();
-        let pk = curve25519::scalarmult_base(&s).0;
+        let s = Sensitive::<[u8; 32]>::from_slice(s);
+        let pk = curve25519_multiplexed_secret_to_public(&s.0);
         X25519Key {
             key: s,
             public_key: pk,
@@ -83,13 +85,18 @@ impl U8Array for X25519Key {
 #[derive(PartialEq, Eq)]
 pub struct Sensitive<A: U8Array>(A);
 
-// Best effort zeroing out after use.
+// Zeroing out after use. (Inspired by zeroize.)
 impl<A> Drop for Sensitive<A>
 where
     A: U8Array,
 {
     fn drop(&mut self) {
-        memzero(self.0.as_mut())
+        for b in self.0.as_mut() {
+            unsafe {
+                core::ptr::write_volatile(b, 0);
+            }
+        }
+        compiler_fence(Ordering::SeqCst);
     }
 }
 
@@ -150,8 +157,7 @@ impl DH for X25519 {
 
     /// Returns `Err(())` if DH output is all-zero.
     fn dh(k: &Self::Key, pk: &Self::Pubkey) -> Result<Self::Output, ()> {
-        let pk = curve25519::GroupElement(*pk);
-        curve25519::scalarmult(&k.key, &pk).map(|x| Sensitive(x.0))
+        Ok(Sensitive(curve25519_multiplexed_ecdh(&k.key.0, pk)?))
     }
 }
 
@@ -165,22 +171,13 @@ impl Cipher for ChaCha20Poly1305 {
     fn encrypt(k: &Self::Key, nonce: u64, ad: &[u8], plaintext: &[u8], out: &mut [u8]) {
         assert_eq!(out.len(), plaintext.len() + 16);
 
+        let (cipher, mac) = out.split_at_mut(plaintext.len());
+        let mac = mac.try_into().unwrap();
+
         let mut n = [0u8; 12];
         n[4..].copy_from_slice(&nonce.to_le_bytes());
 
-        unsafe {
-            crypto_aead_chacha20poly1305_ietf_encrypt(
-                out.as_mut_ptr(),
-                null_mut(),
-                plaintext.as_ptr(),
-                plaintext.len() as u64,
-                ad.as_ptr(),
-                ad.len() as u64,
-                null(),
-                n.as_ptr(),
-                k.0.as_ptr(),
-            );
-        }
+        chacha20_poly1305_multiplexed_aead_encrypt(&k.0, &n, ad, plaintext, cipher, mac);
     }
 
     fn decrypt(
@@ -195,24 +192,9 @@ impl Cipher for ChaCha20Poly1305 {
         let mut n = [0u8; 12];
         n[4..].copy_from_slice(&nonce.to_le_bytes());
 
-        let ret = unsafe {
-            crypto_aead_chacha20poly1305_ietf_decrypt(
-                out.as_mut_ptr(),
-                null_mut(),
-                null_mut(),
-                ciphertext.as_ptr(),
-                ciphertext.len() as u64,
-                ad.as_ptr(),
-                ad.len() as u64,
-                n.as_ptr(),
-                k.0.as_ptr(),
-            )
-        };
+        let (cipher, mac) = ciphertext.split_at(out.len());
+        let mac = mac.try_into().unwrap();
 
-        if ret == 0 {
-            Ok(())
-        } else {
-            Err(())
-        }
+        chacha20_poly1305_multiplexed_aead_decrypt(&k.0, &n, ad, out, cipher, mac)
     }
 }
