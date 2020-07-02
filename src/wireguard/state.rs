@@ -445,22 +445,19 @@ async fn udp_processing(wg: Arc<WgState>, mut receiver: Receiver<UdpSocket>) {
         for _ in 0..1024 {
             let (len, addr) = {
                 let socket = wg.socket.lock().clone();
-                loop {
-                    tokio::select! {
-                        recv_result = socket.recv_from(&mut p) => {
-                            break recv_result.unwrap();
+
+                futures::select_biased! {
+                    recv_result = socket.recv_from(&mut p).fuse() => recv_result.unwrap(),
+                    socket = receiver.recv().fuse() => {
+                        if let Some(socket) = socket {
+                            *wg.socket.lock() = Arc::new(socket);
+                            continue;
+                        } else {
+                            // The sender is dropped, this means that there is
+                            // now another rx task, and we should return.
+                            return;
                         }
-                        socket = receiver.next() => {
-                            if let Some(socket) = socket {
-                                *wg.socket.lock() = Arc::new(socket);
-                                continue;
-                            } else {
-                                // The sender is dropped, this means that there is
-                                // now another rx task, and we should return.
-                                return;
-                            }
-                        }
-                    };
+                    }
                 }
             };
 
