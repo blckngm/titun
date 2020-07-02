@@ -58,6 +58,7 @@ pub async fn ipc_server(
     dev_name: &OsStr,
     ready: Sender<()>,
 ) -> anyhow::Result<()> {
+    use futures::prelude::*;
     use nix::sys::stat::{umask, Mode};
     use std::fs::{create_dir_all, remove_file};
     use tokio::net::UnixListener;
@@ -71,24 +72,24 @@ pub async fn ipc_server(
     let mut listener = UnixListener::bind(path.as_path()).context("failed to bind IPC socket")?;
 
     let deleted = super::wait_delete::wait_delete(&path, ready);
-    tokio::pin!(deleted);
-
-    loop {
-        tokio::select! {
-            deleted_result = &mut deleted => {
-                deleted_result?;
-                info!("IPC socket deleted. Shutting down.");
-                return Ok(());
-            }
-            accept_result = listener.accept() => {
-                let (stream, _) = accept_result?;
-                let wg = wg.clone();
-                tokio::spawn(async move {
-                    serve(&wg, stream).await.unwrap_or_else(|e| {
-                        warn!("Error serving IPC connection: {:#}", e);
-                    });
+    let accept_and_handle = async move {
+        loop {
+            let (stream, _) = listener.accept().await?;
+            let wg = wg.clone();
+            tokio::spawn(async move {
+                serve(&wg, stream).await.unwrap_or_else(|e| {
+                    warn!("Error serving IPC connection: {:#}", e);
                 });
-            }
+            });
+        }
+    };
+
+    futures::select_biased! {
+        result = accept_and_handle.fuse() => result,
+        deleted_result = deleted.fuse() => {
+            deleted_result?;
+            info!("IPC socket deleted. Shutting down.");
+            Ok(())
         }
     }
 }

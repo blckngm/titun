@@ -80,11 +80,12 @@ impl AsyncScope {
         T: Future<Output = ()> + Send + 'static,
     {
         let cancelled = self.cancelled();
+
         tokio::spawn(async move {
-            tokio::select! {
-                _ = cancelled => {}
-                _ = future => {}
-            }
+            futures::select_biased! {
+                _ = future.fuse() => {}
+                _ = cancelled.fuse() => {}
+            };
         });
     }
 }

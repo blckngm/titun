@@ -3,8 +3,8 @@
 set -ex
 
 clean_up() {
-    set +e
     r=$?
+    set +e
     ./clean-up.sh
     git checkout -- tun1.conf tun2.conf
     exit $r

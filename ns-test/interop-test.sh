@@ -3,8 +3,8 @@
 set -ex
 
 clean_up() {
-    set +e
     r=$?
+    set +e
     ./clean-up.sh
     exit $r
 }
