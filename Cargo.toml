@@ -53,7 +53,7 @@ toml = "0.5.6"
 anyhow = "1.0.31"
 num-traits = "0.2.12"
 tokio-util = { version = "0.3.1", features = ["codec"] }
-sodiumoxide = "0.2.5"
+sodiumoxide = "0.2.6"
 libsodium-sys = "0.2.5"
 socket2 = "0.3.12"
 
