@@ -576,10 +576,10 @@ Endpoint = "host.no.port.invalid"
     #[test]
     fn resolve_not_found() {
         let mut config: Config<String> = toml::from_str(EXAMPLE_CONFIG_INVALID_ENDPOINT).unwrap();
-        config.peers.iter_mut().next().unwrap().endpoint = Some("not.found.invalid:3238".into());
+        config.peers[0].endpoint = Some("not.found.invalid:3238".into());
 
         let config = config.resolve_addresses(true).unwrap();
-        assert!(config.peers.iter().next().unwrap().endpoint.is_none());
+        assert!(config.peers[0].endpoint.is_none());
     }
 
     #[test]
