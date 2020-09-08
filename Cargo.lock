@@ -2148,9 +2148,9 @@ dependencies = [
 
 [[package]]
 name = "webview2"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9404b1c5a29f974eb7b2ca3874e01e598d64058e608c9372fa7bac16c63cfac"
+checksum = "94cc025566b5502456ce9d7684dc533c8038d8eb9ba07afab7ec5cdfb43593ff"
 dependencies = [
  "com",
  "memory-module-sys",
@@ -2162,9 +2162,9 @@ dependencies = [
 
 [[package]]
 name = "webview2-sys"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2a247d39831798b28da80598bfc8f6ea77f5be49a63069006264a3767268fc4"
+checksum = "2fa56f69298b7dfd3e4e768b71aed007f1339ec77b7071a2d2ed9b5d732cb93f"
 dependencies = [
  "com",
  "winapi 0.3.9",
