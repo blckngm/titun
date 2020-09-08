@@ -138,14 +138,13 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
                         .arg("-command")
                         .arg("Get-NetFirewallRule -PolicyStore ActiveStore -Group TiTunDNSBlock | Remove-NetFirewallRule")
                         .output()
-                        .and_then(|o| {
+                        .map(|o| {
                             if !o.status.success() {
                                 warn!(
                                     "failed to unblock dns servers: {}",
                                     String::from_utf8_lossy(&o.stderr),
                                 );
                             }
-                            Ok(())
                         }).unwrap_or_else(|e| {
                             warn!("failed to unblock dns servers: failed to run powershell: {}", e);
                         });
@@ -218,7 +217,7 @@ Write-Host "nextHop:" $r.NextHop "ifIndex:" $r.ifIndex
                                 .arg("-command")
                                 .arg(format!("Remove-NetRoute -PolicyStore ActiveStore -DestinationPrefix {}/{} -Confirm:$false", e, len))
                                 .output()
-                                .and_then(|o| {
+                                .map(|o| {
                                     if !o.status.success() {
                                         warn!(
                                             "failed to delete route to {}: {}",
@@ -226,7 +225,6 @@ Write-Host "nextHop:" $r.NextHop "ifIndex:" $r.ifIndex
                                             String::from_utf8_lossy(&o.stderr),
                                         );
                                     }
-                                    Ok(())
                                 }).unwrap_or_else(|err| {
                                     warn!("failed to delete route to {}, failed to run powershell: {}", e, err);
                                 });
