@@ -55,7 +55,7 @@ num-traits = "0.2.12"
 tokio-util = { version = "0.3.1", features = ["codec"] }
 sodiumoxide = "0.2.6"
 libsodium-sys = "0.2.6"
-socket2 = "0.3.12"
+socket2 = "0.3.15"
 
 [dependencies.tokio]
 version = "0.2.22"
