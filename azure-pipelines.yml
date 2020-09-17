@@ -94,7 +94,7 @@ jobs:
 - job: windows_clippy
   displayName: Clippy on Windows
   pool:
-    vmImage: vs2017-win2016
+    vmImage: windows-2019
   steps:
     - template: ci/azure-install-rust.yml
       parameters:
@@ -110,7 +110,7 @@ jobs:
     # Deny warnings
     RUSTFLAGS: -D warnings
   pool:
-    vmImage: vs2017-win2016
+    vmImage: windows-2019
   steps:
     - template: ci/azure-install-rust.yml
       parameters:
@@ -121,7 +121,7 @@ jobs:
 - job: windows_gui
   displayName: Build Windows GUI Installer
   pool:
-    vmImage: vs2017-win2016
+    vmImage: windows-2019
   variables:
     RUSTFLAGS: -C target-feature=+crt-static,+fast-variable-shuffle
   steps:
@@ -145,7 +145,7 @@ jobs:
 - job: windows_gui_x86
   displayName: Build Windows GUI Installer (x86)
   pool:
-    vmImage: vs2017-win2016
+    vmImage: windows-2019
   variables:
     RUSTFLAGS: -C target-feature=+crt-static,+fast-variable-shuffle
   steps:
