@@ -30,11 +30,12 @@
 use std::borrow::Cow;
 use std::ffi::OsString;
 use std::io::{self, Read, Write};
+use std::mem::MaybeUninit;
 use std::os::windows::prelude::*;
 use std::path::Path;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::sync::mpsc::{channel, Receiver};
 use winapi::shared::minwindef::{DWORD, LPCVOID, LPVOID};
 use winapi::shared::winerror::{ERROR_PIPE_CONNECTED, ERROR_PIPE_NOT_CONNECTED};
@@ -55,7 +56,7 @@ pub struct AsyncPipeListener {
 
 impl AsyncPipeListener {
     pub fn bind<P: Into<Cow<'static, Path>>>(path: P) -> io::Result<Self> {
-        let (mut tx, rx) = channel(1);
+        let (tx, rx) = channel(1);
         let mut listener = PipeListener::bind(path)?;
         std::thread::spawn(move || {
             futures::executor::block_on(async move {
@@ -114,6 +115,29 @@ impl PipeStream {
             handle: Handle { inner: handle },
             server_half: false,
         })
+    }
+
+    fn read_maybeuninit(&self, buf: &mut [MaybeUninit<u8>]) -> io::Result<usize> {
+        let mut bytes_read = 0;
+        let ok = unsafe {
+            ReadFile(
+                self.handle.inner,
+                buf.as_mut_ptr() as LPVOID,
+                buf.len() as DWORD,
+                &mut bytes_read,
+                std::ptr::null_mut(),
+            )
+        };
+
+        if ok != 0 {
+            Ok(bytes_read as usize)
+        } else {
+            match io::Error::last_os_error().raw_os_error().map(|x| x as u32) {
+                Some(ERROR_PIPE_NOT_CONNECTED) => Ok(0),
+                Some(err) => Err(io::Error::from_raw_os_error(err as i32)),
+                _ => panic!(""),
+            }
+        }
     }
 }
 
@@ -190,12 +214,21 @@ impl<'a> Write for &'a PipeStream {
 
 impl AsyncRead for PipeStream {
     fn poll_read(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<io::Result<usize>> {
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
         // TODO: use dedicated thread and channel.
-        tokio::task::block_in_place(|| self.read(buf)).into()
+        tokio::task::block_in_place(|| {
+            let unfilled = unsafe { buf.unfilled_mut() };
+            let n = self.read_maybeuninit(unfilled)?;
+            unsafe {
+                buf.assume_init(n);
+            }
+            buf.advance(n);
+            Ok(())
+        })
+        .into()
     }
 }
 

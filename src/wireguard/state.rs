@@ -15,7 +15,6 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::udp_socket::*;
 use crate::wireguard::re_exports::{DH, X25519};
 use crate::wireguard::*;
 use anyhow::Context;
@@ -32,9 +31,10 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
+use tokio::net::UdpSocket;
 use tokio::sync::mpsc::*;
 use tokio::task::yield_now;
-use tokio::time::delay_for;
+use tokio::time::sleep;
 
 // Some Constants.
 
@@ -658,7 +658,7 @@ impl WgState {
     /// Update cookie secret every two minutes.
     pub async fn task_update_cookie_secret(self: Arc<WgState>) {
         loop {
-            delay_for(Duration::from_secs(120)).await;
+            sleep(Duration::from_secs(120)).await;
             let mut cookie = self.cookie_secret.write();
             OsRng.fill_bytes(&mut cookie[..]);
         }
@@ -668,7 +668,7 @@ impl WgState {
     #[cfg(not(windows))]
     pub async fn task_update_mtu(self: Arc<WgState>) {
         loop {
-            delay_for(Duration::from_secs(10)).await;
+            sleep(Duration::from_secs(10)).await;
             match self.tun.get_mtu() {
                 Ok(mtu) => {
                     let old_mtu = self.mtu.load(Ordering::Relaxed);
@@ -872,7 +872,7 @@ impl WgState {
         let new_socket = WgState::prepare_socket(&mut new_port, self.info.read().fwmark)?;
         // XXX: possible race condition between this and `run`.
         let sender = self.socket_sender.lock().as_ref().cloned();
-        if let Some(mut sender) = sender {
+        if let Some(sender) = sender {
             sender
                 .send(new_socket)
                 .await
@@ -1154,7 +1154,7 @@ mod tests {
             let mut allowed_ips = BTreeSet::new();
             for _ in 0..8 {
                 let ip: Ipv4Addr = rng.next_u32().into();
-                let r = (ip.into(), rng.gen_range(0, 33));
+                let r = (ip.into(), rng.gen_range(0..33));
                 allowed_ips.insert(r);
                 previous_allowed_ips.push(r);
             }

@@ -18,11 +18,6 @@
 #![cfg(unix)]
 
 use anyhow::Context as _;
-use futures::future::poll_fn;
-use futures::ready;
-use mio::event::Evented;
-use mio::unix::{EventedFd, UnixReady};
-use mio::{Poll as MioPoll, PollOpt, Ready, Token};
 use nix::fcntl::{open, OFlag};
 use nix::libc;
 use nix::sys::stat::Mode;
@@ -33,8 +28,7 @@ use std::io;
 use std::mem;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
-use std::task::{Context, Poll};
-use tokio::io::PollEvented;
+use tokio::io::unix::AsyncFd;
 
 mod ffi {
     use nix::libc;
@@ -51,39 +45,15 @@ mod ffi {
 /// A tun interface.
 #[derive(Debug)]
 pub struct AsyncTun {
-    io: PollEvented<Tun>,
+    io: AsyncFd<Tun>,
 }
 
 impl AsyncTun {
     pub fn open(name: &OsStr) -> anyhow::Result<AsyncTun> {
         let tun = Tun::open(name, OFlag::O_NONBLOCK)?;
         Ok(AsyncTun {
-            io: PollEvented::new(tun)?,
+            io: AsyncFd::new(tun)?,
         })
-    }
-
-    fn poll_read(&self, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<io::Result<usize>> {
-        let ready = Ready::readable() | UnixReady::error();
-        ready!(self.io.poll_read_ready(cx, ready))?;
-        match self.io.get_ref().read(buf) {
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                self.io.clear_read_ready(cx, ready)?;
-                Poll::Pending
-            }
-            x => Poll::Ready(x),
-        }
-    }
-
-    fn poll_write(&self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
-        ready!(self.io.poll_write_ready(cx))?;
-
-        match self.io.get_ref().write(buf) {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                self.io.clear_write_ready(cx)?;
-                Poll::Pending
-            }
-            x => Poll::Ready(x),
-        }
     }
 
     pub(crate) fn get_mtu(&self) -> io::Result<u32> {
@@ -108,12 +78,24 @@ impl AsyncTun {
 
     // Should be used from only one task.
     pub(crate) async fn read<'a>(&'a self, buf: &'a mut [u8]) -> io::Result<usize> {
-        poll_fn(|cx| self.poll_read(cx, buf)).await
+        loop {
+            let mut guard = self.io.readable().await?;
+            match guard.try_io(|t| t.get_ref().read(buf)) {
+                Err(_) => continue,
+                Ok(result) => return result,
+            }
+        }
     }
 
     // Should be used from only one task.
     pub(crate) async fn write<'a>(&'a self, buf: &'a [u8]) -> io::Result<usize> {
-        poll_fn(|cx| self.poll_write(cx, buf)).await
+        loop {
+            let mut guard = self.io.writable().await?;
+            match guard.try_io(|t| t.get_ref().write(buf)) {
+                Err(_) => continue,
+                Ok(result) => return result,
+            }
+        }
     }
 }
 
@@ -284,32 +266,6 @@ impl Tun {
         } else {
             write(self.fd, buf).map_err(|_| io::Error::last_os_error())
         }
-    }
-}
-
-impl Evented for Tun {
-    fn register(
-        &self,
-        poll: &MioPoll,
-        token: Token,
-        interest: Ready,
-        opts: PollOpt,
-    ) -> io::Result<()> {
-        EventedFd(&self.fd).register(poll, token, interest, opts)
-    }
-
-    fn reregister(
-        &self,
-        poll: &MioPoll,
-        token: Token,
-        interest: Ready,
-        opts: PollOpt,
-    ) -> io::Result<()> {
-        EventedFd(&self.fd).reregister(poll, token, interest, opts)
-    }
-
-    fn deregister(&self, poll: &MioPoll) -> io::Result<()> {
-        EventedFd(&self.fd).deregister(poll)
     }
 }
 

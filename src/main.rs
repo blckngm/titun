@@ -188,11 +188,10 @@ fn main() {
         service.start(&["titun"]).context("start service")?;
         info!("started service {}", service_name);
 
-        let mut rt = tokio::runtime::Builder::new()
+        // Have to use threaded because we use `block_in_place`.
+        let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
-            // Have to use threaded because we use `block_in_place`.
-            .threaded_scheduler()
-            .core_threads(1)
+            .worker_threads(1)
             .build()
             .context("build tokio runtime")?;
 

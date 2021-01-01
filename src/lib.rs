@@ -14,6 +14,7 @@
 
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
+#![allow(clippy::clippy::result_unit_err)]
 
 #[macro_use]
 extern crate anyhow;
@@ -27,7 +28,6 @@ pub mod crypto;
 // Export for fuzzing.
 #[doc(hidden)]
 pub mod ipc;
-mod udp_socket;
 
 pub mod wireguard;
 

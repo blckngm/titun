@@ -195,6 +195,7 @@ impl<'a> Interface<'a> {
         Ok(false)
     }
 
+    #[allow(const_item_mutation)]
     pub fn handle(&self) -> anyhow::Result<HandleWrapper> {
         const GUID_DEVINTERFACE_NET: GUID = GUID {
             Data1: 0xcac8_8484,

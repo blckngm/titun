@@ -24,16 +24,17 @@ use futures::prelude::*;
 use futures::ready;
 use parking_lot::Mutex;
 use std::future::Future;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering::*};
 use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
 use tokio::sync::oneshot::{channel, Sender};
-use tokio::time::{delay_for, Delay, Instant};
+use tokio::time::{sleep, Instant, Sleep};
 
 struct TimerOptions {
     activated: AtomicBool,
-    delay: Mutex<Delay>,
+    delay: Mutex<Sleep>,
 }
 
 pub struct TimerHandle {
@@ -49,7 +50,7 @@ where
     let (tx, mut rx) = channel();
     let options0 = Arc::new(TimerOptions {
         activated: AtomicBool::new(false),
-        delay: Mutex::new(delay_for(Duration::from_secs(0))),
+        delay: Mutex::new(sleep(Duration::from_secs(0))),
     });
     let options = options0.clone();
     tokio::spawn(async move {
@@ -60,9 +61,12 @@ where
                     return Poll::Ready(Err(()));
                 }
                 let mut delay = options.delay.lock();
-                ready!(delay.poll_unpin(cx));
+                let mut delay = unsafe { Pin::new_unchecked(&mut *delay) };
+                ready!(delay.as_mut().poll(cx));
                 // Reset delay to get notified again.
-                delay.reset(Instant::now() + Duration::from_secs(600));
+                delay
+                    .as_mut()
+                    .reset(Instant::now() + Duration::from_secs(600));
                 match delay.poll_unpin(cx) {
                     Poll::Pending => (),
                     _ => unreachable!(),
@@ -90,7 +94,7 @@ impl TimerHandle {
     /// Reset the timer to some timer later.
     pub fn adjust_and_activate(&self, delay: Duration) {
         let mut d = self.options.delay.lock();
-        d.reset(Instant::now() + delay);
+        unsafe { Pin::new_unchecked(&mut *d) }.reset(Instant::now() + delay);
         self.options.activated.store(true, SeqCst);
     }
 
@@ -121,7 +125,7 @@ mod tests {
     async fn smoke() {
         let (tx, mut rx) = channel(1);
         let t = create_timer_async(move || {
-            let mut tx = tx.clone();
+            let tx = tx.clone();
             async move {
                 tx.send(()).await.unwrap();
             }
@@ -137,7 +141,7 @@ mod tests {
 
         let t = {
             create_timer_async(move || {
-                let mut tx = tx.clone();
+                let tx = tx.clone();
                 async move {
                     tx.send(()).await.unwrap();
                 }

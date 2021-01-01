@@ -26,7 +26,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use tai64::TAI64N;
-use tokio::time::delay_for;
+use tokio::time::sleep;
 
 pub type SharedPeerState = Arc<RwLock<PeerState>>;
 
@@ -410,7 +410,7 @@ pub fn do_handshake(wg: &Arc<WgState>, peer0: &SharedPeerState) {
                 break 'inner;
             }
             let delay_ms = thread_rng().gen_range(5_000..5_300);
-            delay_for(Duration::from_millis(delay_ms)).await;
+            sleep(Duration::from_millis(delay_ms)).await;
         }
     });
 }

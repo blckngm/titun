@@ -23,7 +23,7 @@ use titun::wireguard::timer::create_timer_async;
 
 pub fn register_benches(c: &mut Criterion) {
     c.bench_function("timer adjust and activate", |b| {
-        let mut rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
             let run = Arc::new(AtomicBool::new(false));
             let t = create_timer_async(move || {
