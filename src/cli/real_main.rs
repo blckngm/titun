@@ -161,7 +161,7 @@ impl Options {
         let notify = if config.general.foreground {
             None
         } else {
-            Some(cli::daemonize::daemonize().context("failed to daemonize")?)
+            Some(unsafe { cli::daemonize::daemonize() }.context("failed to daemonize")?)
         };
         #[cfg(not(unix))]
         let notify = None;
