@@ -62,7 +62,7 @@ jobs:
     - script: |
         set -ex
         sudo apt-get update
-        sudo apt-get install -yqq wireguard
+        sudo apt-get install -yqq wireguard net-tools
       displayName: Install WireGuard Kernel Module and Tools
     # - script: |
     #     set -ex
