@@ -38,9 +38,6 @@ const useStyles = makeStyles(theme => ({
             margin: '.3em 0 0 0',
             padding: 0,
         },
-        '& pre:last-child': {
-            marginBottom: theme.spacing(2),
-        }
     },
     lastLogLine: {
         flexShrink: 0,
@@ -51,6 +48,11 @@ const useStyles = makeStyles(theme => ({
         margin: theme.spacing(1),
         padding: theme.spacing(1),
         backgroundColor: '#7487f1',
+    },
+    smallCaps: {
+        fontVariant: "small-caps",
+        textTransform: "none",
+        fontFeatureSettings: "normal",
     }
 }));
 
@@ -67,7 +69,7 @@ const ShowLogs: React.FC<{ logLines: string[], className: string }> = ({ logLine
     useLayoutEffect(() => {
         if (divRef.current) {
             const el = divRef.current;
-            if (el.scrollHeight - el.scrollTop - el.clientHeight <= 20) {
+            if (el.scrollHeight - el.scrollTop - el.clientHeight <= 40) {
                 el.scrollTop = el.scrollHeight - el.clientHeight;
             }
         }
@@ -185,13 +187,18 @@ const App: React.FC = () => {
                     TiTun
                 </Typography>
                 <Button
+                    className={classes.smallCaps}
                     color="inherit"
                     disabled={busy}
                     onClick={handleRunOrStopButtonClick}
                 >
                     {running ? "Stop" : "Run"}
                 </Button>
-                <Button color="inherit" onClick={() => setOpenConfirmExit(true)}>Exit</Button>
+                <Button
+                    className={classes.smallCaps}
+                    color="inherit"
+                    onClick={() => setOpenConfirmExit(true)}
+                >Exit</Button>
             </Toolbar>
         </AppBar>
         <Dialog open={openConfirmExit} onClose={() => setOpenConfirmExit(false)}>
