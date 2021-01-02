@@ -5,9 +5,3 @@ html, body, #root {
 
     font-family: "Segoe UI", Helvetica, Arial, sans-serif;
 }
-
-.MuiButton-label {
-    text-transform: none;
-    font-variant: small-caps;
-    font-feature-settings: normal;
-}
