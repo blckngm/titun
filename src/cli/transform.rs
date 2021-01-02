@@ -70,7 +70,7 @@ pub fn maybe_transform(input: String) -> String {
         let l_trim = l.trim();
         if l_trim.is_empty() || l_trim.starts_with("[Interface]") || l_trim.starts_with('#') {
             output.push_str(l);
-            output.push_str("\n");
+            output.push('\n');
         } else if l_trim.starts_with("[Peer]") {
             output.push_str("[[Peer]]\n");
         } else {
@@ -80,7 +80,7 @@ pub fn maybe_transform(input: String) -> String {
                 writeln!(output, "{} = {}", k.trim(), transform_value(v)).unwrap();
             } else {
                 output.push_str(l);
-                output.push_str("\n");
+                output.push('\n');
             }
         }
     }

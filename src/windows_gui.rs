@@ -27,7 +27,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::{bail, Context};
-use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
@@ -105,7 +104,7 @@ async fn run(
     tokio::spawn(async move {
         let stderr = BufReader::new(stderr);
         let mut stderr_lines = stderr.lines();
-        while let Some(Ok(line)) = stderr_lines.next().await {
+        while let Ok(Some(line)) = stderr_lines.next_line().await {
             log::debug!("process log: {}", line);
             let script = format!(
                 "onLog({})",
@@ -128,7 +127,7 @@ async fn stop(state: &Mutex<State>) -> anyhow::Result<ExitStatus> {
         let mut stdin = child.stdin.take().expect("child stdin");
         ignore_error(stdin.shutdown().await);
         drop(stdin);
-        child.await.context("awaiting child")
+        child.wait().await.context("awaiting child")
     } else {
         bail!("no running process");
     }
@@ -318,10 +317,9 @@ pub fn run_windows_gui() {
     let (rt_handle_tx, rt_handle_rx) = std::sync::mpsc::channel::<tokio::runtime::Handle>();
 
     std::thread::spawn(move || {
-        let mut rt = tokio::runtime::Builder::new()
+        let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
-            .threaded_scheduler()
-            .core_threads(1)
+            .worker_threads(1)
             .build()
             .unwrap();
         ignore_error(rt_handle_tx.send(rt.handle().clone()));

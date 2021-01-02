@@ -24,7 +24,7 @@ use std::convert::TryInto;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::time::delay_for;
+use tokio::time::sleep;
 
 // That is, 2 ^ 64 - 2 ^ 16 - 1;
 const REKEY_AFTER_MESSAGES: u64 = 0xffff_ffff_fffe_ffff;
@@ -91,7 +91,7 @@ impl Transport {
 
         let weak = Arc::downgrade(&transport);
         transport.scope.spawn_async(async move {
-            delay_for(Duration::from_secs(handshake_after)).await;
+            sleep(Duration::from_secs(handshake_after)).await;
             if let Some(t) = weak.upgrade() {
                 t.should_handshake.store(true, Ordering::Relaxed);
             }
@@ -99,7 +99,7 @@ impl Transport {
 
         let weak = Arc::downgrade(&transport);
         transport.scope.spawn_async(async move {
-            delay_for(Duration::from_secs(REJECT_AFTER_TIME)).await;
+            sleep(Duration::from_secs(REJECT_AFTER_TIME)).await;
             if let Some(t) = weak.upgrade() {
                 t.not_too_old.store(false, Ordering::Relaxed);
             }

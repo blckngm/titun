@@ -44,7 +44,10 @@ macro_rules! ctx {
     };
 }
 
-pub fn daemonize() -> anyhow::Result<NotifyHandle> {
+/// # Safety
+///
+/// Unsafe due to usage of `fork`.
+pub unsafe fn daemonize() -> anyhow::Result<NotifyHandle> {
     let (r, w) = ctx!(pipe())?;
 
     if ctx!(fork())?.is_parent() {

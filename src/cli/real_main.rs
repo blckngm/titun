@@ -161,23 +161,21 @@ impl Options {
         let notify = if config.general.foreground {
             None
         } else {
-            Some(cli::daemonize::daemonize().context("failed to daemonize")?)
+            Some(unsafe { cli::daemonize::daemonize() }.context("failed to daemonize")?)
         };
         #[cfg(not(unix))]
         let notify = None;
         // On windows we make use `tokio::executor::threadpool::blocking`, so it
         // must use the threadpool runtime.
         if threads > 1 || cfg!(windows) {
-            let mut rt = tokio::runtime::Builder::new()
+            let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
-                .threaded_scheduler()
-                .core_threads(threads)
+                .worker_threads(threads)
                 .build()?;
             rt.block_on(cli::run(config, notify, stop_rx))
         } else {
-            let mut rt = tokio::runtime::Builder::new()
+            let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
-                .basic_scheduler()
                 .build()?;
             rt.block_on(cli::run(config, notify, stop_rx))
         }
@@ -253,7 +251,7 @@ impl Cmd {
                 if k.len() == 32 {
                     let k = <X25519 as DH>::Key::from_slice(&k);
                     let pk = <X25519 as DH>::pubkey(&k);
-                    println!("{}", base64::encode(pk.as_slice()));
+                    println!("{}", base64::encode(&pk));
                 } else {
                     bail!(
                         "Expect base64 encoded X25519 secret key (32-byte long), got {} bytes",
@@ -408,9 +406,8 @@ pub fn real_main(stop_rx: Option<oneshot::Receiver<()>>) -> anyhow::Result<()> {
         options.run(version, stop_rx)?;
     } else {
         let cmd = Cmd::from_clap(&matches);
-        let mut rt = tokio::runtime::Builder::new()
+        let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
-            .basic_scheduler()
             .build()?;
         rt.block_on(cmd.run())?;
     }

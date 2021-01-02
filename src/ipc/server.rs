@@ -69,7 +69,7 @@ pub async fn ipc_server(
     let mut path = dir.join(dev_name);
     path.set_extension("sock");
     let _ = remove_file(path.as_path());
-    let mut listener = UnixListener::bind(path.as_path()).context("failed to bind IPC socket")?;
+    let listener = UnixListener::bind(path.as_path()).context("failed to bind IPC socket")?;
 
     let deleted = super::wait_delete::wait_delete(&path, ready);
     let accept_and_handle = async move {
@@ -122,7 +122,7 @@ async fn write_wg_state(
         writeln!(w, "fwmark={}", state.fwmark)?;
     }
     for p in &state.peers {
-        writeln!(w, "public_key={}", encode(p.public_key.as_slice()))?;
+        writeln!(w, "public_key={}", encode(&p.public_key))?;
         if let Some(ref psk) = p.preshared_key {
             writeln!(w, "preshared_key={}", encode(psk))?;
         }

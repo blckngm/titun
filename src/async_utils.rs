@@ -96,8 +96,7 @@ mod tests {
 
     #[test]
     fn cancellation() {
-        let mut rt = tokio::runtime::Builder::new()
-            .basic_scheduler()
+        let rt = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap();
 
