@@ -37,6 +37,6 @@
     ]
   },
   "devDependencies": {
-    "inline-assets": "^1.4.5"
+    "inline-assets": "^1.4.8"
   }
 }
