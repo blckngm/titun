@@ -555,8 +555,8 @@ mod tests {
     struct Len(u32);
 
     impl quickcheck::Arbitrary for Len {
-        fn arbitrary<G: quickcheck::Gen>(g: &mut G) -> Self {
-            Len(g.next_u32() % 33)
+        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+            Len(u32::arbitrary(g) % 33)
         }
     }
 
@@ -564,8 +564,8 @@ mod tests {
     struct Len6(u32);
 
     impl quickcheck::Arbitrary for Len6 {
-        fn arbitrary<G: quickcheck::Gen>(g: &mut G) -> Self {
-            Len6(g.next_u32() % 129)
+        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+            Len6(u32::arbitrary(g) % 129)
         }
     }
 
