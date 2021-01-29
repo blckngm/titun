@@ -57,7 +57,7 @@ libsodium-sys = "0.2.6"
 socket2 = "0.3.15"
 
 [dependencies.tokio]
-version = "1.1.0"
+version = "1.1.1"
 features = [
     "io-std",
     "io-util",
