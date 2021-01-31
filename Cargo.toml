@@ -51,7 +51,7 @@ serde = { version = "1.0.120", features = ["derive"] }
 toml = "0.5.8"
 anyhow = "1.0.38"
 num-traits = "0.2.14"
-tokio-util = { version = "0.6.2", features = ["codec"] }
+tokio-util = { version = "0.6.3", features = ["codec"] }
 sodiumoxide = "0.2.6"
 libsodium-sys = "0.2.6"
 socket2 = "0.3.15"
