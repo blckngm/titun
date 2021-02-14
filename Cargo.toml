@@ -67,7 +67,8 @@ features = [
     "sync",
     "process",
     "signal",
-    "macros"
+    "macros",
+    "parking_lot",
 ]
 
 [target.'cfg(windows)'.dependencies]
