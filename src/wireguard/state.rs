@@ -1103,6 +1103,7 @@ where
 }
 
 #[cfg(not(target_os = "linux"))]
+#[allow(clippy::unnecessary_wraps)]
 fn set_fwmark<T>(_s: &T, _fwmark: u32) -> io::Result<()> {
     warn!("fwmark is not supported on this platform.");
     Ok(())
