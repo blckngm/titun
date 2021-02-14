@@ -34,7 +34,7 @@ use tokio::time::{sleep, Instant, Sleep};
 
 struct TimerOptions {
     activated: AtomicBool,
-    delay: Mutex<Sleep>,
+    delay: Mutex<Pin<Box<Sleep>>>,
 }
 
 pub struct TimerHandle {
@@ -50,7 +50,7 @@ where
     let (tx, mut rx) = channel();
     let options0 = Arc::new(TimerOptions {
         activated: AtomicBool::new(false),
-        delay: Mutex::new(sleep(Duration::from_secs(0))),
+        delay: Mutex::new(Box::pin(sleep(Duration::from_secs(0)))),
     });
     let options = options0.clone();
     tokio::spawn(async move {
@@ -61,7 +61,6 @@ where
                     return Poll::Ready(Err(()));
                 }
                 let mut delay = options.delay.lock();
-                let mut delay = unsafe { Pin::new_unchecked(&mut *delay) };
                 ready!(delay.as_mut().poll(cx));
                 // Reset delay to get notified again.
                 delay
@@ -94,7 +93,7 @@ impl TimerHandle {
     /// Reset the timer to some timer later.
     pub fn adjust_and_activate(&self, delay: Duration) {
         let mut d = self.options.delay.lock();
-        unsafe { Pin::new_unchecked(&mut *d) }.reset(Instant::now() + delay);
+        d.as_mut().reset(Instant::now() + delay);
         self.options.activated.store(true, SeqCst);
     }
 
