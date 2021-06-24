@@ -93,13 +93,16 @@ impl Options {
         #[cfg(windows)]
         {
             if let Some(ref log_pipe) = options.log_pipe {
-                use crate::ipc::windows_named_pipe::PipeStream;
                 use std::io;
                 use std::os::windows::io::IntoRawHandle;
                 use winapi::um::processenv::*;
                 use winapi::um::winbase::*;
 
-                let pipe = PipeStream::connect(log_pipe).context("connect to log_pipe")?;
+                let pipe = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(log_pipe)
+                    .context("connect to log_pipe")?;
 
                 let h = pipe.into_raw_handle();
 
