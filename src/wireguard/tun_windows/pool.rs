@@ -393,7 +393,7 @@ pub fn wintun_security_attributes() -> anyhow::Result<SECURITY_ATTRIBUTES> {
     let sd = *SD.get_or_try_init(|| {
         let mut sd = unsafe { mem::zeroed() };
         unsafe_b!(ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            wch_c!("O:SYD:P(A;;GA;;;SY)").as_ptr(),
+            wchz!("O:SYD:P(A;;GA;;;SY)").as_ptr(),
             1,
             &mut sd,
             null_mut(),
@@ -426,7 +426,7 @@ impl Pool {
             sid
         };
 
-        let boundry = unsafe_h!(CreateBoundaryDescriptorW(wch_c!("Wintun").as_ptr(), 0))
+        let boundry = unsafe_h!(CreateBoundaryDescriptorW(wchz!("Wintun").as_ptr(), 0))
             .context("CreateBoundryDescriptor")?
             // Boundry descriptors must be deleted with DeleteBoundryDescrptor, not
             // CloseHandle.
@@ -445,11 +445,11 @@ impl Pool {
             match unsafe_h!(CreatePrivateNamespaceW(
                 &mut security_attributes,
                 *boundry,
-                wch_c!("Wintun").as_ptr(),
+                wchz!("Wintun").as_ptr(),
             )) {
                 Ok(h) => return Ok(h),
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-                    match unsafe_h!(OpenPrivateNamespaceW(*boundry, wch_c!("Wintun").as_ptr())) {
+                    match unsafe_h!(OpenPrivateNamespaceW(*boundry, wchz!("Wintun").as_ptr())) {
                         Ok(h) => return Ok(h),
                         Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
                         Err(e) => return Err(e).context("OpenPrivateNamespaceA"),
@@ -625,7 +625,7 @@ impl Pool {
                 class_name.as_mut_ptr(),
                 class_name.len() as u32,
                 &mut req_size,
-                wch_c!("").as_ptr(),
+                wchz!("").as_ptr(),
                 null_mut(),
             ))
             .context("SetupDiClassNameFromGuidExW")?;
