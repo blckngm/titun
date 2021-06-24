@@ -105,7 +105,7 @@ fn load_config_from_file(
         }
     }
 
-    Ok(config.resolve_addresses(print_warnings)?)
+    config.resolve_addresses(print_warnings)
 }
 
 // Endpoint is the type of peer endpoints. It is expected to be either `String`

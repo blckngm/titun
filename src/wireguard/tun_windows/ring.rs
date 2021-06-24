@@ -263,7 +263,7 @@ mod tests {
                         written_packets += 1;
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                    Err(e) => panic!(e),
+                    Err(e) => panic!("{}", e),
                 }
             }
             let mut read_packets = 0;
@@ -274,7 +274,7 @@ mod tests {
                         assert_eq!(len, 7727);
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                    Err(e) => panic!(e),
+                    Err(e) => panic!("{}", e),
                 }
             }
             assert_eq!(written_packets, read_packets);

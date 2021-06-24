@@ -43,13 +43,13 @@ fn main() {
     use std::path::PathBuf;
 
     use titun::cli::windows_service_args;
-    use titun::ipc::windows_named_pipe::*;
 
     use anyhow::Context;
     use futures::pin_mut;
     use log::*;
     use rand::prelude::*;
     use tokio::io::{stderr, stdin, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::windows::named_pipe;
     use tokio::sync::oneshot;
     use winapi::shared::winerror::*;
     use windows_service::{
@@ -152,8 +152,10 @@ fn main() {
         thread_rng().fill_bytes(&mut bytes);
         let log_pipe_path: PathBuf =
             format!("\\\\.\\Pipe\\titun-log-{}", base64::encode(&bytes[..])).into();
-        let mut log_pipe_listener =
-            AsyncPipeListener::bind(log_pipe_path.clone()).context("bind log pipe listener")?;
+        let log_pipe_server = named_pipe::ServerOptions::new()
+            .first_pipe_instance(true)
+            .create(&log_pipe_path)
+            .context("bind log pipe listener")?;
 
         args.push("--log-pipe".into());
         args.push(log_pipe_path.into());
@@ -220,10 +222,11 @@ fn main() {
                 }
             });
 
-            let log_pipe = log_pipe_listener
-                .accept()
+            log_pipe_server
+                .connect()
                 .await
-                .context("log_pipe_listener accept")?;
+                .context("log_pipe_server connect")?;
+            let log_pipe = log_pipe_server;
             let mut stderr = stderr();
             let copy = tokio::spawn(async move {
                 let mut log_pipe = BufReader::new(log_pipe);

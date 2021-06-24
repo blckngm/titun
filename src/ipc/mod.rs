@@ -21,7 +21,5 @@ pub mod commands;
 pub mod parse;
 mod server;
 mod wait_delete;
-#[doc(hidden)]
-pub mod windows_named_pipe;
 
 pub use self::server::*;

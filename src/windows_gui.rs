@@ -28,7 +28,9 @@ use std::sync::Arc;
 
 use anyhow::{bail, Context};
 use serde::{Deserialize, Serialize};
+use tokio::io::AsyncReadExt;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::windows::named_pipe;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use widestring::WideCStr;
@@ -47,8 +49,6 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopProxy};
 use winit::platform::windows::WindowExtWindows;
 use winit::window::WindowBuilder;
-
-use crate::ipc::windows_named_pipe::PipeStream;
 
 fn ignore_error<T, E>(_: Result<T, E>) {}
 
@@ -140,14 +140,15 @@ async fn get_interface_status(state: &Mutex<State>) -> anyhow::Result<Option<ser
         return Ok(None);
     };
     let pipe_name = format!(r#"\\.\pipe\wireguard\{}.sock"#, name);
-    let mut stream = match PipeStream::connect(pipe_name) {
+    let mut stream = match named_pipe::ClientOptions::new().open(pipe_name) {
         Ok(s) => s,
         Err(_) => return Ok(None),
     };
     stream.write_all(b"get=1\n\n").await.context("write")?;
-    serde_json::from_reader(stream)
-        .map(Some)
-        .context("deserialize status")
+    let mut buf = Vec::new();
+    stream.read_to_end(&mut buf).await?;
+    let status = serde_json::from_slice(&buf).context("deserialize status")?;
+    Ok(Some(status))
 }
 
 #[derive(Serialize, Deserialize, Debug)]

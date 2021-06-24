@@ -14,7 +14,7 @@
 
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
-#![allow(clippy::clippy::result_unit_err)]
+#![allow(clippy::result_unit_err)]
 
 #[macro_use]
 extern crate anyhow;

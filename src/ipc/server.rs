@@ -33,16 +33,22 @@ pub async fn ipc_server(
     dev_name: &OsStr,
     ready: Sender<()>,
 ) -> anyhow::Result<()> {
-    use crate::ipc::windows_named_pipe::*;
+    use tokio::net::windows::named_pipe::ServerOptions;
 
     let name = dev_name.to_string_lossy().into_owned();
     let mut path = Path::new(r#"\\.\pipe\wireguard"#).join(dev_name);
     path.set_extension("sock");
-    let mut listener = AsyncPipeListener::bind(path).context("failed to bind IPC socket")?;
+    let mut listener = ServerOptions::new()
+        .first_pipe_instance(true)
+        .create(&path)
+        .context("failed to bind IPC socket")?;
+
     let _ = ready.send(());
     loop {
         let wg = wg.clone();
-        let stream = listener.accept().await?;
+        listener.connect().await?;
+        let stream = listener;
+        listener = ServerOptions::new().create(&path)?;
         let name = name.clone();
         tokio::spawn(async move {
             serve(&wg, stream, name).await.unwrap_or_else(|e| {
