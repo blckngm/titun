@@ -701,7 +701,7 @@ impl WgState {
     fn prepare_socket(port: &mut u16, fwmark: u32) -> io::Result<UdpSocket> {
         use socket2::*;
 
-        let socket = Socket::new(Domain::ipv6(), Type::dgram(), Protocol::udp().into())?;
+        let socket = Socket::new(Domain::IPV6, Type::DGRAM, Protocol::UDP.into())?;
         socket.set_only_v6(false)?;
         socket.set_nonblocking(true)?;
 
@@ -733,7 +733,7 @@ impl WgState {
             }
         }
         socket.bind(&SocketAddr::from((Ipv6Addr::UNSPECIFIED, *port)).into())?;
-        let socket = socket.into_udp_socket();
+        let socket: std::net::UdpSocket = socket.into();
 
         if *port == 0 {
             *port = socket.local_addr()?.port();

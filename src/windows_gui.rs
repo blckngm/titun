@@ -549,7 +549,7 @@ pub fn run_windows_gui() {
             error
         ))
         .unwrap();
-        let caption = wchar::wch_c!("Error").as_ptr();
+        let caption = wchar::wchz!("Error").as_ptr();
         unsafe {
             MessageBoxW(
                 window.hwnd() as HWND,

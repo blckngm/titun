@@ -67,7 +67,7 @@ pub struct PeerState {
 
     pub queue: Mutex<VecDeque<Vec<u8>>>,
 
-    pub transports: ArrayVec<[Arc<Transport>; 3]>,
+    pub transports: ArrayVec<Arc<Transport>, 3>,
 
     // Rekey because of send but not recv in...
     pub rekey_no_recv: InitLater<TimerHandle>,
