@@ -116,7 +116,7 @@ quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
 
 [build-dependencies]
-cc = "1.0.68"
+cc = "1.0.69"
 winres = { git = "https://github.com/sopium/winres.git" }
 
 [profile.release]
