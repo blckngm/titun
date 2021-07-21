@@ -18,12 +18,11 @@
 #![cfg(unix)]
 
 use anyhow::Context as _;
-use nix::fcntl::{open, OFlag};
+#[cfg(not(target_os = "macos"))]
+use nix::fcntl::OFlag;
 use nix::libc;
-use nix::sys::stat::Mode;
 use nix::unistd::{close, read, write};
-use std::ffi::CString;
-use std::ffi::OsStr;
+use std::ffi::{CString, OsStr};
 use std::io;
 use std::mem;
 use std::os::unix::ffi::OsStrExt;
@@ -39,6 +38,8 @@ mod ffi {
         pub fn tunsetiff(tun_fd: libc::c_int, name: *const u8) -> libc::c_int;
         #[cfg(target_os = "freebsd")]
         pub fn tunsifhead(tun_fd: libc::c_int) -> libc::c_int;
+        #[cfg(target_os = "macos")]
+        pub fn open_utun_socket(sc_unit: u32) -> libc::c_int;
     }
 }
 
@@ -50,7 +51,11 @@ pub struct AsyncTun {
 
 impl AsyncTun {
     pub fn open(name: &OsStr) -> anyhow::Result<AsyncTun> {
-        let tun = Tun::open(name, OFlag::O_NONBLOCK)?;
+        let tun = Tun::open(
+            name,
+            #[cfg(not(target_os = "macos"))]
+            OFlag::O_NONBLOCK,
+        )?;
         Ok(AsyncTun {
             io: AsyncFd::new(tun)?,
         })
@@ -61,6 +66,9 @@ impl AsyncTun {
         let socket = socket(
             AddressFamily::Inet,
             SockType::Datagram,
+            #[cfg(target_os = "macos")]
+            SockFlag::empty(),
+            #[cfg(not(target_os = "macos"))]
             SockFlag::SOCK_CLOEXEC,
             None,
         )
@@ -120,6 +128,9 @@ impl Tun {
     /// O_CLOEXEC, IFF_NO_PI.
     #[cfg(target_os = "linux")]
     pub fn open(name: &OsStr, extra_flags: OFlag) -> anyhow::Result<Tun> {
+        use nix::fcntl::open;
+        use nix::sys::stat::Mode;
+
         if name.len() > nix::libc::IF_NAMESIZE - 1 {
             bail!("interface name is too long.");
         }
@@ -159,6 +170,8 @@ impl Tun {
     // BSD systems.
     #[cfg(target_os = "freebsd")]
     pub fn open(name: &OsStr, extra_flags: OFlag) -> anyhow::Result<Tun> {
+        use nix::fcntl::open;
+        use nix::sys::stat::Mode;
         use std::path::Path;
 
         {
@@ -201,6 +214,44 @@ impl Tun {
 
         Ok(tun)
     }
+
+    // MacOS utun.
+    #[cfg(target_os = "macos")]
+    pub fn open(name: &OsStr) -> anyhow::Result<Tun> {
+        let err_message = "invalid interface name, must be utunN, where N is a positive integer, e.g., utun0, utun1, utun2, etc.";
+        let n: u32 = name
+            .to_str()
+            .ok_or_else(|| anyhow::format_err!(err_message))?
+            .strip_prefix("utun")
+            .ok_or_else(|| anyhow::format_err!(err_message))?
+            .parse()
+            .context(err_message)?;
+        let sc_unit = n
+            .checked_add(1)
+            .ok_or_else(|| anyhow::format_err!(err_message))?;
+
+        let fd = unsafe { ffi::open_utun_socket(sc_unit) };
+        if fd < 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+
+        let mut tun = Tun { fd, index: 0 };
+
+        let name_cstring = CString::new(name.as_bytes())?;
+        let name_c_bytes = name_cstring.as_bytes_with_nul();
+
+        tun.index = {
+            let r = unsafe { libc::if_nametoindex(name_c_bytes.as_ptr() as *const i8) };
+            if r > 0 {
+                Ok(r)
+            } else {
+                Err(io::Error::last_os_error())
+            }
+        }
+        .context("get interface index")?;
+
+        Ok(tun)
+    }
 }
 
 impl AsRawFd for Tun {
@@ -220,7 +271,7 @@ impl IntoRawFd for Tun {
 impl Tun {
     /// Read a packet from the tun interface.
     pub fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
-        if cfg!(target_os = "freebsd") {
+        if cfg!(any(target_os = "freebsd", target_os = "macos")) {
             use nix::sys::uio::{readv, IoVec};
 
             let mut af_head = [0u8; 4];
@@ -240,7 +291,7 @@ impl Tun {
 
     /// Write a packet to tun interface.
     pub fn write(&self, buf: &[u8]) -> io::Result<usize> {
-        if cfg!(target_os = "freebsd") {
+        if cfg!(any(target_os = "freebsd", target_os = "macos")) {
             use nix::libc::{AF_INET, AF_INET6};
             use nix::sys::uio::{writev, IoVec};
 
@@ -281,7 +332,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_tun_ping_and_read() -> anyhow::Result<()> {
-        let name = OsStr::new("tun7");
+        let name = OsStr::new(if cfg!(target_os = "macos") {
+            "utun7"
+        } else {
+            "tun7"
+        });
         let t = AsyncTun::open(name)?;
 
         Command::new("ifconfig")
@@ -324,7 +379,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_mtu() -> anyhow::Result<()> {
-        let name = OsStr::new("tun10");
+        let name = OsStr::new(if cfg!(target_os = "macos") {
+            "utun10"
+        } else {
+            "tun10"
+        });
         let tun = AsyncTun::open(name)?;
 
         Command::new("ifconfig")
@@ -335,23 +394,8 @@ mod tests {
         let mtu = tun.get_mtu()?;
         assert_eq!(mtu, 1280);
 
-        if cfg!(target_os = "linux") {
-            Command::new("ip")
-                .args(&["link", "set"])
-                .arg(name)
-                .args(&["name", "tun57"])
-                .output()
-                .await?;
-        } else {
-            // Assume BSD.
-            Command::new("ifconfig")
-                .arg(name)
-                .args(&["name", "tun57"])
-                .output()
-                .await?;
-        }
         Command::new("ifconfig")
-            .arg("tun57")
+            .arg(name)
             .args(&["mtu", "9000"])
             .output()
             .await?;

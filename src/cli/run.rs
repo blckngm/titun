@@ -94,7 +94,7 @@ pub async fn run(
     let dev_name = c.interface.name.clone().unwrap();
 
     let tun = AsyncTun::open(&dev_name).context("failed to open tun interface")?;
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     {
         if let Err(e) = crate::cli::network_config(&c).await {
             warn!("failed to configure network: {:#}", e);

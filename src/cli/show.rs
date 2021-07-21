@@ -18,6 +18,7 @@
 use crate::wireguard::re_exports::{DH, X25519};
 use ansi_term::{Color, Style};
 use anyhow::Context;
+use itertools::Itertools;
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
 use std::time::Duration;
@@ -163,9 +164,12 @@ async fn get_and_print_status(dev_name: &OsStr, is_first: bool) -> anyhow::Resul
                         bold.paint("allowed ips"),
                         p.allowed_ips
                             .iter()
-                            .map(|(ip, plen)| format!("{}{}{}", ip, cyan.paint("/"), plen))
-                            .collect::<Vec<_>>()
-                            .join(", ")
+                            .format_with(", ", |(ip, plen), f| f(&format_args!(
+                                "{}{}{}",
+                                ip,
+                                cyan.paint("/"),
+                                plen
+                            )))
                     );
                 }
                 if let Some(ref t) = p.last_handshake_time {
@@ -204,49 +208,24 @@ fn print_human_time(secs: u64, unit_style: Style) {
     let minutes = secs % (60 * 60) / 60;
     let seconds = secs % 60;
 
-    let mut is_first = true;
+    let values = [
+        (hours, "hours", "hour"),
+        (minutes, "minutes", "minute"),
+        (seconds, "seconds", "second"),
+    ];
 
-    if hours > 0 {
-        print!(
-            "{} {}",
-            hours,
-            if hours > 1 {
-                unit_style.paint("hours")
-            } else {
-                unit_style.paint("hour")
-            }
-        );
-        is_first = false;
-    };
-    if minutes > 0 {
-        if !is_first {
-            print!(", ");
-        }
-        print!(
-            "{} {}",
-            minutes,
-            if minutes > 1 {
-                unit_style.paint("minutes")
-            } else {
-                unit_style.paint("minute")
-            }
-        );
-        is_first = false;
-    }
-    if seconds > 0 {
-        if !is_first {
-            print!(", ");
-        }
-        print!(
-            "{} {}",
-            seconds,
-            if seconds > 1 {
-                unit_style.paint("seconds")
-            } else {
-                unit_style.paint("second")
-            }
-        )
-    }
+    let formateed =
+        values
+            .iter()
+            .filter(|(q, _, _)| *q > 0)
+            .format_with(", ", |(q, plural, single), f| {
+                f(&format_args!(
+                    "{} {}",
+                    q,
+                    unit_style.paint(if *q > 1 { *plural } else { *single })
+                ))
+            });
+    print!("{}", formateed);
 }
 
 fn print_human_size(bytes: u64, unit_style: Style) {
