@@ -29,7 +29,7 @@ mod systemd;
 pub mod transform;
 
 pub use config::*;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 pub(self) use network_config::network_config;
 #[doc(hidden)]
 pub use real_main::*;

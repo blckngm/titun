@@ -15,15 +15,18 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-#![cfg(windows)]
+#![cfg(any(windows, target_os = "macos"))]
 
 use anyhow::Context;
+use itertools::Itertools;
 use std::net::*;
 use tokio::process::Command;
 
 use crate::cli::Config;
+#[cfg(windows)]
 use crate::wireguard::ip_lookup_trie::to_mask;
 
+#[cfg(windows)]
 #[allow(clippy::cognitive_complexity)]
 pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
     if c.interface.address.is_empty() {
@@ -121,9 +124,8 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
 
         let ranges = ranges_v4.into_iter().chain(ranges_v6.into_iter());
         let ranges = ranges
-            .map(|(start, end)| format!("{}-{}", start, end))
-            .collect::<Vec<_>>()
-            .join(",");
+            .format_with(",", |(start, end), f| f(&format_args!("{}-{}", start, end)))
+            .to_string();
 
         tasks.push(tokio::spawn(async move {
             info!("block other DNS servers");
@@ -267,6 +269,7 @@ Write-Host "nextHop:" $r.NextHop "ifIndex:" $r.ifIndex
     Ok(())
 }
 
+#[cfg(windows)]
 fn get_block_ranges_v4(dns_servers: &[Ipv4Addr]) -> Vec<(IpAddr, IpAddr)> {
     let mut result = Vec::with_capacity(dns_servers.len() + 1);
     let mut previous: u32 = 0;
@@ -288,6 +291,7 @@ fn get_block_ranges_v4(dns_servers: &[Ipv4Addr]) -> Vec<(IpAddr, IpAddr)> {
     result
 }
 
+#[cfg(windows)]
 fn get_block_ranges_v6(dns_servers: &[Ipv6Addr]) -> Vec<(IpAddr, IpAddr)> {
     let mut result = Vec::with_capacity(dns_servers.len() + 1);
     let mut previous: u128 = 0;
@@ -309,6 +313,7 @@ fn get_block_ranges_v6(dns_servers: &[Ipv6Addr]) -> Vec<(IpAddr, IpAddr)> {
     result
 }
 
+#[cfg(windows)]
 async fn block_dns(ranges: &str) -> anyhow::Result<()> {
     let script = format!(
         "New-NetFirewallRule -PolicyStore ActiveStore -DisplayName TiTunDNSBlockUDP -Group TiTunDNSBlock -Direction Outbound -Action Block -RemoteAddress {} -RemotePort 53 -Protocol UDP\n\
@@ -328,6 +333,7 @@ async fn block_dns(ranges: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(windows)]
 async fn add_routes(
     interface_name: &str,
     routes: impl IntoIterator<Item = (IpAddr, u32)>,
@@ -365,5 +371,168 @@ async fn add_routes(
         info!("added routes");
     }
 
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+async fn get_primary_network_service_name() -> anyhow::Result<String> {
+    use tokio::io::AsyncBufReadExt;
+
+    let mut out = Command::new("networksetup")
+        .arg("-listallnetworkservices")
+        .stdout(std::process::Stdio::piped())
+        .spawn()?;
+    let out = out.stdout.take().unwrap();
+    let mut out = tokio::io::BufReader::new(out);
+    let mut buf = String::new();
+    out.read_line(&mut buf).await?;
+    buf.clear();
+    out.read_line(&mut buf).await?;
+    buf.truncate(buf.len() - 1);
+    Ok(buf)
+}
+
+#[cfg(target_os = "macos")]
+async fn add_route(ip: IpAddr, l: u32, gateway: &str) -> anyhow::Result<()> {
+    log::info!("add route {}/{} via {}", ip, l, gateway);
+    let route_result = Command::new("route")
+        .arg("add")
+        .arg(format!("{}/{}", ip, l))
+        .arg(gateway)
+        .output()
+        .await
+        .context("route add")?;
+    if !route_result.status.success() {
+        anyhow::bail!("failed to add route {}/{}", ip, l);
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn remove_route(ip: IpAddr, l: u32) -> anyhow::Result<()> {
+    info!("remove route {}/{}", ip, l);
+    let route_result = std::process::Command::new("route")
+        .arg("delete")
+        .arg(format!("{}/{}", ip, l))
+        .output()
+        .context("route delete")?;
+    if !route_result.status.success() {
+        anyhow::bail!("failed to remove route {}/{}", ip, l);
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+async fn get_route(ip: IpAddr) -> anyhow::Result<String> {
+    let out = Command::new("route")
+        .arg("-n")
+        .arg("get")
+        .arg(ip.to_string())
+        .output()
+        .await?;
+    let out = String::from_utf8(out.stdout)?;
+    for l in out.lines() {
+        let l = l.trim();
+        if let Some(g) = l.strip_prefix("gateway: ") {
+            return Ok(g.into());
+        }
+    }
+    Err(anyhow::format_err!("failed to parse route get output"))
+}
+
+#[cfg(target_os = "macos")]
+pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
+    let name = c
+        .interface
+        .name
+        .as_ref()
+        .unwrap()
+        .to_str()
+        .context("interface name")?;
+
+    // Set up, ip, mtu.
+    let self_ip = if let Some((ip, _)) = c.interface.address.iter().next() {
+        ip.to_string()
+    } else {
+        return Ok(());
+    };
+    let peer_ip = &self_ip;
+    let mtu = c.interface.mtu.unwrap_or(1280).to_string();
+    log::info!("setting the interface up, mtu {}, ip {}", mtu, self_ip);
+    let ifconfig_result = Command::new("ifconfig")
+        .arg(name)
+        .arg("up")
+        .arg("mtu")
+        .arg(mtu)
+        .arg(&self_ip)
+        .arg(peer_ip)
+        .status()
+        .await
+        .context("ifconfig")?;
+    if !ifconfig_result.success() {
+        anyhow::bail!("failed to set interface up, mtu and ip");
+    }
+
+    // Set DNS.
+    if !c.interface.dns.is_empty() {
+        let service_name = get_primary_network_service_name()
+            .await
+            .context("get primary networkservice name")?;
+        log::info!(
+            "setting DNS servers of networkservice {}: {}",
+            service_name,
+            c.interface.dns.iter().format(", ")
+        );
+        let networksetup_result = Command::new("networksetup")
+            .arg("-setdnsservers")
+            .arg(&service_name)
+            .args(c.interface.dns.iter().map(|d| d.to_string()))
+            .status()
+            .await
+            .context("networksetup")?;
+        if !networksetup_result.success() {
+            anyhow::bail!("failed to set dns server");
+        }
+        tokio::spawn(async move {
+            scopeguard::defer! {
+                info!("reset DNS settings of networkservice: {}", service_name);
+                let _ = std::process::Command::new("networksetup")
+                    .arg("-setdnsservers")
+                    .arg(service_name)
+                    .arg("empty")
+                    .status();
+            };
+            futures::future::pending::<()>().await;
+        });
+    }
+
+    // Set Route.
+    let endpoints = c.peers.iter().flat_map(|p| p.endpoint.iter());
+    for e in endpoints {
+        let e = *e;
+        let gateway = get_route(e.ip()).await?;
+        add_route(e.ip(), if e.ip().is_ipv4() { 32 } else { 128 }, &gateway).await?;
+        tokio::spawn(async move {
+            scopeguard::defer! {
+                let _ = remove_route(e.ip(), if e.ip().is_ipv4() {32} else {128});
+            };
+            futures::future::pending::<()>().await;
+        });
+    }
+
+    let routes = c.peers.iter().flat_map(|p| p.allowed_ips.iter());
+    for (ip, l) in routes {
+        if *l == 0 {
+            if ip.is_ipv4() {
+                add_route(Ipv4Addr::new(0, 0, 0, 0).into(), 1, &self_ip).await?;
+                add_route(Ipv4Addr::new(128, 0, 0, 0).into(), 1, &self_ip).await?;
+            } else {
+                add_route(IpAddr::V6(0.into()), 1, &self_ip).await?;
+                add_route(IpAddr::V6((1u128 << 127).into()), 1, &self_ip).await?;
+            }
+        } else {
+            add_route(*ip, *l, &self_ip).await?;
+        }
+    }
     Ok(())
 }

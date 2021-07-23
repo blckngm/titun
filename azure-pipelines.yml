@@ -90,6 +90,33 @@ jobs:
     # - script: bash <(curl -s https://codecov.io/bash)
     #   displayName: Upload code coverage info to codecov.io
 
+- job: macOS_test
+  displayName: Test on MacOS
+  variables:
+    # Deny warnings
+    RUSTFLAGS: -D warnings
+  pool:
+    vmImage: macOS-latest
+  steps:
+    - template: ci/azure-install-rust.yml
+      parameters:
+        rust_version: stable-x86_64-apple-darwin
+    - script: cargo test --lib --benches --locked
+      displayName: Run tests
+
+- job: macOS_clippy
+  displayName: Clippy on MacOS
+  pool:
+    vmImage: macOS-latest
+  steps:
+    - template: ci/azure-install-rust.yml
+      parameters:
+        rust_version: stable-x86_64-apple-darwin
+    - bash: |
+        rustup component add clippy &&
+        cargo clippy --all-targets -- -D clippy::all
+      displayName: Run clippy
+
 - job: windows_clippy
   displayName: Clippy on Windows
   pool:

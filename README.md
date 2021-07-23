@@ -8,10 +8,6 @@
 
 Simple, fast, and cross-platform IP tunnel written in Rust. [WireGuard](https://www.wireguard.com/) compatible.
 
-## WARNING
-
-This project is experimental and still under development. Use at your own risk.
-
 ## Build
 
 [Install rust](https://www.rust-lang.org/tools/install), and then
@@ -139,5 +135,12 @@ FreeBSD is supported.
 
 ### Windows
 
-Windows is semi-supported. (TODO: document driver, GUI, specific configuration,
-etc.)
+Windows is supported. (TODO: document driver, GUI, specific configuration, etc.)
+
+If `Address` is specified in the configuration file, `titun` automatically configures the interface, as well as DNS servers and routes.
+
+## MacOS X
+
+Mac OS X is supported. The interface name must be in the form of `utunN`, where `N` is a non-negative integer.
+
+If `Address` is specified in the configuration file, `titun` automatically configures the interface, as well as DNS servers and routes.

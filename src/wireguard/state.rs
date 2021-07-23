@@ -1114,11 +1114,16 @@ mod tests {
     use super::*;
     use crate::wireguard::peer_state::wg_add_peer;
     use crate::wireguard::re_exports::{DH, X25519};
-    use std::ffi::OsStr;
 
     #[tokio::test]
     async fn wg_state_tests() -> anyhow::Result<()> {
-        let state = WgState::new(AsyncTun::open(OsStr::new("tun37"))?)?;
+        let state = WgState::new(AsyncTun::open(std::ffi::OsStr::new(
+            if cfg!(target_os = "macos") {
+                "utun32"
+            } else {
+                "tun37"
+            },
+        ))?)?;
 
         // `set_port` should work.
         state.set_port(0).await?;
