@@ -142,10 +142,11 @@ impl Options {
             .unwrap_or("warn");
         std::env::set_var("RUST_LOG", log);
         let mut builder = env_logger::Builder::from_default_env();
-        if cfg!(windows) {
-            builder.format_timestamp_millis();
-        } else {
+        if std::env::var_os("NOTIFY_SOCKET").is_some() {
+            // Disable log timestamp when running in systemd.
             builder.format_timestamp(None);
+        } else {
+            builder.format_timestamp_millis();
         }
         builder.init();
 
