@@ -4,7 +4,7 @@ authors = ["sopium"]
 license = "GPL-3.0"
 name = "titun"
 repository = "https://github.com/sopium/titun"
-version = "0.1.0-dev"
+version = "0.2.0"
 autobenches = false
 
 [workspace]
