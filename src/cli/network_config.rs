@@ -22,9 +22,9 @@ use itertools::Itertools;
 use std::net::*;
 use tokio::process::Command;
 
-use crate::cli::Config;
+use crate::cli::{ipset::IpSet, Config};
 #[cfg(windows)]
-use crate::wireguard::ip_lookup_trie::to_mask;
+use crate::utils::to_mask;
 
 #[cfg(windows)]
 #[allow(clippy::cognitive_complexity)]
@@ -175,82 +175,19 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
         }
     }
 
-    let mut routes = Vec::new();
+    let mut routes = IpSet::new();
 
     for p in &c.peers {
-        if let Some(e) = p.true_endpoint.as_ref().or_else(|| p.endpoint.as_ref()) {
-            let e = e.ip();
-            let len = if e.is_ipv4() { 32 } else { 128 };
-            let e_default = if e.is_ipv4() { "0.0.0.0/0" } else { "::/0" };
-            tasks.push(tokio::spawn(async move {
-                info!("fixate route to {}", e);
-                let script = format!(r##"$r = try {{
-    (Find-NetRoute -RemoteIpAddress {})[1]
-}} catch {{
-    Write-Host $_
-    (Get-NetRoute {})
-}}
-Write-Host "nextHop:" $r.NextHop "ifIndex:" $r.ifIndex
-[void](New-NetRoute -PolicyStore ActiveStore -DestinationPrefix {}/{} -NextHop $r.NextHop -ifIndex $r.ifIndex)"##,
-                    e,
-                    e_default,
-                    e,
-                    len,
-                );
-                let output = Command::new("powershell")
-                    .arg("-noprofile")
-                    .arg("-command")
-                    .arg(script)
-                    .output()
-                    .await
-                    .context("run powershell")?;
-                if !output.status.success() {
-                    warn!(
-                        "failed to fixate route to {}, command output: {}",
-                        e,
-                        String::from_utf8_lossy(&output.stderr),
-                    );
-                } else {
-                    info!("fixated route to {}: {}", e, String::from_utf8_lossy(&output.stdout).trim());
-                    tokio::spawn(async move {
-                        scopeguard::defer! {
-                            info!("delete route to {}", e);
-                            std::process::Command::new("powershell")
-                                .arg("-command")
-                                .arg(format!("Remove-NetRoute -PolicyStore ActiveStore -DestinationPrefix {}/{} -Confirm:$false", e, len))
-                                .output()
-                                .map(|o| {
-                                    if !o.status.success() {
-                                        warn!(
-                                            "failed to delete route to {}: {}",
-                                            e,
-                                            String::from_utf8_lossy(&o.stderr),
-                                        );
-                                    }
-                                }).unwrap_or_else(|err| {
-                                    warn!("failed to delete route to {}, failed to run powershell: {}", e, err);
-                                });
-                        };
-
-                        futures::future::pending::<()>().await;
-                    });
-                }
-                Ok(())
-            }));
-        }
-
         for &(a, p) in &p.allowed_ips {
-            if p == 0 {
-                if a.is_ipv4() {
-                    routes.push((IpAddr::V4(0.into()), 1));
-                    routes.push((IpAddr::V4([128, 0, 0, 1].into()), 1));
-                } else {
-                    routes.push((IpAddr::V6(0.into()), 1));
-                    routes.push((IpAddr::V6((1u128 << 127).into()), 1));
-                }
-            } else {
-                routes.push((a, p));
-            }
+            routes.insert(a, p);
+        }
+    }
+    for p in &c.peers {
+        for &(a, p) in &p.exclude_routes {
+            routes.remove(a, p);
+        }
+        for &a in &p.endpoint {
+            routes.remove(a.ip(), if a.is_ipv4() { 32 } else { 128 });
         }
     }
 
@@ -394,7 +331,6 @@ async fn get_primary_network_service_name() -> anyhow::Result<String> {
 
 #[cfg(target_os = "macos")]
 async fn add_route(ip: IpAddr, l: u32, gateway: &str) -> anyhow::Result<()> {
-    log::info!("add route {}/{} via {}", ip, l, gateway);
     let route_result = Command::new("route")
         .arg("add")
         .arg(format!("{}/{}", ip, l))
@@ -406,38 +342,6 @@ async fn add_route(ip: IpAddr, l: u32, gateway: &str) -> anyhow::Result<()> {
         anyhow::bail!("failed to add route {}/{}", ip, l);
     }
     Ok(())
-}
-
-#[cfg(target_os = "macos")]
-fn remove_route(ip: IpAddr, l: u32) -> anyhow::Result<()> {
-    info!("remove route {}/{}", ip, l);
-    let route_result = std::process::Command::new("route")
-        .arg("delete")
-        .arg(format!("{}/{}", ip, l))
-        .output()
-        .context("route delete")?;
-    if !route_result.status.success() {
-        anyhow::bail!("failed to remove route {}/{}", ip, l);
-    }
-    Ok(())
-}
-
-#[cfg(target_os = "macos")]
-async fn get_route(ip: IpAddr) -> anyhow::Result<String> {
-    let out = Command::new("route")
-        .arg("-n")
-        .arg("get")
-        .arg(ip.to_string())
-        .output()
-        .await?;
-    let out = String::from_utf8(out.stdout)?;
-    for l in out.lines() {
-        let l = l.trim();
-        if let Some(g) = l.strip_prefix("gateway: ") {
-            return Ok(g.into());
-        }
-    }
-    Err(anyhow::format_err!("failed to parse route get output"))
 }
 
 #[cfg(target_os = "macos")]
@@ -525,32 +429,34 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
     }
 
     // Set Route.
-    let endpoints = c.peers.iter().flat_map(|p| p.endpoint.iter());
-    for e in endpoints {
-        let e = *e;
-        let gateway = get_route(e.ip()).await?;
-        add_route(e.ip(), if e.ip().is_ipv4() { 32 } else { 128 }, &gateway).await?;
-        tokio::spawn(async move {
-            scopeguard::defer! {
-                let _ = remove_route(e.ip(), if e.ip().is_ipv4() {32} else {128});
-            };
-            futures::future::pending::<()>().await;
-        });
+    let mut routes = IpSet::new();
+
+    for p in &c.peers {
+        for &(a, p) in &p.allowed_ips {
+            routes.insert(a, p);
+        }
+    }
+    for p in &c.peers {
+        for &(a, p) in &p.exclude_routes {
+            routes.remove(a, p);
+        }
+        for &a in &p.endpoint {
+            routes.remove(a.ip(), if a.is_ipv4() { 32 } else { 128 });
+        }
     }
 
-    let routes = c.peers.iter().flat_map(|p| p.allowed_ips.iter());
+    let mut added = 0;
     for (ip, l) in routes {
-        if *l == 0 {
-            if ip.is_ipv4() {
-                add_route(Ipv4Addr::new(0, 0, 0, 0).into(), 1, &self_ip).await?;
-                add_route(Ipv4Addr::new(128, 0, 0, 0).into(), 1, &self_ip).await?;
-            } else {
-                add_route(IpAddr::V6(0.into()), 1, &self_ip).await?;
-                add_route(IpAddr::V6((1u128 << 127).into()), 1, &self_ip).await?;
-            }
-        } else {
-            add_route(*ip, *l, &self_ip).await?;
+        if added < 10 {
+            log::info!("add route {}/{} via {}", ip, l, self_ip);
+        } else if added % 100 == 0 {
+            log::info!("added {} routes", added);
         }
+        add_route(ip, l, &self_ip).await?;
+        added += 1;
+    }
+    if added > 10 {
+        log::info!("all routes added ({} routes)", added);
     }
     Ok(())
 }

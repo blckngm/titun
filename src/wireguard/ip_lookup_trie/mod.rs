@@ -26,6 +26,8 @@ use num_traits::{PrimInt, Unsigned};
 use std::fmt::{self, LowerHex};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
+use crate::utils::{bit_len, common_prefix_len, next_bit_mask1, to_mask};
+
 struct TrieNode<K, T> {
     k: K,
     len: u32,
@@ -52,35 +54,6 @@ impl<K: LowerHex, T: fmt::Debug> fmt::Debug for TrieNode<K, T> {
             .field("value", &self.value)
             .finish()
     }
-}
-
-fn bit_len<K>() -> u32 {
-    (std::mem::size_of::<K>() * 8) as u32
-}
-
-pub fn to_mask<K>(prefix_len: u32) -> K
-where
-    K: Unsigned + PrimInt,
-{
-    match prefix_len {
-        0 => K::zero(),
-        _ => K::max_value().unsigned_shl(bit_len::<K>() - prefix_len),
-    }
-}
-
-fn next_bit_mask1<K>(len: u32) -> K
-where
-    K: Unsigned + PrimInt,
-{
-    (K::one().rotate_right(1)).unsigned_shr(len)
-}
-
-fn common_prefix_len<K>(k1: K, len1: u32, k2: K, len2: u32) -> u32
-where
-    K: Unsigned + PrimInt,
-{
-    let smaller_len = std::cmp::min(len1, len2);
-    std::cmp::min(smaller_len, (k1 ^ k2).leading_zeros())
 }
 
 impl<K, T> TrieNode<K, T>

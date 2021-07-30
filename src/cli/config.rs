@@ -225,15 +225,11 @@ pub struct PeerConfig<Endpoint> {
     /// Peer endpoint.
     pub endpoint: Option<Endpoint>,
 
-    /// True endpoint: fixate route to this address.
-    ///
-    /// Useful when you use a local proxy:
-    ///
-    /// TiTun <-> local proxy (endpoint) <-> true_endpoint.
-    pub true_endpoint: Option<Endpoint>,
+    /// Don't route these addresses.
+    #[serde(rename = "ExcludeRoutes", default, with = "ip_prefix_len")]
+    pub exclude_routes: BTreeSet<(IpAddr, u32)>,
 
     /// Allowed source IPs.
-    // On windows they are automatically added as routes.
     #[serde(
         rename = "AllowedIPs",
         alias = "AllowedIP",
@@ -291,36 +287,12 @@ impl Config<String> {
             } else {
                 None
             };
-            let true_endpoint = if let Some(true_endpoint) = p.true_endpoint {
-                match resolve_address(&true_endpoint) {
-                    Ok(addr) => Some(addr),
-                    Err(e) => {
-                        if let Some(e) = e.downcast_ref::<std::io::Error>() {
-                            // Reject invalid syntax, but warn and ignore resolution failures.
-                            if e.kind() == std::io::ErrorKind::InvalidInput {
-                                bail!("invalid true_endpoint: {}", true_endpoint);
-                            }
-                        }
-                        if print_warnings {
-                            eprintln!(
-                                "[WARN  titun::cli::config] failed to resolve true endpoint {}: {}",
-                                true_endpoint, e
-                            );
-                        } else {
-                            warn!("failed to resolve {}: {:#}", true_endpoint, e);
-                        }
-                        None
-                    }
-                }
-            } else {
-                None
-            };
             peers.push(PeerConfig {
                 public_key: p.public_key,
                 preshared_key: p.preshared_key,
                 endpoint,
-                true_endpoint,
                 allowed_ips: p.allowed_ips,
+                exclude_routes: p.exclude_routes,
                 keepalive: p.keepalive,
             });
         }
@@ -549,7 +521,6 @@ PublicKey = "Ck8P+fUguLIf17zmb3eWxxS7PqgN3+ciMFBlSwqRaw4="
 PresharedKey = "w64eiHxoUHU8DcFexHWzqILOvbWx9U+dxxh8iQqJr+k="
 AllowedIPs = "192.168.77.1"
 Endpoint = "192.168.3.1:7777"
-TrueEndpoint = "192.168.3.1:7777"
 PersistentKeepalive = 17
 "##;
 
@@ -609,11 +580,9 @@ Endpoint = "host.no.port.invalid"
                         &base64::decode("w64eiHxoUHU8DcFexHWzqILOvbWx9U+dxxh8iQqJr+k=").unwrap()
                     )),
                     endpoint: Some("192.168.3.1:7777".parse().unwrap()),
-                    true_endpoint: Some("192.168.3.1:7777".parse().unwrap()),
-                    allowed_ips: [("192.168.77.1".parse().unwrap(), 32)]
-                        .iter()
-                        .cloned()
+                    allowed_ips: std::array::IntoIter::new([("192.168.77.1".parse().unwrap(), 32)])
                         .collect(),
+                    exclude_routes: BTreeSet::new(),
                     keepalive: NonZeroU16::new(17),
                 }],
             }

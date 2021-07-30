@@ -18,6 +18,8 @@
 mod config;
 #[cfg(unix)]
 pub mod daemonize;
+#[cfg(any(windows, target_os = "macos"))]
+mod ipset;
 mod network_config;
 mod real_main;
 #[cfg(unix)]
