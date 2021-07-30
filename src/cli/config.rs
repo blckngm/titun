@@ -267,7 +267,7 @@ impl Config<String> {
                 match resolve_address(&endpoint) {
                     Ok(addr) => Some(addr),
                     Err(e) => {
-                        if let Some(ref e) = e.downcast_ref::<std::io::Error>() {
+                        if let Some(e) = e.downcast_ref::<std::io::Error>() {
                             // Reject invalid syntax, but warn and ignore resolution failures.
                             if e.kind() == std::io::ErrorKind::InvalidInput {
                                 bail!("invalid endpoint: {}", endpoint);
