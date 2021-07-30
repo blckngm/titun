@@ -572,19 +572,19 @@ pub fn run_windows_gui() {
                 }
                 // Notify the webview when the parent window is moved.
                 WindowEvent::Moved(_) => {
-                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                    if let Some(host) = webview_host.borrow().as_ref() {
                         ignore_error(host.notify_parent_window_position_changed());
                     }
                 }
                 WindowEvent::Focused(true) => {
-                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                    if let Some(host) = webview_host.borrow().as_ref() {
                         ignore_error(host.put_is_visible(true));
                         ignore_error(host.move_focus(webview2::MoveFocusReason::Programmatic));
                     }
                 }
                 // Update webview bounds when the parent window is resized.
                 WindowEvent::Resized(new_size) => {
-                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                    if let Some(host) = webview_host.borrow().as_ref() {
                         let r = RECT {
                             left: 0,
                             top: 0,
@@ -601,14 +601,14 @@ pub fn run_windows_gui() {
                     unsafe {
                         Shell_NotifyIconA(NIM_DELETE, &mut notify_icon_data);
                     }
-                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                    if let Some(host) = webview_host.borrow().as_ref() {
                         ignore_error(host.close());
                     }
                     *control_flow = ControlFlow::Exit;
                 }
                 MyEvent::Hide => {
                     window.set_visible(false);
-                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                    if let Some(host) = webview_host.borrow().as_ref() {
                         ignore_error(host.put_is_visible(false));
                     }
                 }
@@ -618,18 +618,18 @@ pub fn run_windows_gui() {
                     unsafe {
                         SetForegroundWindow(window.hwnd() as _);
                     }
-                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                    if let Some(host) = webview_host.borrow().as_ref() {
                         ignore_error(host.put_is_visible(true));
                         ignore_error(host.move_focus(webview2::MoveFocusReason::Programmatic));
                     }
                 }
                 MyEvent::Focus => {
-                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                    if let Some(host) = webview_host.borrow().as_ref() {
                         ignore_error(host.move_focus(webview2::MoveFocusReason::Programmatic));
                     }
                 }
                 MyEvent::ExecuteScript(script) => {
-                    if let Some(ref webview) = webview.borrow().as_ref() {
+                    if let Some(webview) = webview.borrow().as_ref() {
                         if let Err(error) = webview.execute_script(&script, |_| Ok(())) {
                             log::error!("failed to execute script: {}", error);
                         }
@@ -639,12 +639,12 @@ pub fn run_windows_gui() {
                     ignore_error(tx.send(open_file_dialog(window.hwnd() as HWND)));
                 }
                 MyEvent::Minimized => {
-                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                    if let Some(host) = webview_host.borrow().as_ref() {
                         ignore_error(host.put_is_visible(false));
                     }
                 }
                 MyEvent::Restored => {
-                    if let Some(ref host) = webview_host.borrow().as_ref() {
+                    if let Some(host) = webview_host.borrow().as_ref() {
                         ignore_error(host.put_is_visible(true));
                         ignore_error(host.move_focus(webview2::MoveFocusReason::Programmatic));
                     }
