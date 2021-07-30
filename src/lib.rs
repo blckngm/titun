@@ -22,6 +22,8 @@ extern crate anyhow;
 extern crate log;
 
 mod async_utils;
+mod utils;
+
 // Export for fuzzing.
 #[doc(hidden)]
 pub mod crypto;

@@ -82,10 +82,9 @@ pub async fn reload(wg: &Arc<WgState>, new_config: Config<SocketAddr>) -> anyhow
             public_key: existing.public_key,
             preshared_key: existing.preshared_key,
             endpoint: existing.endpoint,
-            // We don't have this in PeerState.
-            // Use same value from new config, so that it does not affect comparison.
-            true_endpoint: new.true_endpoint,
             allowed_ips: existing.allowed_ips,
+            // Don't affect comparison.
+            exclude_routes: new.exclude_routes.clone(),
             keepalive: NonZeroU16::new(existing.persistent_keepalive_interval),
         };
 

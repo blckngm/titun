@@ -152,13 +152,9 @@ fn main() {
         thread_rng().fill_bytes(&mut bytes);
         let log_pipe_path: PathBuf =
             format!("\\\\.\\Pipe\\titun-log-{}", base64::encode(&bytes[..])).into();
-        let log_pipe_server = named_pipe::ServerOptions::new()
-            .first_pipe_instance(true)
-            .create(&log_pipe_path)
-            .context("bind log pipe listener")?;
 
         args.push("--log-pipe".into());
-        args.push(log_pipe_path.into());
+        args.push(log_pipe_path.clone().into());
 
         let create_service_info = ServiceInfo {
             name: service_name.clone().into(),
@@ -187,13 +183,9 @@ fn main() {
                 }
             }
         };
-        service.start(&["titun"]).context("start service")?;
-        info!("started service {}", service_name);
 
-        // Have to use threaded because we use `block_in_place`.
-        let rt = tokio::runtime::Builder::new_multi_thread()
+        let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
-            .worker_threads(1)
             .build()
             .context("build tokio runtime")?;
 
@@ -221,6 +213,14 @@ fn main() {
                     futures::future::pending().await
                 }
             });
+
+            let log_pipe_server = named_pipe::ServerOptions::new()
+                .first_pipe_instance(true)
+                .create(&log_pipe_path)
+                .context("bind log pipe listener")?;
+
+            service.start(&["titun"]).context("start service")?;
+            info!("started service {}", service_name);
 
             log_pipe_server
                 .connect()
