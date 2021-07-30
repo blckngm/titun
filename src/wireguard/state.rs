@@ -433,7 +433,7 @@ async fn udp_process_transport<'a>(
         peer0.write().set_endpoint(addr);
     }
     if should_handshake {
-        do_handshake(&wg, &peer0);
+        do_handshake(wg, &peer0);
     }
 }
 

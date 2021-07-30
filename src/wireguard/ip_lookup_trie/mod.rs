@@ -445,10 +445,10 @@ impl<'a, A: Address, T> Iterator for Iter<'a, A, T> {
         loop {
             if let Some(n) = self.nodes.pop() {
                 if let Some(ref n) = n.right {
-                    self.nodes.push(&n);
+                    self.nodes.push(n);
                 }
                 if let Some(ref n) = n.left {
-                    self.nodes.push(&n);
+                    self.nodes.push(n);
                 }
                 if let Some(ref t) = n.value {
                     return Some((A::from_integer(n.k), n.len, t));

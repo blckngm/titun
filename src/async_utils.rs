@@ -61,7 +61,7 @@ impl AsyncScope {
     where
         F: Future<Output = ()> + Send + 'static,
     {
-        let w = Arc::downgrade(&self);
+        let w = Arc::downgrade(self);
         self.spawn_async(async move {
             future.await;
             if let Some(c) = w.upgrade() {
