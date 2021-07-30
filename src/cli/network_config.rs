@@ -493,6 +493,24 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
         if !networksetup_result.success() {
             anyhow::bail!("failed to set dns server");
         }
+        // Flush DNS cache.
+        let dscacheutil_result = Command::new("dscacheutil")
+            .arg("-flushcache")
+            .status()
+            .await
+            .context("dscacheutil")?;
+        if !dscacheutil_result.success() {
+            anyhow::bail!("failed to flush DNS cache");
+        }
+        let killall_result = Command::new("killall")
+            .arg("-HUP")
+            .arg("mDNSResponder")
+            .status()
+            .await
+            .context("killall")?;
+        if !killall_result.success() {
+            anyhow::bail!("failed to flush DNS cache");
+        }
         tokio::spawn(async move {
             scopeguard::defer! {
                 info!("reset DNS settings of networkservice: {}", service_name);
