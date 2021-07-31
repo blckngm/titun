@@ -1,0 +1,13 @@
+meta:
+  description: My Package
+  vendor: Me
+  maintainer: Me
+  depends:
+    - libc6 (>= 2.23)
+files:
+  "/usr/bin/titun":
+    file: target/release/titun
+    mode: "0755"
+    user: "root"
+units:
+  - titun@.service
