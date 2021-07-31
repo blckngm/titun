@@ -39,10 +39,25 @@ jobs:
       if: matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest'
       run: cargo build --release && xz --stdout target/release/titun > target/release/titun-$(uname -m)-${{ matrix.os == 'ubuntu-latest' && 'linux' || 'macos' }}.xz
 
+    - id: get_version
+      if: matrix.os == 'ubuntu-latest'
+      uses: battila7/get-version-action@v2
+
+    - name: Build Deb
+      if: matrix.os == 'ubuntu-latest'
+      uses: kentik/pkg@v1.0.0-rc7
+      with:
+        name: titun
+        version: ${{ steps.get_version.outputs.version-without-v }}
+        arch: x86_64
+        format: deb
+        package: titun.pkg.yml
+
     - name: Release
       uses: softprops/action-gh-release@v1
       with:
         draft: true
         files: |
           target/release/titun-*
+          *.deb
           titun-*.msi
