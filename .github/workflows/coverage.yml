@@ -1,0 +1,89 @@
+name: Coverage
+
+on:
+  push:
+    branches:
+      - trying
+      - staging
+
+jobs:
+  coverage:
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          # `-Z instrument-coverage` does not seem to work on windows.
+          # - windows-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    env:
+      RUSTFLAGS: -Z instrument-coverage
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Cache cargo binaries (grcov, cargo-binutils)
+      uses: actions/cache@v1
+      with:
+        path: ~/.cargo/bin
+        key: ${{ runner.os }}-cargo-bin-grcov-cargo-binutils
+
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly-2021-07-29
+        default: true
+        profile: minimal
+        components: llvm-tools-preview
+
+    - name: Install grcov and cargo-binutils
+      env:
+        RUSTFLAGS: ""
+      run: |
+        if [[ ! -e ~/.cargo/bin/grcov ]]; then cargo install grcov; fi
+        if [[ ! -e ~/.cargo/bin/cargo-cov ]]; then cargo install cargo-binutils; fi
+
+    - name: Test (ubuntu / macos)
+      if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
+      env:
+        CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E
+        CARGO_TARGET_X86_64_APPLE_DARWIN_RUNNER: sudo -E
+        LLVM_PROFILE_FILE: titun-test-%p-%m.profraw
+      run: |
+        set -ex
+        cargo test --all --all-targets --all-features --locked
+        ls *.profraw
+        grcov . --binary-path target/debug/deps/ -s . -t lcov --branch --ignore-not-existing -o coverage.lcov
+
+    - name: Integration Test (ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      env:
+        LLVM_PROFILE_FILE: titun-integration-test-%p-%m.profraw
+      run: |
+        set -ex
+        sudo apt-get update
+        sudo apt-get install -yqq wireguard net-tools
+        cargo build
+        cd ns-test
+        sudo -E ./integration-test.sh
+        sudo -E ./interop-test.sh
+        sudo chmod a+r *.profraw
+        # grcov won't report correct results for this, use llvm-profdata and llvm-cov directly.
+        cd ..
+        cargo profdata -- merge -sparse ns-test/*.profraw -o titun-integration-test.profdata
+        cargo cov -- export target/debug/titun --format=lcov --ignore-filename-regex='/.cargo/registry' -instr-profile titun-integration-test.profdata > coverage1.lcov
+
+    - name: Test (windows)
+      if: matrix.os == 'windows-latest'
+      shell: bash
+      env:
+        LLVM_PROFILE_FILE: titun-test-%p-%m.profraw
+        TESTING: 1
+      run: |
+        set -ex
+        cargo test --all --all-targets --locked
+        ls *.profraw
+        grcov . --binary-path target/debug/deps/ -s . -t lcov --branch --ignore-not-existing -o coverage.lcov
+
+    - name: Codecov
+      uses: codecov/codecov-action@v2
+      with:
+        files: coverage.lcov,coverage1.lcov
