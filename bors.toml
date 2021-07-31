@@ -1,2 +1,6 @@
-status = ["sopium.titun"]
+status = [
+    "test (ubuntu-latest)",
+    "test (windows-latest)",
+    "test (macos-latest)",
+]
 delete_merged_branches = true
