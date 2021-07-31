@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  release:
+    strategy:
+      matrix:
+        os: ["ubuntu-latest", "windows-latest", "macos-latest"]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: 1.54.0
+        profile: minimal
+        components: rustfmt, clippy
+
+    - uses: actions/setup-node@v2
+      if: matrix.os == 'windows-latest'
+      with:
+        node-version: '16'
+
+    - if: matrix.os == 'windows-latest'
+      uses: microsoft/setup-msbuild@v1.0.2
+
+    - name: Build (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        cd windows-gui-client && yarn && yarn build && cd ..
+        cargo build --release
+        msbuild windows-gui-installer/titun-windows-gui-installer.sln /property:Configuration=Release /property:Platform=x64
+        cp windows-gui-installer/installer/bin/Release/titun.msi titun-$(uname -m).msi
+
+    - name: Build (linux/macos)
+      if: matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest'
+      run: cargo build --release && xz --stdout target/release/titun > target/release/titun-$(uname -m)-${{ matrix.os == 'ubuntu-latest' && 'linux' || 'macos' }}.xz
+
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      with:
+        draft: true
+        files: |
+          target/release/titun-*
+          titun-*.msi
