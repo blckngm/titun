@@ -21,18 +21,14 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Cache cargo binaries (grcov, cargo-binutils)
-      uses: actions/cache@v1
-      with:
-        path: ~/.cargo/bin
-        key: ${{ runner.os }}-cargo-bin-grcov-cargo-binutils
-
     - uses: actions-rs/toolchain@v1
       with:
         toolchain: nightly-2021-07-29
         default: true
         profile: minimal
         components: llvm-tools-preview
+
+    - uses: Swatinem/rust-cache@v1
 
     - name: Install grcov and cargo-binutils
       env:

@@ -26,6 +26,8 @@ jobs:
       with:
         node-version: '16'
 
+    - uses: Swatinem/rust-cache@v1
+
     - name: Clippy
       run: cargo clippy --all --all-targets -- -D clippy::all
 
@@ -36,6 +38,14 @@ jobs:
         CARGO_TARGET_X86_64_APPLE_DARWIN_RUNNER: sudo -E
         RUSTFLAGS: -D warnings
       run: cargo test --all --all-targets --all-features --locked
+
+    - name: Cache node_modules (windows)
+      if: matrix.os == 'windows-latest'
+      uses: actions/cache@v2
+      with:
+        path: '**/node_modules'
+        key: ${{ runner.os }}-node-modules-${{ hashFiles('**/yarn.lock') }}
+        restore-keys: ${{ runner.os }}-node-modules-
 
     - name: Test (windows)
       if: matrix.os == 'windows-latest'
