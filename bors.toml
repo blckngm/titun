@@ -2,5 +2,6 @@ status = [
     "test (ubuntu-latest)",
     "test (windows-latest)",
     "test (macos-latest)",
+    "integration-test-and-check-fuzz",
 ]
 delete_merged_branches = true
