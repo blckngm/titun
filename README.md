@@ -7,15 +7,15 @@
 
 Simple, fast, and cross-platform IP tunnel written in Rust. [WireGuard](https://www.wireguard.com/) compatible.
 
-## Build
+## Installation
 
-[Install rust](https://www.rust-lang.org/tools/install), and then
+Download binaries or installers from github releases.
+
+Or build from source:
 
 ```
 $ cargo build --release
 ```
-
-to build a `titun` executable in `target/release`.
 
 ## CLI and Configuration
 
