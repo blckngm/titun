@@ -18,6 +18,7 @@
 use crate::async_utils::AsyncScope;
 #[cfg(unix)]
 use crate::cli::daemonize::NotifyHandle;
+use crate::cli::network_config::network_config;
 use crate::cli::Config;
 use crate::ipc::ipc_server;
 use crate::wireguard::*;
@@ -94,11 +95,8 @@ pub async fn run(
     let dev_name = c.interface.name.clone().unwrap();
 
     let tun = AsyncTun::open(&dev_name).context("failed to open tun interface")?;
-    #[cfg(any(windows, target_os = "macos"))]
-    {
-        if let Err(e) = crate::cli::network_config(&c).await {
-            warn!("failed to configure network: {:#}", e);
-        }
+    if let Err(e) = network_config(&c).await {
+        warn!("failed to configure network: {:#}", e);
     }
 
     let wg = WgState::new(tun)?;

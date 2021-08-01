@@ -62,12 +62,23 @@ PrivateKey = "2BJtcgPUjHfKKN3yMvTiVQbJ/UgHj2tcZE6xU/4BdGM="
 # Alias: Mark.
 FwMark = 33
 
+# If an address is specified, TiTun will try to set the interface address, mtu, DNS servers and routes.
+Address = "192.168.77.5"
+Mtu = 1280
+DNS = "192.168.77.0"
+
 [[Peer]]
 PublicKey = "Ck8P+fUguLIf17zmb3eWxxS7PqgN3+ciMFBlSwqRaw4="
 # Optional. Alias: PSK.
 PresharedKey = "w64eiHxoUHU8DcFexHWzqILOvbWx9U+dxxh8iQqJr+k="
 # Optional. Alias: Routes.
-AllowedIPs = ["192.168.77.0/24"]
+AllowedIPs = ["192.168.0.0/16"]
+
+# Optional. These routes will be excluded from the automatically added routes.
+#
+# Have no effect is `Interface.Address` is not specified.
+ExcludeRoutes = ["192.168.20.0/24"]
+
 # Optional.
 #
 # Host names can be used. If name resolution fails, a warning is emitted and
@@ -105,10 +116,10 @@ WantedBy=multi-user.target
 ```
 
 Now if you want to run a TiTun interface `tun0`, put its configuration at
-`/etc/titun/tun0.conf`, write a script `/etc/titun/tun0.up.sh` to configure IP
-address, routes, DNS etc., write a script `/etc/titun/tun0.down.sh` to reverse
-those changes, and use `systemctl (start|stop|reload|restart|status) titun@tun0`
-to manage the service.
+`/etc/titun/tun0.conf` and use `systemctl (start|stop|reload|restart|status)
+titun@tun0` to manage the service. If you have more complicated DNS/routing
+configurations, you can manage them with custom scripts at
+`/etc/titun/tun0.up.sh` and `/etc/titun/tun0.down.sh`.
 
 ### Use with WireGuard tools
 
@@ -137,10 +148,6 @@ FreeBSD is supported.
 
 Windows is supported. (TODO: document driver, GUI, specific configuration, etc.)
 
-If `Address` is specified in the configuration file, `titun` automatically configures the interface, as well as DNS servers and routes.
-
 ## MacOS X
 
 Mac OS X is supported. The interface name must be in the form of `utunN`, where `N` is a non-negative integer.
-
-If `Address` is specified in the configuration file, `titun` automatically configures the interface, as well as DNS servers and routes.

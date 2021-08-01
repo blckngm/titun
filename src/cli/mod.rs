@@ -18,7 +18,6 @@
 mod config;
 #[cfg(unix)]
 pub mod daemonize;
-#[cfg(any(windows, target_os = "macos"))]
 mod ipset;
 mod network_config;
 mod real_main;
@@ -31,8 +30,6 @@ mod systemd;
 pub mod transform;
 
 pub use config::*;
-#[cfg(any(windows, target_os = "macos"))]
-pub(self) use network_config::network_config;
 #[doc(hidden)]
 pub use real_main::*;
 #[cfg(unix)]

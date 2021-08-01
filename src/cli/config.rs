@@ -198,15 +198,12 @@ pub struct InterfaceConfig {
     #[serde(rename = "FwMark", alias = "Mark")]
     pub fwmark: Option<u32>,
 
-    // Only supported on Windows for now.
     #[serde(default, with = "ip_prefix_len")]
     pub address: BTreeSet<(IpAddr, u32)>,
 
-    // Only supported on Windows for now.
     #[serde(rename = "MTU", alias = "Mtu")]
     pub mtu: Option<u32>,
 
-    // Only supported on Windows for now.
     #[serde(rename = "DNS", alias = "Dns", default, with = "ip_addr_vec")]
     pub dns: Vec<IpAddr>,
 }
