@@ -17,6 +17,7 @@ jobs:
     - uses: actions-rs/toolchain@v1
       with:
         toolchain: 1.54.0
+        default: true
         profile: minimal
         components: rustfmt, clippy
 
@@ -25,7 +26,10 @@ jobs:
       with:
         node-version: '16'
 
-    - name: Test
+    - name: Clippy
+      run: cargo clippy --all --all-targets -- -D clippy::all
+
+    - name: Test (ubuntu/macos)
       if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
       env:
         CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E
@@ -33,18 +37,7 @@ jobs:
         RUSTFLAGS: -D warnings
       run: cargo test --all --all-targets --all-features --locked
 
-    - name: Integration Test
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        set -ex
-        sudo apt-get update
-        sudo apt-get install -yqq wireguard net-tools
-        cargo build
-        cd ns-test
-        sudo ./integration-test.sh
-        sudo ./interop-test.sh
-
-    - name: Test
+    - name: Test (windows)
       if: matrix.os == 'windows-latest'
       shell: bash
       env:
@@ -55,10 +48,6 @@ jobs:
         cd windows-gui-client && yarn && yarn build && cd ..
         cargo test --all --all-targets --locked
 
-    - name: Check Fuzz
-      if: matrix.os == 'ubuntu-latest'
-      run: cd fuzz && cargo check --locked
-
     - name: Fmt check
       if: matrix.os == 'macos-latest'
       run: |
@@ -67,5 +56,26 @@ jobs:
         cargo run --example check-copyright
         cd fuzz && cargo fmt -- --check
 
-    - name: Clippy
-      run: cargo clippy --all --all-targets -- -D clippy::all
+  # Make CI a bit faster running these in parallel with other tests.
+  integration-test-and-check-fuzz:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        default: true
+        profile: minimal
+
+    - name: Integration Test
+      run: |
+        set -ex
+        sudo apt-get update
+        sudo apt-get install -yqq wireguard net-tools
+        cargo build
+        cd ns-test
+        sudo ./integration-test.sh
+        sudo ./interop-test.sh
+
+    - name: Check Fuzz
+      run: cd fuzz && cargo check --locked
