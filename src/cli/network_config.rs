@@ -15,8 +15,6 @@
 // You should have received a copy of the GNU General Public License
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
-#![cfg(any(windows, target_os = "macos"))]
-
 use anyhow::Context;
 use itertools::Itertools;
 use std::net::*;
@@ -311,7 +309,7 @@ async fn add_routes(
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(not(windows))]
 async fn get_primary_network_service_name() -> anyhow::Result<String> {
     use tokio::io::AsyncBufReadExt;
 
@@ -329,22 +327,47 @@ async fn get_primary_network_service_name() -> anyhow::Result<String> {
     Ok(buf)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(not(windows))]
 async fn add_route(ip: IpAddr, l: u32, gateway: &str) -> anyhow::Result<()> {
-    let route_result = Command::new("route")
-        .arg("add")
-        .arg(format!("{}/{}", ip, l))
-        .arg(gateway)
-        .output()
-        .await
-        .context("route add")?;
+    let route_result = if cfg!(target_os = "macos") {
+        Command::new("route")
+            .arg("add")
+            .arg(format!("{}/{}", ip, l))
+            .arg(gateway)
+            .output()
+    } else {
+        Command::new("ip")
+            .arg("route")
+            .arg("add")
+            .arg(format!("{}/{}", ip, l))
+            .arg("via")
+            .arg(gateway)
+            .output()
+    }
+    .await
+    .context("route add")?;
     if !route_result.status.success() {
-        anyhow::bail!("failed to add route {}/{}", ip, l);
+        anyhow::bail!(
+            r#"failed to add route {}/{}
+command stdout:
+===============
+{}
+===============
+command stderr:
+===============
+{}
+===============
+"#,
+            ip,
+            l,
+            String::from_utf8_lossy(&route_result.stdout),
+            String::from_utf8_lossy(&route_result.stdout)
+        );
     }
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(not(windows))]
 pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
     let name = c
         .interface
@@ -363,22 +386,52 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
     let peer_ip = &self_ip;
     let mtu = c.interface.mtu.unwrap_or(1280).to_string();
     log::info!("setting the interface up, mtu {}, ip {}", mtu, self_ip);
-    let ifconfig_result = Command::new("ifconfig")
-        .arg(name)
-        .arg("up")
-        .arg("mtu")
-        .arg(mtu)
-        .arg(&self_ip)
-        .arg(peer_ip)
-        .status()
-        .await
-        .context("ifconfig")?;
-    if !ifconfig_result.success() {
-        anyhow::bail!("failed to set interface up, mtu and ip");
+    if cfg!(target_os = "linux") {
+        if !Command::new("ip")
+            .arg("link")
+            .arg("set")
+            .arg(name)
+            .arg("up")
+            .arg("mtu")
+            .arg(mtu)
+            .status()
+            .await
+            .context("ip")?
+            .success()
+        {
+            anyhow::bail!("failed to set interfaced up and mtu");
+        }
+        if !Command::new("ip")
+            .arg("addr")
+            .arg("add")
+            .arg(&self_ip)
+            .arg("dev")
+            .arg(name)
+            .status()
+            .await
+            .context("ip")?
+            .success()
+        {
+            anyhow::bail!("failed to set interfaced ip");
+        }
+    } else {
+        let ifconfig_result = Command::new("ifconfig")
+            .arg(name)
+            .arg("up")
+            .arg("mtu")
+            .arg(mtu)
+            .arg(&self_ip)
+            .arg(peer_ip)
+            .status()
+            .await
+            .context("ifconfig")?;
+        if !ifconfig_result.success() {
+            anyhow::bail!("failed to set interface up, mtu and ip");
+        }
     }
 
     // Set DNS.
-    if !c.interface.dns.is_empty() {
+    if cfg!(target_os = "macos") && !c.interface.dns.is_empty() {
         let service_name = get_primary_network_service_name()
             .await
             .context("get primary networkservice name")?;
@@ -428,6 +481,28 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
         });
     }
 
+    if cfg!(target_os = "linux") && !c.interface.dns.is_empty() {
+        log::info!(
+            "settings DNS servers {}",
+            c.interface.dns.iter().format(", ")
+        );
+
+        Command::new("systemd-resolve")
+            .args(
+                c.interface
+                    .dns
+                    .iter()
+                    .flat_map(|d| std::array::IntoIter::new(["--set-dns".into(), d.to_string()])),
+            )
+            .arg("--interface")
+            .arg(name)
+            .status()
+            .await
+            .context("systemd-resolve")?;
+
+        log::warn!("DNS servers added by other interfaces might still be active. If this is not desirable you need to manually remove them.");
+    }
+
     // Set Route.
     let mut routes = IpSet::new();
 
@@ -448,11 +523,13 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
     let mut added = 0;
     for (ip, l) in routes {
         if added < 10 {
-            log::info!("add route {}/{} via {}", ip, l, self_ip);
+            log::info!("adding route {}/{} via {}", ip, l, self_ip);
         } else if added % 100 == 0 {
             log::info!("added {} routes", added);
         }
-        add_route(ip, l, &self_ip).await?;
+        if let Err(e) = add_route(ip, l, &self_ip).await {
+            log::warn!("failed to add route {}/{}: {}", ip, l, e);
+        }
         added += 1;
     }
     if added > 10 {
