@@ -2,6 +2,9 @@ status = [
     "test (ubuntu-latest)",
     "test (windows-latest)",
     "test (macos-latest)",
+    "cross-test (x86_64-unknown-freebsd)",
+    "cross-test (aarch64-unknown-linux-gnu)",
+    "cross-test (mipsel-unknown-linux-gnu)",
     "integration-test-and-check-fuzz",
 ]
 delete_merged_branches = true
