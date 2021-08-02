@@ -1778,7 +1778,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "toml",
- "walkdir",
  "wchar",
  "webview2",
  "widestring",

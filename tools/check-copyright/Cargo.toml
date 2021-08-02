@@ -1,0 +1,10 @@
+[package]
+name = "check-copyright"
+version = "0.1.0"
+edition = "2018"
+
+[workspace]
+
+[dependencies]
+anyhow = "1.0.42"
+walkdir = "2.3.2"

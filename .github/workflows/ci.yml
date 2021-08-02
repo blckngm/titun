@@ -63,7 +63,8 @@ jobs:
       run: |
         set -ex
         cargo fmt --all -- --check
-        cargo run --example check-copyright
+        cd tools/check-copyright && cargo fmt -- --check && cargo build --release && cd ../..
+        ./tools/check-copyright/target/release/check-copyright
         cd fuzz && cargo fmt -- --check
 
   # Make CI a bit faster running these in parallel with other tests.
