@@ -205,6 +205,13 @@ enum Cmd {
     Pubkey,
     #[structopt(about = "Generate preshared key")]
     Genpsk,
+    #[structopt(about = "Generate configuration")]
+    Genconf {
+        #[structopt(long)]
+        peer_pubkey: String,
+        #[structopt(long)]
+        self_ip: String,
+    },
     #[structopt(about = "Transform wg config files to TOML")]
     Transform {
         #[structopt(long)]
@@ -262,6 +269,63 @@ impl Cmd {
                         k.len()
                     );
                 }
+            }
+            Cmd::Genconf {
+                peer_pubkey,
+                self_ip,
+            } => {
+                use ansi_term::{Color, Style};
+
+                let self_private_key = X25519::genkey();
+                let self_private_key_base64 = base64::encode(self_private_key.as_slice());
+                let self_public_key = <X25519 as DH>::pubkey(&self_private_key);
+                let self_public_key_base64 = base64::encode(&self_public_key);
+
+                let self_ip = &*self_ip;
+                let self_config = toml::toml! {
+                    [Interface]
+                    PrivateKey = self_private_key_base64
+                    Address = self_ip
+
+                    [[Peer]]
+                    PublicKey = peer_pubkey
+                };
+                let peer_config = toml::toml! {
+                    [[Peer]]
+                    PublicKey = self_public_key_base64
+                    AllowedIPs = [self_ip]
+                };
+
+                let is_tty = atty::is(atty::Stream::Stdout);
+
+                macro_rules! if_tty {
+                    ($s:expr) => {
+                        if is_tty {
+                            $s
+                        } else {
+                            Style::new()
+                        }
+                    };
+                }
+
+                let yellow = if_tty!(Color::Yellow.bold());
+                let cyan = if_tty!(Color::Cyan.bold());
+
+                print!(
+                    r#"===========================================================
+Self config:
+===========================================================
+{}===========================================================
+
+
+===========================================================
+Add this to peer's config:
+===========================================================
+{}===========================================================
+"#,
+                    yellow.paint(toml::to_string(&self_config)?),
+                    cyan.paint(toml::to_string(&peer_config)?)
+                );
             }
             Cmd::Transform {
                 overwrite,
