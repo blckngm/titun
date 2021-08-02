@@ -112,7 +112,6 @@ inotify = "0.9.3"
 
 [dev-dependencies]
 criterion = "0.3.4"
-walkdir = "2.3.2"
 quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
 

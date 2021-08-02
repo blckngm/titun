@@ -30,11 +30,10 @@ jobs:
 
     - uses: Swatinem/rust-cache@v1
 
-    - name: Install grcov and cargo-binutils
+    - name: Install cargo-binutils
       env:
         RUSTFLAGS: ""
       run: |
-        if [[ ! -e ~/.cargo/bin/grcov ]]; then cargo install grcov; fi
         if [[ ! -e ~/.cargo/bin/cargo-cov ]]; then cargo install cargo-binutils; fi
 
     - name: Test (ubuntu / macos)
@@ -45,9 +44,19 @@ jobs:
         LLVM_PROFILE_FILE: titun-test-%p-%m.profraw
       run: |
         set -ex
-        cargo test --all --all-targets --all-features --locked
-        ls *.profraw
-        grcov . --binary-path target/debug/deps/ -s . -t lcov --branch --ignore-not-existing -o coverage.lcov
+        cargo test --all --all-targets --all-features --locked --message-format=json > tests.json
+        cargo profdata -- merge -sparse *.profraw -o titun-test.profdata
+        cargo cov -- export \
+          $( \
+            for file in \
+              $( grep '^[{]' tests.json | jq -r "select(.profile.test == true) | .filenames[]" \
+                | grep -v dSYM - \
+              ); \
+            do \
+              printf "%s %s " -object $file; \
+            done \
+          ) \
+        --format=lcov --ignore-filename-regex='/.cargo/registry' -instr-profile titun-test.profdata > coverage.lcov
 
     - name: Integration Test (ubuntu)
       if: matrix.os == 'ubuntu-latest'
@@ -62,22 +71,9 @@ jobs:
         sudo -E ./integration-test.sh
         sudo -E ./interop-test.sh
         sudo chmod a+r *.profraw
-        # grcov won't report correct results for this, use llvm-profdata and llvm-cov directly.
         cd ..
         cargo profdata -- merge -sparse ns-test/*.profraw -o titun-integration-test.profdata
         cargo cov -- export target/debug/titun --format=lcov --ignore-filename-regex='/.cargo/registry' -instr-profile titun-integration-test.profdata > coverage1.lcov
-
-    - name: Test (windows)
-      if: matrix.os == 'windows-latest'
-      shell: bash
-      env:
-        LLVM_PROFILE_FILE: titun-test-%p-%m.profraw
-        TESTING: 1
-      run: |
-        set -ex
-        cargo test --all --all-targets --locked
-        ls *.profraw
-        grcov . --binary-path target/debug/deps/ -s . -t lcov --branch --ignore-not-existing -o coverage.lcov
 
     - name: Codecov
       uses: codecov/codecov-action@v2
