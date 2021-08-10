@@ -2024,20 +2024,19 @@ dependencies = [
 
 [[package]]
 name = "wchar"
-version = "0.10.1"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "329ba7151d07f65f1ad4b38dc27369c952db9674bb65e6e8aad0b0bc206abf19"
+checksum = "e1ca6ea80317e76471c3aa6d47efb151ef04538960ab810845a1c854f5cd7d8c"
 dependencies = [
  "wchar-impl",
 ]
 
 [[package]]
 name = "wchar-impl"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e98e30fc63796c670f6805bf5cbf2460766f663d7e804beef671ee845d33e39b"
+checksum = "075c93156fed21f9dab57af5e81604d0fdb67432c919a8c1f78bb979f06a3d25"
 dependencies = [
- "libc",
  "proc-macro2",
  "quote",
  "syn",
