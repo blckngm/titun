@@ -54,7 +54,7 @@ num-traits = "0.2.14"
 tokio-util = { version = "0.6.7", features = ["codec"] }
 sodiumoxide = "0.2.7"
 libsodium-sys = "0.2.7"
-socket2 = "0.4.0"
+socket2 = "0.4.2"
 itertools = "0.10.1"
 scopeguard = "1.1.0"
 
