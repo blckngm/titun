@@ -47,7 +47,7 @@ structopt = "0.3.21"
 tai64 = "3.1.0"
 ansi_term = "0.12.1"
 atty = "0.2.14"
-serde = { version = "1.0.126", features = ["derive"] }
+serde = { version = "1.0.136", features = ["derive"] }
 toml = "0.5.8"
 anyhow = "1.0.41"
 num-traits = "0.2.14"
