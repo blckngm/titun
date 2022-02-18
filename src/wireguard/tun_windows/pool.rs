@@ -227,8 +227,8 @@ pub fn get_device_registry_property(
             ))
         }
         REG_SZ => {
-            let s = WideCStr::from_slice_with_nul(buffer.as_slice_u16())
-                .context("WideCStr::from_slice_with_nul")?
+            let s = WideCStr::from_slice_truncate(buffer.as_slice_u16())
+                .context("WideCStr::from_slice_truncate")?
                 .to_string_lossy();
             Ok(MyRegistryValue::Sz(s))
         }
@@ -629,7 +629,7 @@ impl Pool {
                 null_mut(),
             ))
             .context("SetupDiClassNameFromGuidExW")?;
-            WideCString::from_vec_with_nul(class_name).context("SetupDiClassNameFromGuidExW")?
+            WideCString::from_vec_truncate(class_name)
         };
 
         // Create a new device info element and add it to the device info set.
