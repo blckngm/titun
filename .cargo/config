@@ -1,5 +1,0 @@
-[target.'cfg(any(target_arch = "x86", target_arch = "x86_64"))']
-# Without this, LLVM won't generate optimal code for the `rotate_left_16`
-# operation used in hchacha and blake2s - it rewrites the `pshufb` to
-# `pshuflw` + `pshufhw`.
-rustflags = "-C target-feature=+fast-variable-shuffle"
