@@ -328,7 +328,7 @@ async fn get_primary_network_service_name() -> anyhow::Result<String> {
 }
 
 #[cfg(not(windows))]
-async fn add_route(ip: IpAddr, l: u32, gateway: &str) -> anyhow::Result<()> {
+async fn add_route(ip: IpAddr, l: u32, gateway: &str, dev: &str) -> anyhow::Result<()> {
     let route_result = if cfg!(target_os = "macos") {
         Command::new("route")
             .arg("add")
@@ -340,8 +340,8 @@ async fn add_route(ip: IpAddr, l: u32, gateway: &str) -> anyhow::Result<()> {
             .arg("route")
             .arg("add")
             .arg(format!("{}/{}", ip, l))
-            .arg("via")
-            .arg(gateway)
+            .arg("dev")
+            .arg(dev)
             .output()
     }
     .await
@@ -527,7 +527,7 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
         } else if added % 100 == 0 {
             log::info!("added {} routes", added);
         }
-        if let Err(e) = add_route(ip, l, &self_ip).await {
+        if let Err(e) = add_route(ip, l, &self_ip, name).await {
             log::warn!("failed to add route {}/{}: {}", ip, l, e);
         }
         added += 1;
