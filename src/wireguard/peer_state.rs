@@ -25,7 +25,7 @@ use std::net::SocketAddrV6;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
-use tai64::TAI64N;
+use tai64::Tai64N;
 use tokio::time::sleep;
 
 pub type SharedPeerState = Arc<RwLock<PeerState>>;
@@ -56,7 +56,7 @@ impl<T> Deref for InitLater<T> {
 
 pub struct PeerState {
     pub info: PeerInfo,
-    pub last_handshake: Option<TAI64N>,
+    pub last_handshake: Option<Tai64N>,
     pub cookie: Option<(Cookie, Instant)>,
     pub last_mac1: Option<[u8; 16]>,
     pub handshake: Option<Handshake>,

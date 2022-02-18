@@ -20,9 +20,12 @@ use super::*;
 #[derive(Debug)]
 pub struct Interface<'a> {
     net_cfg_instance_id: CLSID,
+    #[allow(dead_code)]
     net_luid_index: u32,
+    #[allow(dead_code)]
     if_type: u32,
     dev_instance_id: String,
+    #[allow(dead_code)]
     pool: &'a Pool,
 }
 
@@ -93,8 +96,8 @@ impl<'a> Interface<'a> {
                 &mut req_size,
             ))
             .context("SetupDiGetDeviceInstanceIdW")?;
-            WideCStr::from_slice_with_nul(&buf[..])
-                .context("SetupDiGetDeviceInstanceIdW WideCStr::from_slice_with_nul")?
+            WideCStr::from_slice_truncate(&buf[..])
+                .context("SetupDiGetDeviceInstanceIdW WideCStr::from_slice_truncate")?
                 .to_string_lossy()
         };
 
@@ -119,8 +122,8 @@ impl<'a> Interface<'a> {
             )
         };
         if r == 0 {
-            Ok(WideCStr::from_slice_with_nul(buf.as_slice_u16())
-                .context("WideCStr::from_slice_with_nul")?
+            Ok(WideCStr::from_slice_truncate(buf.as_slice_u16())
+                .context("WideCStr::from_slice_truncate")?
                 .to_string_lossy())
         } else {
             Err(io::Error::from_raw_os_error(r as i32)).context("NciGetConnectionName")

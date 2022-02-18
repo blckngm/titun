@@ -21,7 +21,7 @@ use blake2s_simd::{Params, State};
 use noise_protocol::patterns::noise_ik_psk2;
 use noise_protocol::*;
 use std::convert::TryInto;
-use tai64::TAI64N;
+use tai64::Tai64N;
 
 const PROLOGUE: &[u8] = b"WireGuard v1 zx2c4 Jason@zx2c4.com";
 const LABEL_MAC1: &[u8] = b"mac1----";
@@ -100,7 +100,7 @@ pub fn initiate(
     msg[4..8].copy_from_slice(self_index.as_slice());
 
     // Noise part: e, s, timestamp.
-    let mut timestamp = TAI64N::now();
+    let mut timestamp = Tai64N::now();
     // Truncate the timestamp to avoid being a timing oracle for other attacks.
     timestamp.1 = timestamp.1 / TIMESTAMP_PRECISION * TIMESTAMP_PRECISION;
     hs.write_message(&timestamp.to_bytes(), &mut msg[8..116])
@@ -116,7 +116,7 @@ pub fn initiate(
 
 pub struct InitProcessResult {
     pub peer_id: Id,
-    pub timestamp: TAI64N,
+    pub timestamp: Tai64N,
     pub handshake_state: HS,
 }
 
