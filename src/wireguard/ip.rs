@@ -40,7 +40,7 @@ pub fn parse_ip_packet(packet: &[u8]) -> Result<(u16, IpAddr, IpAddr), ()> {
         if packet.len() < 40 {
             return Err(());
         }
-        let len = u16::from_be_bytes(packet[4..6].try_into().unwrap());
+        let len = u16::from_be_bytes(packet[4..6].try_into().unwrap()) + 40;
         if packet.len() < len as usize {
             return Err(());
         }
