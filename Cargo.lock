@@ -1578,7 +1578,7 @@ dependencies = [
 
 [[package]]
 name = "titun"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "ansi_term",
  "anyhow",
