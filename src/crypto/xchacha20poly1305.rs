@@ -16,11 +16,10 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 use super::simd::{u32x4, BaselineMachine, Machine};
-use libsodium_sys::{
-    crypto_aead_chacha20poly1305_ietf_decrypt, crypto_aead_chacha20poly1305_ietf_encrypt,
-};
 use std::convert::TryInto;
-use std::ptr::{null, null_mut};
+use titun_hacl::{
+    chacha20_poly1305_multiplexed_aead_decrypt, chacha20_poly1305_multiplexed_aead_encrypt,
+};
 
 // Adapted from chacha20-poly1305-aead[1], which is licensed as:
 //
@@ -128,21 +127,10 @@ pub fn encrypt(key: &[u8], nonce: &[u8], ad: &[u8], p: &[u8], out: &mut [u8]) {
     let mut real_nonce = [0u8; 12];
     real_nonce[4..].copy_from_slice(chacha_nonce);
 
-    let mut out_len = out.len() as u64;
+    let (cipher, mac) = out.split_at_mut(p.len());
+    let mac = mac.try_into().unwrap();
 
-    unsafe {
-        crypto_aead_chacha20poly1305_ietf_encrypt(
-            out.as_mut_ptr(),
-            &mut out_len,
-            p.as_ptr(),
-            p.len() as u64,
-            ad.as_ptr(),
-            ad.len() as u64,
-            null(),
-            real_nonce.as_ptr(),
-            real_key.as_ptr(),
-        );
-    }
+    chacha20_poly1305_multiplexed_aead_encrypt(&real_key, &real_nonce, ad, p, cipher, mac);
 }
 
 pub fn decrypt(key: &[u8], nonce: &[u8], ad: &[u8], c: &[u8], out: &mut [u8]) -> Result<(), ()> {
@@ -155,26 +143,10 @@ pub fn decrypt(key: &[u8], nonce: &[u8], ad: &[u8], c: &[u8], out: &mut [u8]) ->
     let mut real_nonce = [0u8; 12];
     real_nonce[4..].copy_from_slice(chacha_nonce);
 
-    let mut out_len = out.len() as u64;
+    let (cipher, mac) = c.split_at(out.len());
+    let mac = mac.try_into().unwrap();
 
-    let r = unsafe {
-        crypto_aead_chacha20poly1305_ietf_decrypt(
-            out.as_mut_ptr(),
-            &mut out_len,
-            null_mut(),
-            c.as_ptr(),
-            c.len() as u64,
-            ad.as_ptr(),
-            ad.len() as u64,
-            real_nonce.as_ptr(),
-            real_key.as_ptr(),
-        )
-    };
-    if r != 0 {
-        Err(())
-    } else {
-        Ok(())
-    }
+    chacha20_poly1305_multiplexed_aead_decrypt(&real_key, &real_nonce, ad, out, cipher, mac)
 }
 
 #[cfg(test)]

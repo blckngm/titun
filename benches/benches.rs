@@ -28,8 +28,6 @@ criterion_group!(benches, register_benches);
 criterion_main!(benches);
 
 fn register_benches(c: &mut Criterion) {
-    sodiumoxide::init().unwrap();
-
     anti_replay::register_benches(c);
     crypto::register_benches(c);
     handshake::register_benches(c);

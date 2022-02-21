@@ -8,7 +8,6 @@ version = "0.3.2"
 autobenches = false
 
 [workspace]
-exclude = ["patched"]
 
 [lib]
 bench = false
@@ -52,11 +51,10 @@ toml = "0.5.8"
 anyhow = "1.0.53"
 num-traits = "0.2.14"
 tokio-util = { version = "0.7.0", features = ["codec"] }
-sodiumoxide = "0.2.7"
-libsodium-sys = "0.2.7"
 socket2 = "0.4.4"
 itertools = "0.10.3"
 scopeguard = "1.1.0"
+titun-hacl = { git = "https://github.com/sopium/titun-hacl.git" }
 
 [dependencies.tokio]
 version = "1.17.0"
@@ -101,7 +99,6 @@ wchar = "0.11.0"
 windows-service = "0.4.0"
 serde_json = "1.0.79"
 webview2 = "0.1.4"
-# 0.22.2 does not work: https://github.com/rust-windowing/winit/issues/1698
 winit = "0.26.1"
 
 [target.'cfg(unix)'.dependencies]
@@ -117,7 +114,7 @@ quickcheck_macros = "1.0.0"
 
 [build-dependencies]
 cc = "1.0.73"
-winres = { git = "https://github.com/sopium/winres.git" }
+winres = "0.1.12"
 
 [profile.release]
 lto = true

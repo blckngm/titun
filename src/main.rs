@@ -60,8 +60,6 @@ fn main() {
         service_manager::*,
     };
 
-    sodiumoxide::init().unwrap();
-
     if std::env::args().count() <= 1 {
         return titun::windows_gui::run_windows_gui();
     }
@@ -288,7 +286,6 @@ fn main() {
 
 #[cfg(not(windows))]
 fn main() {
-    sodiumoxide::init().unwrap();
     real_main(None).unwrap_or_else(|e| {
         eprintln!("Error: {:?}", e);
         std::process::exit(1);
