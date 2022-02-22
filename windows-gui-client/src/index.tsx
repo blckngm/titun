@@ -14,4 +14,12 @@ const theme = createMuiTheme({
 
 focus().catch(e => console.error(e));
 
-ReactDOM.render(<ThemeProvider theme={theme}><App /></ThemeProvider>, document.getElementById('root'));
+// Render after DOMContentLoaded so that this works in inline script.
+document.addEventListener("DOMContentLoaded", () => {
+    ReactDOM.render(
+        <ThemeProvider theme={theme}>
+            <App />
+        </ThemeProvider>,
+        document.getElementById("root")
+    );
+});
