@@ -50,11 +50,24 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
 
         info!("set interface ip address {}/{}", address, prefix_len);
         let output = Command::new("netsh")
-            .args(&["interface", "ip", "set", "address"])
+            .args(&[
+                "interface",
+                if address.is_ipv4() { "ip" } else { "ipv6" },
+                "set",
+                "address",
+            ])
             .arg(name)
-            .arg("static")
+            .args(if address.is_ipv4() {
+                Some("static")
+            } else {
+                None
+            })
             .arg(format!("{}", address))
-            .arg(format!("{}", mask))
+            .args(if address.is_ipv4() {
+                Some(mask.to_string())
+            } else {
+                None
+            })
             .output()
             .await
             .context("run netsh")?;
