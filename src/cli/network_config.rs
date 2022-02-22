@@ -50,11 +50,24 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
 
         info!("set interface ip address {}/{}", address, prefix_len);
         let output = Command::new("netsh")
-            .args(&["interface", "ip", "set", "address"])
+            .args(&[
+                "interface",
+                if address.is_ipv4() { "ip" } else { "ipv6" },
+                "set",
+                "address",
+            ])
             .arg(name)
-            .arg("static")
+            .args(if address.is_ipv4() {
+                Some("static")
+            } else {
+                None
+            })
             .arg(format!("{}", address))
-            .arg(format!("{}", mask))
+            .args(if address.is_ipv4() {
+                Some(mask.to_string())
+            } else {
+                None
+            })
             .output()
             .await
             .context("run netsh")?;
@@ -332,6 +345,7 @@ async fn add_route(ip: IpAddr, l: u32, gateway: &str, dev: &str) -> anyhow::Resu
     let route_result = if cfg!(target_os = "macos") {
         Command::new("route")
             .arg("add")
+            .args(if ip.is_ipv6() { Some("-inet6") } else { None })
             .arg(format!("{}/{}", ip, l))
             .arg(gateway)
             .output()
@@ -378,8 +392,8 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
         .context("interface name")?;
 
     // Set up, ip, mtu.
-    let self_ip = if let Some((ip, _)) = c.interface.address.iter().next() {
-        ip.to_string()
+    let (self_ip, is_ipv6) = if let Some((ip, _)) = c.interface.address.iter().next() {
+        (ip.to_string(), ip.is_ipv6())
     } else {
         return Ok(());
     };
@@ -420,13 +434,31 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
             .arg("up")
             .arg("mtu")
             .arg(mtu)
-            .arg(&self_ip)
-            .arg(peer_ip)
             .status()
             .await
             .context("ifconfig")?;
         if !ifconfig_result.success() {
-            anyhow::bail!("failed to set interface up, mtu and ip");
+            anyhow::bail!("failed to set interface up mtu");
+        }
+        let ifconfig_result = if !is_ipv6 {
+            Command::new("ifconfig")
+                .arg(name)
+                .arg(&self_ip)
+                .arg(&peer_ip)
+                .status()
+        } else {
+            Command::new("ifconfig")
+                .arg(name)
+                .arg("inet6")
+                .arg(&self_ip)
+                .arg("prefixlen")
+                .arg("128")
+                .status()
+        }
+        .await
+        .context("ifconfig")?;
+        if !ifconfig_result.success() {
+            anyhow::bail!("failed to set interface ip");
         }
     }
 
