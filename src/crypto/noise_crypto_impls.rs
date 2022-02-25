@@ -28,7 +28,7 @@ use titun_hacl::{
 
 #[derive(Eq, PartialEq)]
 pub struct X25519Key {
-    key: Sensitive<[u8; 32]>,
+    key: Sensitive,
     public_key: [u8; 32],
 }
 
@@ -54,7 +54,7 @@ impl U8Array for X25519Key {
     }
 
     fn from_slice(s: &[u8]) -> Self {
-        let s = Sensitive::<[u8; 32]>::from_slice(s);
+        let s = Sensitive::from_slice(s);
         let pk = curve25519_multiplexed_secret_to_public(&s.0);
         X25519Key {
             key: s,
@@ -83,49 +83,62 @@ impl U8Array for X25519Key {
 }
 
 #[derive(PartialEq, Eq)]
-pub struct Sensitive<A: U8Array>(A);
+#[repr(C, align(16))]
+pub struct Sensitive([u8; 32]);
 
-// Zeroing out after use. (Inspired by zeroize.)
-impl<A> Drop for Sensitive<A>
-where
-    A: U8Array,
-{
+// Zeroing out after use. (Use of write_volatile and compiler_fence is inspired by zeroize.)
+impl Drop for Sensitive {
     fn drop(&mut self) {
-        for b in self.0.as_mut() {
-            unsafe {
-                core::ptr::write_volatile(b, 0);
+        #[cfg(target_feature = "sse2")]
+        unsafe {
+            #[cfg(target_arch = "x86")]
+            use std::arch::x86::{__m128, _mm_setzero_ps};
+            #[cfg(target_arch = "x86_64")]
+            use std::arch::x86_64::{__m128, _mm_setzero_ps};
+
+            // write_volatile won't be optimized out.
+            // repr(C, align(16)) makes ptr property aligned.
+            let ptr = self as *mut Sensitive as *mut __m128;
+            // write_volatile for *mut __m128 generates efficient and compact movaps/vmovaps instructions.
+            ptr.write_volatile(_mm_setzero_ps());
+            ptr.offset(1).write_volatile(_mm_setzero_ps());
+        }
+        #[cfg(not(target_feature = "sse2"))]
+        unsafe {
+            // write_volatile won't be optimized out.
+            // repr(C, align(16)) makes ptr properly aligned.
+            let ptr = self as *mut Sensitive as *mut u64;
+            for i in 0..4 {
+                ptr.offset(i).write_volatile(0);
             }
         }
         compiler_fence(Ordering::SeqCst);
     }
 }
 
-impl<A> U8Array for Sensitive<A>
-where
-    A: U8Array,
-{
+impl U8Array for Sensitive {
     fn new() -> Self {
-        Sensitive(A::new())
+        Sensitive([0; 32])
     }
 
     fn new_with(v: u8) -> Self {
-        Sensitive(A::new_with(v))
+        Sensitive([v; 32])
     }
 
     fn from_slice(s: &[u8]) -> Self {
-        Sensitive(A::from_slice(s))
+        Sensitive(s.try_into().unwrap())
     }
 
     fn len() -> usize {
-        A::len()
+        32
     }
 
     fn as_slice(&self) -> &[u8] {
-        self.0.as_slice()
+        &self.0[..]
     }
 
     fn as_mut(&mut self) -> &mut [u8] {
-        self.0.as_mut()
+        &mut self.0[..]
     }
 }
 
@@ -136,7 +149,7 @@ pub enum ChaCha20Poly1305 {}
 impl DH for X25519 {
     type Key = X25519Key;
     type Pubkey = [u8; 32];
-    type Output = Sensitive<[u8; 32]>;
+    type Output = Sensitive;
 
     fn name() -> &'static str {
         "25519"
@@ -162,7 +175,7 @@ impl DH for X25519 {
 }
 
 impl Cipher for ChaCha20Poly1305 {
-    type Key = Sensitive<[u8; 32]>;
+    type Key = Sensitive;
 
     fn name() -> &'static str {
         "ChaChaPoly"
