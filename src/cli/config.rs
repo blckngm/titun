@@ -577,8 +577,7 @@ Endpoint = "host.no.port.invalid"
                         &base64::decode("w64eiHxoUHU8DcFexHWzqILOvbWx9U+dxxh8iQqJr+k=").unwrap()
                     )),
                     endpoint: Some("192.168.3.1:7777".parse().unwrap()),
-                    allowed_ips: std::array::IntoIter::new([("192.168.77.1".parse().unwrap(), 32)])
-                        .collect(),
+                    allowed_ips: std::iter::once(("192.168.77.1".parse().unwrap(), 32)).collect(),
                     exclude_routes: BTreeSet::new(),
                     keepalive: NonZeroU16::new(17),
                 }],

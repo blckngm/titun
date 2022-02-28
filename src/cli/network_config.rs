@@ -524,7 +524,7 @@ pub async fn network_config(c: &Config<SocketAddr>) -> anyhow::Result<()> {
                 c.interface
                     .dns
                     .iter()
-                    .flat_map(|d| std::array::IntoIter::new(["--set-dns".into(), d.to_string()])),
+                    .flat_map(|d| ["--set-dns".into(), d.to_string()]),
             )
             .arg("--interface")
             .arg(name)
