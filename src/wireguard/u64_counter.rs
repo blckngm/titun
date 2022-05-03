@@ -20,8 +20,7 @@
 
 pub use imp::U64Counter;
 
-// XXX: Use target_has_atomic when it's stable.
-#[cfg(any(target_arch = "mips", target_arch = "powerpc"))]
+#[cfg(not(target_has_atomic = "64"))]
 mod imp {
     use parking_lot::Mutex;
 
@@ -49,7 +48,7 @@ mod imp {
     }
 }
 
-#[cfg(not(any(target_arch = "mips", target_arch = "powerpc")))]
+#[cfg(target_has_atomic = "64")]
 mod imp {
     use std::sync::atomic::{AtomicU64, Ordering};
 

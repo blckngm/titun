@@ -16,7 +16,6 @@
 // along with TiTun.  If not, see <https://www.gnu.org/licenses/>.
 
 #![cfg(windows)]
-#![windows_subsystem = "windows"]
 
 use std::cell::RefCell;
 use std::mem;
