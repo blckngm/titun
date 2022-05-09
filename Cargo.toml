@@ -57,7 +57,7 @@ scopeguard = "1.1.0"
 titun-hacl = { git = "https://github.com/sopium/titun-hacl.git" }
 
 [dependencies.tokio]
-version = "1.17.0"
+version = "1.18.2"
 features = [
     "io-std",
     "io-util",
