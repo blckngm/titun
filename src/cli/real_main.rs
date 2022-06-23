@@ -18,21 +18,21 @@
 use crate::cli;
 use crate::wireguard::re_exports::{U8Array, DH, X25519};
 use anyhow::{bail, Context};
+use clap::{crate_version, AppSettings, Parser};
 use log::info;
 use rand::{rngs::OsRng, RngCore};
 use std::ffi::OsString;
 use std::io::{stdin, Read};
 use std::path::PathBuf;
-use structopt::{clap::crate_version, clap::AppSettings, StructOpt};
 use tokio::sync::oneshot;
 
-#[derive(StructOpt)]
-#[structopt(rename_all = "kebab")]
+#[derive(Parser)]
+#[clap(rename_all = "kebab")]
 struct Options {
-    #[structopt(short, long, help = "Run in foreground (don't daemonize)")]
+    #[clap(short, long, help = "Run in foreground (don't daemonize)")]
     foreground: bool,
 
-    #[structopt(
+    #[clap(
         short,
         long,
         help = "Load initial configuration from TOML file",
@@ -41,35 +41,35 @@ struct Options {
     config_file: Option<PathBuf>,
 
     #[cfg(windows)]
-    #[structopt(long, hidden = true, help = "Exit if stdin is closed")]
+    #[clap(long, hidden = true, help = "Exit if stdin is closed")]
     exit_stdin_eof: bool,
 
     // On windows, the program is intended to run as a Windows Service. In that
     // case, any logs will be discarded if they are simply written to stderr. So
     // we provide an option to redirect logging to a named pipe.
     #[cfg(windows)]
-    #[structopt(
+    #[clap(
         long,
         hidden = true,
         help = "Redirect logging to the specified named pipe"
     )]
     log_pipe: Option<PathBuf>,
 
-    #[structopt(long, help = "Set logging (env_logger)", env = "RUST_LOG")]
+    #[clap(long, help = "Set logging (env_logger)", env = "RUST_LOG")]
     log: Option<String>,
 
-    #[structopt(long, help = "Number of worker threads", env = "TITUN_THREADS")]
+    #[clap(long, help = "Number of worker threads", env = "TITUN_THREADS")]
     threads: Option<usize>,
 
     #[cfg(unix)]
-    #[structopt(long, help = "Change to user (drop privilege)")]
+    #[clap(long, help = "Change to user (drop privilege)")]
     user: Option<String>,
 
     #[cfg(unix)]
-    #[structopt(long, help = "Change to group")]
+    #[clap(long, help = "Change to group")]
     group: Option<String>,
 
-    #[structopt(
+    #[clap(
         value_name = "INTERFACE_NAME",
         help = "Interface name",
         parse(from_os_str),
@@ -79,7 +79,7 @@ struct Options {
 
     // This field is never accessed.
     #[allow(unused)]
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     cmd: Option<Cmd>,
 }
 
@@ -186,37 +186,37 @@ impl Options {
     }
 }
 
-#[derive(StructOpt)]
+#[derive(Parser)]
 enum Cmd {
-    #[structopt(about = "Show interface status")]
+    #[clap(about = "Show interface status")]
     Show {
-        #[structopt(help = "Interfaces to show. Omit to show all", parse(from_os_str))]
+        #[clap(help = "Interfaces to show. Omit to show all", parse(from_os_str))]
         interfaces: Vec<OsString>,
     },
-    #[structopt(about = "Check configuration file validity")]
+    #[clap(about = "Check configuration file validity")]
     Check {
         config_file: PathBuf,
-        #[structopt(long)]
+        #[clap(long)]
         print: bool,
     },
-    #[structopt(about = "Generate private key")]
+    #[clap(about = "Generate private key")]
     Genkey,
-    #[structopt(about = "Calculate public key from the private key read from stdin")]
+    #[clap(about = "Calculate public key from the private key read from stdin")]
     Pubkey,
-    #[structopt(about = "Generate preshared key")]
+    #[clap(about = "Generate preshared key")]
     Genpsk,
-    #[structopt(about = "Generate configuration")]
+    #[clap(about = "Generate configuration")]
     Genconf {
-        #[structopt(long)]
+        #[clap(long)]
         peer_pubkey: String,
-        #[structopt(long)]
+        #[clap(long)]
         self_ip: String,
     },
-    #[structopt(about = "Transform wg config files to TOML")]
+    #[clap(about = "Transform wg config files to TOML")]
     Transform {
-        #[structopt(long)]
+        #[clap(long)]
         overwrite: bool,
-        #[structopt(help = "Config file to read. Read from stdin if not present")]
+        #[clap(help = "Config file to read. Read from stdin if not present")]
         config_file: Option<PathBuf>,
     },
 }
@@ -387,7 +387,6 @@ pub fn windows_service_args() -> anyhow::Result<Option<WindowsServiceArgs>> {
         .version(version)
         .setting(AppSettings::UnifiedHelpMessage)
         .setting(AppSettings::DeriveDisplayOrder)
-        .setting(AppSettings::VersionlessSubcommands)
         .setting(AppSettings::SubcommandsNegateReqs)
         .setting(AppSettings::ArgsNegateSubcommands)
         .get_matches();
@@ -464,7 +463,6 @@ pub fn real_main(stop_rx: Option<oneshot::Receiver<()>>) -> anyhow::Result<()> {
         .version(version)
         .setting(AppSettings::UnifiedHelpMessage)
         .setting(AppSettings::DeriveDisplayOrder)
-        .setting(AppSettings::VersionlessSubcommands)
         .setting(AppSettings::SubcommandsNegateReqs)
         .setting(AppSettings::ArgsNegateSubcommands)
         .get_matches();
