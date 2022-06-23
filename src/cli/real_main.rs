@@ -387,7 +387,6 @@ pub fn windows_service_args() -> anyhow::Result<Option<WindowsServiceArgs>> {
         .version(version)
         .setting(AppSettings::UnifiedHelpMessage)
         .setting(AppSettings::DeriveDisplayOrder)
-        .setting(AppSettings::VersionlessSubcommands)
         .setting(AppSettings::SubcommandsNegateReqs)
         .setting(AppSettings::ArgsNegateSubcommands)
         .get_matches();
