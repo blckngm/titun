@@ -45,7 +45,7 @@ rand = "0.8.5"
 tai64 = "4.0.0"
 ansi_term = "0.12.1"
 atty = "0.2.14"
-serde = { version = "1.0.136", features = ["derive"] }
+serde = { version = "1.0.139", features = ["derive"] }
 toml = "0.5.8"
 anyhow = "1.0.53"
 num-traits = "0.2.14"
