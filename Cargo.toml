@@ -57,7 +57,7 @@ titun-hacl = { git = "https://github.com/sopium/titun-hacl.git" }
 clap = { version = "3.2.6", features = ["derive", "cargo", "env"] }
 
 [dependencies.tokio]
-version = "1.17.0"
+version = "1.18.4"
 features = [
     "io-std",
     "io-util",
